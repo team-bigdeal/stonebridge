@@ -3,41 +3,48 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 다크 뉴트럴 + 차분한 블루 포인트 (shadcn 토큰) */
+/* 라이트 + 돌다리 블루 (Figma 디자인 토큰을 shadcn 토큰에 맞춤) */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.155 0.004 265);
-  --foreground: oklch(0.94 0.004 265);
-  --card: oklch(0.19 0.005 265);
-  --card-foreground: oklch(0.94 0.004 265);
-  --popover: oklch(0.21 0.006 265);
-  --popover-foreground: oklch(0.94 0.004 265);
-  --primary: oklch(0.66 0.14 255);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.24 0.006 265);
-  --secondary-foreground: oklch(0.92 0.004 265);
-  --muted: oklch(0.22 0.005 265);
-  --muted-foreground: oklch(0.7 0.01 265);
-  --accent: oklch(0.25 0.008 265);
-  --accent-foreground: oklch(0.96 0.004 265);
-  --destructive: oklch(0.66 0.19 25);
-  --border: oklch(0.28 0.006 265);
-  --input: oklch(0.3 0.006 265);
-  --ring: oklch(0.66 0.14 255);
+  --radius: 0.5rem;
+  --background: #f4f5f9;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #006be7;
+  --primary-foreground: #ffffff;
+  /* 연한 파랑 칸 (선택된 단계·보조 버튼) */
+  --secondary: #e9f0f9;
+  --secondary-foreground: #006be7;
+  --muted: #f1f1f1;
+  --muted-foreground: #929292;
+  --accent: #eff2fc;
+  --accent-foreground: #1d1d1d;
+  --destructive: #e5484d;
+  --border: #e3e5ec;
+  --input: #c7c7c7;
+  --ring: #006be7;
   /* 상태 색: 충족 / 확인 필요 */
-  --ok: oklch(0.74 0.13 155);
-  --warn: oklch(0.8 0.13 75);
-  --chart-1: oklch(0.7 0.12 255);
-  --chart-2: oklch(0.7 0.12 300);
-  --chart-3: oklch(0.76 0.1 195);
-  --sidebar: oklch(0.17 0.005 265);
-  --sidebar-foreground: oklch(0.94 0.004 265);
-  --sidebar-primary: oklch(0.66 0.14 255);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.24 0.006 265);
-  --sidebar-accent-foreground: oklch(0.94 0.004 265);
-  --sidebar-border: oklch(0.28 0.006 265);
-  --sidebar-ring: oklch(0.66 0.14 255);
+  --ok: #0f9d58;
+  --warn: #d97706;
+  --chart-1: #006be7;
+  --chart-2: #8b5cf6;
+  --chart-3: #0ea5a4;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #006be7;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9f0f9;
+  --sidebar-accent-foreground: #006be7;
+  --sidebar-border: #e3e5ec;
+  --sidebar-ring: #006be7;
+  /* 디자인 전용 면 색 */
+  --tint: #f6f8ff;
+  --row: #eff2fc;
+  --row-alt: #f9fafc;
+  --ink: #1d1d1d;
+  --line: #c7c7c7;
 }
 
 @theme inline {
@@ -76,9 +83,15 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
-  --color-va: oklch(0.72 0.12 255);
-  --color-vb: oklch(0.72 0.12 300);
-  --color-vc: oklch(0.78 0.1 195);
+  --color-tint: var(--tint);
+  --color-row: var(--row);
+  --color-row-alt: var(--row-alt);
+  --color-ink: var(--ink);
+  --color-line: var(--line);
+  /* 업체 A·B·C 구분색: 색각 이상에서도 구분되게 검증한 3색 (파랑·주황·청록) */
+  --color-va: #3987e5;
+  --color-vb: #d95926;
+  --color-vc: #199e70;
   --font-sans: "Pretendard", -apple-system, "Apple SD Gothic Neo", sans-serif;
 }
 
@@ -89,13 +102,20 @@
     @apply bg-background text-foreground antialiased;
     word-break: keep-all;
   }
-  input, textarea, select { color-scheme: dark; }
+  input, textarea, select { color-scheme: light; }
+}
+
+/* 로고 글씨: 둥근 굵은 글꼴 (Ok Mallang이 설치돼 있으면 그걸 쓴다) */
+.logo-type {
+  font-family: "Ok Mallang B", "OkMallang", "Arial Rounded MT Bold", "Pretendard", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 .flash { animation: flash 1.4s ease-out; }
-@keyframes flash { 0% { background: oklch(0.66 0.14 255 / 0.28); } 100% { background: transparent; } }
+@keyframes flash { 0% { background: rgb(0 107 231 / 0.18); } 100% { background: transparent; } }
 /* 앱 전체 스크롤바: 얇은 둥근 막대 + 투명한 길. 기본(OS) 스크롤바 대신 어디서나 같은 모양.
    (외부 사이트를 띄우는 내장 브라우저 화면에는 적용하지 않는다) */
 *::-webkit-scrollbar { width: 10px; height: 10px; }

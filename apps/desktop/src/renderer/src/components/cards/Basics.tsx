@@ -4,13 +4,12 @@ import type { MailDraft, Requirements, RunSummary, VendorId } from '@shared/type
 import { FIELD_LABELS } from '@shared/types';
 import { won } from '@shared/quote';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { clock, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
-import { Pill, SectionHead } from './Section';
+import { Pill } from './Section';
 import { useRunStore, useApi } from '@/runScope';
 
 type EditKey = 'item' | 'quantity' | 'budgetMax' | 'deadline' | 'minWarrantyMonths' | 'region';
@@ -19,9 +18,9 @@ const toNum = (s: string) => Number(s.replace(/[,\s원개월]/g, ''));
 const validNum = (k: EditKey, s: string) => Number.isInteger(toNum(s)) && toNum(s) >= (k === 'minWarrantyMonths' ? 0 : 1);
 
 export function RequirementsCard() {
-  const { requirements, stage, reqReady, busy } = useRunStore();
+  const { requirements, stage, reqReady, reqAsking, busy } = useRunStore();
   const r = requirements ?? {};
-  if (stage === 'interview') return <RequirementsEditor r={r} ready={reqReady} busy={busy} />;
+  if (stage === 'interview') return <RequirementsEditor r={r} ready={reqReady} asking={reqAsking} busy={busy} />;
   const items: [string, string | undefined][] = [
     ['품목', r.item],
     ['수량', r.quantity !== undefined ? `${r.quantity.toLocaleString('ko-KR')}개` : undefined],
@@ -32,31 +31,28 @@ export function RequirementsCard() {
     ['지역', r.region]
   ];
   const filled = items.filter(([, v]) => v).length;
+  // 디자인 30:1039: 흰 띠 안에 "요구 조건" 탭 + 항목별 칸
   return (
-    <Card className="gap-4 py-4">
-      <CardContent className="space-y-4 px-5">
-        <SectionHead
-          title="요구 조건"
-          hint={filled < items.length ? '대화로 채워지고 있어요. 빈 칸은 이어서 물어볼게요.' : '이 조건으로 업체를 찾아요.'}
-          right={<span className="text-[12px] tabular-nums text-muted-foreground">{filled}/{items.length}</span>}
-        />
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 xl:grid-cols-7">
-          {items.map(([k, v]) => (
-            <div key={k} className="min-w-0">
-              <dt className="text-[12px] text-muted-foreground">{k}</dt>
-              <dd className={cn('mt-0.5 truncate text-[14px]', v ? 'font-medium' : 'text-muted-foreground/50')} title={v}>
-                {v ?? '—'}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
+    <div className="w-fit max-w-full rounded-lg bg-white p-2" title={filled < items.length ? '대화로 채워지고 있어요. 빈 칸은 이어서 물어볼게요.' : '이 조건으로 업체를 찾아요.'}>
+      <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-medium leading-normal xl:text-[16px]">
+        <div className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-primary">
+          요구 조건 <span className="text-[13px] tabular-nums opacity-70">{filled}/{items.length}</span>
+        </div>
+        {items.map(([k, v]) => (
+          <div key={k} className="flex min-w-0 items-center gap-2.5 rounded-lg px-4 py-2.5">
+            <dt className="shrink-0 text-muted-foreground">{k}</dt>
+            <dd className={cn('max-w-[260px] truncate', v ? 'text-black' : 'text-muted-foreground/60')} title={v}>
+              {v ?? '…'}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
 /** 검색 전 확인: 값을 직접 고치고 사용자가 눌러야 검색 시작 */
-function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; ready: boolean; busy: boolean }) {
+function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: boolean; asking: boolean; busy: boolean }) {
   const api = useApi();
   // 입력 중인 문자열만 따로 들고 있다가 시작할 때 숫자로 바꾼다 (지운 칸이 원래 값으로 되돌아가지 않게)
   const [text, setText] = useState<Partial<Record<EditKey, string>>>({});
@@ -85,55 +81,86 @@ function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; read
     }
   }
 
-  const field = (k: EditKey, label: string, unit?: string, type = 'text') => (
-    <label key={k} className="block min-w-0">
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <div className="mt-1 flex items-center gap-1.5">
-        <Input
-          type={type}
-          value={shown(k)}
-          placeholder="—"
-          onChange={(e) => setText({ ...text, [k]: e.target.value })}
-          aria-invalid={invalid.includes(k) || undefined}
-          className="h-8 min-w-0 px-2 text-[13px]"
-        />
-        {unit && <span className="shrink-0 text-[12px] text-muted-foreground">{unit}</span>}
-      </div>
-    </label>
-  );
+  // 디자인 29:345: 값이 있는 칸은 연한 파랑, 빈 칸은 회색. 칸 안에서 바로 고칠 수 있다
+  const field = (k: EditKey, label: string, unit?: string, type = 'text') => {
+    const has = shown(k).trim() !== '';
+    const bad = invalid.includes(k);
+    return (
+      <label
+        key={k}
+        className={cn(
+          'flex min-w-0 cursor-text items-center gap-4 rounded-lg px-4 py-2 transition-shadow focus-within:ring-2 focus-within:ring-primary/30',
+          has ? 'bg-tint' : 'bg-muted',
+          bad && 'ring-2 ring-destructive/50'
+        )}
+      >
+        <span className="shrink-0 text-[13px] font-medium text-muted-foreground">{label}</span>
+        <span className="flex min-w-0 items-center gap-1">
+          <Input
+            type={type}
+            value={shown(k)}
+            placeholder="..."
+            onChange={(e) => setText({ ...text, [k]: e.target.value })}
+            aria-invalid={bad || undefined}
+            className={cn(
+              'h-auto min-w-[3ch] max-w-[220px] rounded-none border-0 bg-transparent p-0 text-[14px] font-medium shadow-none [field-sizing:content] focus-visible:ring-0 md:text-[14px]',
+              has ? 'text-black' : 'text-muted-foreground'
+            )}
+          />
+          {unit && has && <span className="shrink-0 text-[13px] text-muted-foreground">{unit}</span>}
+        </span>
+      </label>
+    );
+  };
 
   const help = !item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : invalid.length ? '숫자 칸을 확인해 주세요.' : ready ? '남은 질문에 답하지 않아도 지금 바로 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.';
+  const keys: EditKey[] = ['item', 'quantity', 'budgetMax', 'deadline', 'minWarrantyMonths', 'region'];
+  const filled = keys.filter((k) => shown(k).trim() !== '').length + (needInstall === undefined ? 0 : 1);
 
   return (
-    <Card className="gap-4 border-primary/40 py-4">
-      <CardContent className="space-y-4 px-5">
-        <SectionHead title="요구 조건 확인" hint="대화로 채운 값이에요. 다르면 바로 고쳐 주세요." />
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+    <div className="w-fit max-w-full rounded-lg bg-white px-5 py-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <h3 className="text-[16px] font-semibold text-black">요구조건</h3>
+          <Pill tone="primary" className="text-[13px]">{filled}/{keys.length + 1} 확인</Pill>
+          <span className="text-[13px] text-muted-foreground">대화로 채운 값이에요. 다르면 바로 고쳐 주세요.</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
           {field('item', '품목')}
           {field('quantity', '수량', '개')}
           {field('budgetMax', '예산', '원 이하')}
           {field('deadline', '납기', '까지', 'date')}
-          <div className="min-w-0">
-            <span className="text-[12px] text-muted-foreground">설치</span>
-            <div className="mt-1 flex gap-1">
+          <div className={cn('flex items-center gap-4 rounded-lg px-4 py-2', needInstall === undefined ? 'bg-muted' : 'bg-tint')}>
+            <span className="shrink-0 text-[13px] font-medium text-muted-foreground">설치</span>
+            <div className="flex gap-1">
               {[true, false].map((on) => (
-                <Button key={String(on)} type="button" size="sm" variant={needInstall === on ? 'secondary' : 'outline'} className={cn('h-8 flex-1 text-[13px]', needInstall === on && 'ring-1 ring-muted-foreground/40')} onClick={() => setInstall(on)}>
+                <button
+                  key={String(on)}
+                  type="button"
+                  aria-pressed={needInstall === on}
+                  className={cn(
+                    'rounded-md px-2 py-0.5 text-[14px] font-medium transition-colors',
+                    needInstall === on ? 'bg-white text-black shadow-[0_0_0_1px_var(--line)]' : 'text-muted-foreground hover:text-ink'
+                  )}
+                  onClick={() => setInstall(on)}
+                >
                   {on ? '필요' : '필요 없음'}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
-          {field('minWarrantyMonths', 'A/S (0이면 필요 없음)', '개월 이상')}
+          {field('minWarrantyMonths', 'A/S', '개월 이상')}
           {field('region', '지역')}
         </div>
-        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button size="sm" disabled={!canStart} onClick={() => void start()}>
-            <Search className="size-3.5" /> {starting ? '시작하는 중…' : '이 조건으로 찾기 시작'}
+        <p className="-mt-2 text-[12px] text-muted-foreground">A/S에 0을 넣으면 필요 없음으로 봐요.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button className="h-auto px-4 py-2.5 text-[14px]" disabled={!canStart} onClick={() => void start()}>
+            <Search className="size-4" /> {starting ? '시작하는 중…' : asking ? '지금 바로 시작' : '이 조건으로 찾기 시작'}
           </Button>
-          <span className={cn('text-[12px]', invalid.length ? 'text-destructive' : 'text-muted-foreground')}>{help}</span>
+          <span className={cn('text-[13px]', invalid.length ? 'text-destructive' : 'text-muted-foreground')}>{help}</span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -143,8 +170,8 @@ export function HistoryCard({ summary }: { summary: RunSummary }) {
   const rows = [...summary.rows].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   const picked = summary.recommended ? rows.find((x) => x.id === summary.recommended)?.name ?? summary.recommended : null;
   return (
-    <Collapsible className="group rounded-xl border bg-card/60 text-[13px]">
-      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-4 py-3 text-left">
+    <Collapsible className="group rounded-lg bg-card text-[14px]">
+      <CollapsibleTrigger className="flex w-full items-center gap-2.5 px-5 py-4 text-left">
         <History className="size-4 shrink-0 text-muted-foreground" />
         <span className="shrink-0 font-medium">이전 검색</span>
         <span className="shrink-0 tabular-nums text-muted-foreground">{clock(summary.at)}</span>
@@ -153,7 +180,7 @@ export function HistoryCard({ summary }: { summary: RunSummary }) {
         </span>
         <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="border-t px-4 py-3">
+      <CollapsibleContent className="border-t px-5 py-4">
         {rows.length === 0 && <div className="text-muted-foreground">모은 견적이 없었어요.</div>}
         <div className="divide-y">
           {rows.map((x) => (
@@ -198,86 +225,94 @@ export function MailCard({ draft }: { draft: MailDraft }) {
     }
   };
   const locked = state !== 'draft';
+  // 디자인 29:174: 흰 카드, 칸마다 아래 줄, 근거는 회색 상자, 버튼은 외곽선 + 연파랑
+  const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 disabled:opacity-100';
   return (
-    <Card className={cn('gap-4 py-4', !locked && 'border-primary/40')}>
-      <CardContent className="space-y-4 px-5">
-        <SectionHead
-          title={
-            <span className="flex items-center gap-2">
-              <Mail className="size-4 text-muted-foreground" />
-              {KIND_LABEL[draft.kind]} 메일
-              {vendor && <span className="font-normal text-muted-foreground">· {vendor.name}</span>}
-            </span>
-          }
-          hint={state === 'sent' ? undefined : '내용을 확인하고 직접 보내 주세요. 누르기 전에는 발송되지 않아요.'}
-          right={state === 'sent' ? <Pill tone="ok"><Check className="size-3" /> 보냄</Pill> : <Pill tone="warn">보내기 전</Pill>}
-        />
-
-        <div className="space-y-2">
-          <Field label="받는 사람">
-            <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} />
-          </Field>
-          <Field label="제목">
-            <Input disabled={locked} value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} />
-          </Field>
-          <Textarea disabled={locked} value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} className="h-48 text-[13px] leading-relaxed" />
+    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-white p-5">
+      <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
+        <div className="flex min-w-0 flex-col gap-3 leading-normal">
+          <p className="flex items-center gap-2 text-[19px] font-semibold text-ink">
+            <Mail className="size-5 shrink-0 text-muted-foreground" />
+            {vendor ? `${vendor.name}에 보낼 ${KIND_LABEL[draft.kind]} 메일` : `${KIND_LABEL[draft.kind]} 메일`}
+          </p>
+          {state !== 'sent' && <p className="text-[14px] font-medium text-muted-foreground">내용을 확인하고 직접 보내 주세요. 누르기 전에는 발송되지 않아요.</p>}
         </div>
+        <div className="flex shrink-0 items-center rounded-lg bg-muted p-1">
+          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'text-muted-foreground' : 'bg-white text-black')}>보내기 전</span>
+          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'bg-white text-ok' : 'text-muted-foreground')}>
+            {state === 'sent' && <Check className="size-4" />} 보냄
+          </span>
+        </div>
+      </div>
 
-        {draft.evidence && draft.evidence.length > 0 && (
-          <div className="rounded-lg border bg-muted/40 px-3 py-2.5 text-[12px] leading-relaxed">
-            <div className="mb-1 font-medium text-foreground">근거로 쓴 내용</div>
-            <ul className="space-y-0.5 text-muted-foreground">
-              {draft.evidence.map((e, i) => (
-                <li key={i}>{e.vendorId} 업체 {FIELD_LABELS[e.field]}: “{e.snippet}”</li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <div className="flex flex-col gap-3">
+        <Field label="받는 사람">
+          <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
+        </Field>
+        <Field label="제목">
+          <Input disabled={locked} value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} className={cn(bare, 'text-[16px] font-semibold text-ink md:text-[16px]')} />
+        </Field>
+        <div className="flex flex-col gap-2 border-b border-line px-2 pb-5">
+          <Textarea disabled={locked} value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} className={cn(bare, 'min-h-48 text-[14px] font-medium leading-[1.6] text-ink md:text-[14px]')} />
+          {draft.evidence && draft.evidence.length > 0 && (
+            <div className="flex items-start justify-between gap-4 rounded-lg bg-muted px-4 py-2.5 text-[14px] leading-[1.6] text-ink">
+              <div className="flex min-w-0 flex-col gap-2">
+                <p className="font-semibold">근거로 쓴 내용</p>
+                <ul className="font-medium">
+                  {draft.evidence.map((e, i) => (
+                    <li key={i}>{e.vendorId} 업체 {FIELD_LABELS[e.field]}: “{e.snippet}”</li>
+                  ))}
+                </ul>
+              </div>
+              <span className="shrink-0 text-[13px] font-medium text-primary">견적에서 가져옴</span>
+            </div>
+          )}
+        </div>
+      </div>
 
-        {error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="rounded-lg bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">{error}</div>}
 
-        {state !== 'sent' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {config?.smtpConfigured && (
-              <Button size="sm" disabled={state === 'sending'} onClick={async () => { setState('sending'); setError(''); done(await api.sendMail(edit)); }}>
-                <Send className="size-3.5" /> {state === 'sending' ? '보내는 중…' : '보내기'}
-              </Button>
-            )}
-            <Button size="sm" variant={config?.smtpConfigured ? 'outline' : 'default'} disabled={state === 'sending'} onClick={async () => done(await api.openMailApp(edit))}>
-              메일 앱으로 열기
+      {state !== 'sent' ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={state === 'sending'} onClick={async () => done(await api.openMailApp(edit))}>
+            메일 앱으로 열기
+          </Button>
+          {config?.smtpConfigured && (
+            <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" disabled={state === 'sending'} onClick={async () => { setState('sending'); setError(''); done(await api.sendMail(edit)); }}>
+              <Send className="size-4" /> {state === 'sending' ? '보내는 중…' : '승인하고 보내기'}
             </Button>
-            {config?.smtpConfigured ? (
-              <span className="text-[12px] text-muted-foreground">{config.smtpUser}에서 보내요</span>
-            ) : (
-              <button onClick={() => set({ settingsOpen: true })} className="text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-                Gmail을 연결하면 앱에서 바로 보낼 수 있어요
-              </button>
-            )}
-          </div>
-        ) : draft.kind !== 'order' && !replied ? (
-          <div className="space-y-2 border-t pt-4">
-            <div className="text-[13px] font-medium">업체 회신</div>
-            <p className="text-[12px] text-muted-foreground">
-              {imap ? '회신이 오면 자동으로 가져와 견적서에 반영해요. 다른 경로로 받았다면 여기에 붙여 넣어도 돼요.' : '업체에서 회신을 받으면 여기에 붙여 넣어 주세요.'}
-            </p>
-            <Textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="받은 회신 내용" className="h-24 text-[13px]" />
-            <Button size="sm" disabled={!reply.trim()} onClick={async () => { setReplied(true); await api.pasteReply(draft.vendorId, draft.kind, reply); }}>
-              견적에 반영
-            </Button>
-          </div>
-        ) : replied ? (
-          <p className="text-[12px] text-muted-foreground">회신을 견적에 반영했어요.</p>
-        ) : null}
-      </CardContent>
-    </Card>
+          )}
+          {config?.smtpConfigured ? (
+            <span className="text-[13px] text-muted-foreground">{config.smtpUser}에서 보내요</span>
+          ) : (
+            <button onClick={() => set({ settingsOpen: true })} className="text-[13px] text-muted-foreground underline-offset-2 hover:text-ink hover:underline">
+              Gmail을 연결하면 앱에서 바로 보낼 수 있어요
+            </button>
+          )}
+        </div>
+      ) : draft.kind !== 'order' && !replied ? (
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="text-[14px] font-semibold text-ink">업체 회신</div>
+          <p className="text-[13px] text-muted-foreground">
+            {imap ? '회신이 오면 자동으로 가져와 견적서에 반영해요. 다른 경로로 받았다면 여기에 붙여 넣어도 돼요.' : '업체에서 회신을 받으면 여기에 붙여 넣어 주세요.'}
+          </p>
+          <Textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="받은 회신 내용" className="h-24 text-[14px] md:text-[14px]" />
+          <Button variant="secondary" className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={!reply.trim()} onClick={async () => { setReplied(true); await api.pasteReply(draft.vendorId, draft.kind, reply); }}>
+            견적에 반영
+          </Button>
+        </div>
+      ) : replied ? (
+        <p className="text-[13px] text-muted-foreground">회신을 견적에 반영했어요.</p>
+      ) : null}
+    </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid grid-cols-[72px_1fr] items-center gap-2">
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      {children}
+    <label className="flex items-center gap-5 border-b border-line px-2 pb-3">
+      <span className="shrink-0 text-[14px] font-medium text-ink">{label}</span>
+      <span className="min-w-0 flex-1">{children}</span>
     </label>
   );
 }
@@ -300,23 +335,29 @@ export function UploadCard({ vendorId }: { vendorId: VendorId }) {
       onDragLeave={() => setDrag(false)}
       onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) void upload(f); }}
       className={cn(
-        'flex cursor-pointer items-center gap-4 rounded-xl border border-dashed px-5 py-4 transition-colors',
-        drag ? 'border-primary bg-primary/5' : 'bg-card hover:border-muted-foreground/50'
+        'flex w-full max-w-[654px] cursor-pointer items-center justify-between gap-4 rounded-lg border border-dashed border-primary px-6 py-4 transition-colors',
+        drag ? 'bg-secondary' : 'bg-row hover:bg-secondary'
       )}
     >
       <input type="file" accept=".pdf,image/*,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
-      <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg', doneUp ? 'bg-ok/12 text-ok' : 'bg-secondary text-muted-foreground')}>
-        {doneUp ? <Check className="size-5" /> : <Paperclip className="size-5" />}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 text-[14px] font-medium">
-          <span className={cn('size-2 rounded-full', VENDOR_DOT[vendorId])} />
+      <div className="flex min-w-0 flex-col gap-2 font-medium leading-normal">
+        <div className="flex items-center gap-2 text-[17px] text-black">
+          <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[vendorId])} />
           {vendor?.name ?? `${vendorId} 업체`} 견적서 올리기
         </div>
-        <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
+        <div className="truncate text-[14px] text-muted-foreground">
           {status === 'parsing' ? `“${name}” 읽는 중…` : doneUp ? `“${name}”을 같은 양식으로 정리했어요` : 'PDF, 이미지, 텍스트 파일을 끌어다 놓거나 눌러서 고르세요'}
         </div>
       </div>
+      <span
+        className={cn(
+          'flex max-w-[45%] shrink-0 items-center gap-1.5 rounded-lg border bg-white px-4 py-2.5 text-[14px] font-medium',
+          doneUp ? 'border-ok text-ok' : 'border-muted-foreground text-black'
+        )}
+      >
+        {doneUp ? <Check className="size-4 shrink-0" /> : <Paperclip className="size-4 shrink-0" />}
+        <span className="truncate">{name || '파일 고르기'}</span>
+      </span>
     </label>
   );
 }

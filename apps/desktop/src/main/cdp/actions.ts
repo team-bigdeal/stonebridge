@@ -11,7 +11,7 @@ const SUBMIT_CHECK = `function () {
   const text = ((this.innerText || this.value || this.getAttribute('aria-label') || '') + '').trim();
   const role = this.getAttribute && this.getAttribute('role');
   const buttonLike = tag === 'BUTTON' || role === 'button' || (tag === 'INPUT' && (type === 'button' || type === 'submit'));
-  const calc = /계산|견적\s*보기|견적\s*확인|가격\s*(확인|조회)|금액\s*(확인|조회)|조회|적용/.test(text) && !/결제|구매|주문|장바구니|제출|전송|보내기/.test(text);
+  const calc = /계산|견적\\s*보기|견적\\s*확인|가격\\s*(확인|조회)|금액\\s*(확인|조회)|조회|적용|견적서\\s*(출력|다운|발행|인쇄|받기|보기|저장)|가견적|PDF|인쇄/i.test(text) && !/결제|구매|주문|장바구니|제출|전송|보내기/.test(text);
   const isSubmit = !calc && ((tag === 'BUTTON' && (type === '' || type === 'submit') && !!this.form) ||
     (tag === 'INPUT' && type === 'submit') ||
     (buttonLike && /제출|보내기|전송|문의하기|결제|구매|주문하기|장바구니/.test(text)));

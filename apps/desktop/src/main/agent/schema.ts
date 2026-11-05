@@ -59,9 +59,11 @@ export const reportFieldsSchema = {
 };
 
 const nullable = (schema: Record<string, unknown>) => ({ anyOf: [{ type: 'null' }, schema] });
-const nstr = nullable({ type: 'string' });
+/** 글자 항목은 null 대신 빈 문자열로 "모름"을 나타낸다.
+ *  구조화 출력은 null을 허용하는(union) 항목 수에 상한이 있어서, null은 숫자 항목(7개)에만 쓴다 */
+const nstr = { type: 'string', description: '문서에 없으면 빈 문자열 ""' };
 
-/** 메일/파일 추출용 구조화 출력 스키마 (없는 값은 null) */
+/** 메일/파일 추출용 구조화 출력 스키마 (없는 숫자 값은 null, 없는 글자 값은 "") */
 export const extractionSchema = {
   type: 'object',
   additionalProperties: false,

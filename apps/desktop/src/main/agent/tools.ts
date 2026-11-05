@@ -4,6 +4,7 @@ import type { QuoteMeta, ReportedFields, Slot } from '@shared/types';
 import type { BrowserDriver } from '../browser/driver';
 import * as pageTools from '../browser/page';
 import type { Engine } from '../browser/page';
+import type { PdfFile } from '../browser/pdf';
 import { metaProperties, reportFieldsSchema } from './schema';
 import { toMeta, toReported } from '../quote/normalize';
 
@@ -39,6 +40,12 @@ export const TOOL_DEFS = {
     { keywords: { type: 'array', items: { type: 'string' }, description: '예: ["배송비", "택배", "무료배송"]' } },
     ['keywords']
   ),
+  download_quote_pdf: T(
+    'download_quote_pdf',
+    '사이트가 내주는 가견적서·견적서 PDF를 받는다. "견적서 출력/다운로드/가견적서" 버튼이나 링크의 ref, 또는 PDF 주소(url). 받은 PDF는 자동으로 읽혀 견적에 반영된다. 옵션을 요구 조건에 맞춘 뒤 쓴다.',
+    { ref: { type: 'string', description: 'snapshot의 버튼·링크 ref' }, url: { type: 'string', description: 'PDF 주소 (ref 대신)' } }
+  ),
+  save_page_pdf: T('save_page_pdf', '지금 화면이 인쇄용 견적서 페이지일 때 그 화면을 PDF로 저장하고 읽어 견적에 반영한다.'),
   expand_all: T('expand_all', '접힌 섹션(<details>, 아코디언)을 펼친다. 숨은 비용(설치비·배송비·옵션) 확인용.'),
   claim_vendor: T('claim_vendor', '이 브라우저가 견적을 받을 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체면 거부된다.', vendorItem.properties, ['name', 'url', 'reason']),
   select_vendors: T('select_vendors', '견적을 받을 업체를 확정한다.', { vendors: { type: 'array', minItems: 1, maxItems: 3, items: vendorItem } }, ['vendors']),
@@ -88,6 +95,8 @@ export interface ToolContext {
   onAfter?: () => void;
   /** 이 브라우저가 쓸 검색 엔진 */
   engine?: () => Engine;
+  /** 받은 가견적서 PDF를 원본으로 보관하고 읽어서 반영. 반영된 항목 이름을 돌려준다 */
+  onPdf?: (file: PdfFile) => Promise<string[]>;
   /** done=true 직전에 아직 비어 있는 주요 항목 (한 번은 되돌려 보내 더 찾게 한다) */
   missingOnDone?: () => string[];
   doneNudged?: boolean;
@@ -102,7 +111,7 @@ export interface ToolResult {
 const isUrl = (u: unknown) => /^https?:\/\//.test(String(u ?? ''));
 
 /** 페이지가 바뀌는 도구 뒤에는 차단 화면(418·CAPTCHA·로그인 리다이렉트)인지 확인하고, 그렇다면 바로 멈춘다 */
-const PAGE_CHANGING = new Set(['search_web', 'navigate', 'click', 'select_option']);
+const PAGE_CHANGING = new Set(['search_web', 'navigate', 'click', 'select_option', 'download_quote_pdf']);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runTool(ctx: ToolContext, name: string, input: any): Promise<ToolResult> {
@@ -138,6 +147,15 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
         return { text: await d.selectOption(String(input.ref), String(input.option)) };
       case 'expand_all':
         return { text: await pageTools.expandAll(d) };
+      case 'download_quote_pdf':
+      case 'save_page_pdf': {
+        if (!ctx.onPdf) return { text: '이 단계에서는 PDF를 받을 수 없습니다.', isError: true };
+        const file = name === 'save_page_pdf' ? await d.printPdf() : await d.downloadPdf({ ref: input.ref ? String(input.ref) : undefined, url: input.url ? String(input.url) : undefined });
+        const added = await ctx.onPdf(file);
+        return {
+          text: `가견적서 PDF를 받아 읽었습니다 (${file.name}, ${Math.max(1, Math.round(file.data.length / 1024))}KB). ${added.length ? `반영된 항목: ${added.join(', ')}.` : '숫자 항목은 찾지 못했습니다.'} 빠진 항목(배송비·납기 등)은 페이지에서 계속 찾고, 다 됐으면 report_quote(done=true)로 끝내세요.`
+        };
+      }
       case 'find_in_page': {
         const kws = Array.isArray(input.keywords) ? input.keywords.map(String) : [String(input.keywords ?? '')];
         return { text: (await pageTools.findInPage(d, kws)) || `"${kws.join(', ')}"가 들어간 문구가 이 페이지에 없습니다. 안내 페이지(배송·이용 안내, FAQ)로 이동해 보세요.` };

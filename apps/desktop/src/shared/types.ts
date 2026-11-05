@@ -124,6 +124,8 @@ export interface QuoteMeta {
   terms?: QuoteTerms;
   extras?: { name: string; amount: number; required: boolean; note?: string; source?: Source }[];
   notes?: string[];
+  /** 가격 재확인에서 기준 수량(1개·묶음·시트)을 확인하지 못함 → 추천에서 뺀다. 내용은 사유 */
+  priceDoubt?: string;
 }
 
 export interface Quote {

@@ -5,7 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
-import { hasApiKey, imapConfigured } from './config';
+import { hasApiKey, imapConfigured, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
@@ -14,6 +14,7 @@ import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
 import { ENGINE_ORDER, type Engine } from './browser/page';
+import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
@@ -74,8 +75,8 @@ const hostKey = (url: string) => {
   }
 };
 
-const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
-const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote', 'switch_channel', 'request_user'];
+const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
+const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'report_quote', 'switch_channel', 'request_user'];
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
@@ -95,12 +96,12 @@ export async function onChat(text: string) {
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
       const { question, ready } = await interview.next(text);
       emit('requirements', { payload: interview.req });
-      emit('requirements_ready', { payload: ready });
+      emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
-        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
+        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 아래 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
         return;
       }
-      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이대로 검색 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
+      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
       return;
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
@@ -114,8 +115,8 @@ export async function onChat(text: string) {
       }
       return;
     }
-    // 비교·추천 이후 채팅으로 조건을 바꾸면 조건 변경 흐름으로 (바뀐 게 없으면 안내만)
-    if (interview && requirements && ['compare', 'questions', 'draft'].includes(getStage())) {
+    // 검색 중이든 비교 이후든 채팅으로 조건을 바꾸면 조건 변경 흐름으로 (바뀐 게 없으면 안내만)
+    if (interview && requirements) {
       interview.apply(requirements);
       interview.reopen();
       // 메모(notes)는 일반 질문에도 채워질 수 있어 조건 변경 판단에서 뺀다
@@ -123,8 +124,11 @@ export async function onChat(text: string) {
       const before = snapshot();
       const { question } = await interview.next(text);
       if (snapshot() !== before) {
+        const wasSearching = ['search', 'collect'].includes(getStage());
         await revise(true);
-        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
+        if (question) emit('requirements_ready', { payload: { ready: true, asking: true } });
+        if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 위에 그대로 남겨 두었어요.');
+        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이 조건으로 찾기 시작"을 눌러 주세요.');
         return;
       }
     }
@@ -159,7 +163,9 @@ export async function startSearch(patch: Partial<Requirements>) {
   }
   requirements = interview.result();
   emit('requirements', { payload: requirements });
-  emit('requirements_ready', { payload: false });
+  emit('requirements_ready', { payload: { ready: false, asking: false } });
+  // 조건 변경 직후라면 이전 검색의 브라우저 정리를 기다리되, 정리가 실패하거나 오래 걸려도 시작은 막지 않는다
+  await Promise.race([resetting, sleep(3000)]);
   void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
 }
 
@@ -179,7 +185,8 @@ async function startHunt(req: Requirements) {
   triedNames.clear();
   const gen = generation;
   await Promise.all(VENDOR_IDS.map((id) => hunt(id, gen)));
-  maybeOpenGate();
+  // 조건 변경·새 견적으로 멈춘 검색이면 비교를 다시 열지 않는다
+  if (gen === generation) maybeOpenGate();
 }
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
@@ -197,7 +204,7 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   timeline({ kind: 'vendors' });
   const gen = generation;
   await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
-  maybeOpenGate();
+  if (gen === generation) maybeOpenGate();
 }
 
 /** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
@@ -306,6 +313,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return applyFields(slot, fields, meta, 'web', url);
         },
         onAfter: () => void refreshState(slot),
+        onPdf: (file) => onQuotePdf(slot, file),
         engine: () => engines.get(slot) ?? 'naver',
         missingOnDone: () => {
           if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
@@ -472,6 +480,34 @@ function showCompare() {
   compareShown = true;
   say('모은 견적을 하나의 양식으로 정리했어요. 숨은 비용이 더해지며 순위가 바뀌는 걸 보세요. 업체별 견적서는 카드의 "견적서 보기"로 열 수 있어요.');
   timeline({ kind: 'compare' });
+}
+
+// ─── 사이트 가견적서 PDF ──────────────────────────────────────
+
+/** 에이전트가 사이트에서 받은 가견적서 PDF: 원본으로 보관하고, Claude가 PDF를 직접 읽어 견적에 반영한다 */
+async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
+  if (!requirements) return [];
+  if (!getVendor(slot)) claim(slot, { name: new URL(file.url).hostname.replace(/^www\./, ''), url: file.url, reason: '가견적서를 받은 사이트' });
+  emit('original', {
+    vendorId: slot,
+    payload: {
+      id: randomUUID(),
+      vendorId: slot,
+      channel: 'file',
+      title: `사이트 가견적서 · ${file.name}`,
+      url: file.url,
+      fileName: file.name,
+      mime: 'application/pdf',
+      fileData: `data:application/pdf;base64,${file.data.toString('base64')}`,
+      capturedAt: new Date().toISOString()
+    } satisfies QuoteOriginal
+  });
+  const { fields, meta } = await parseQuoteFile({ vendorId: slot, requirements, name: file.name, mime: 'application/pdf', data: file.data });
+  const added = applyFields(slot, fields, meta, 'file', file.name);
+  say(
+    `${vendorName(slot)} 사이트에서 가견적서 PDF(${file.name})를 받아 읽었어요${added.length ? `: ${added.join(', ')}` : '. 숫자 항목은 찾지 못했어요'}. 업체 견적서의 "받은 원본"에서 PDF를 볼 수 있어요.`
+  );
+  return added;
 }
 
 // ─── 파일 채널 ────────────────────────────────────────────────
@@ -682,11 +718,19 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
     if (!q || !requirements) return;
     const changed = q.listedPrice.value !== before.listed || priceQty(q) !== before.pq;
     const amt = productAmount(q, requirements);
-    say(
-      changed
-        ? `${v.name} 가격을 바로잡았어요: ${amt?.toLocaleString('ko-KR')}원 (${priceQty(q)}개 기준 ${q.listedPrice.value?.toLocaleString('ko-KR')}원).${note ? ` ${note}` : ''}`
-        : `${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`
-    );
+    // 바뀌지도 않았고 "맞음"이라고 확인하지도 못했으면 믿을 수 없는 금액 → 추천에서 빼고 사용자 확인을 부탁한다
+    const confirmed = /맞음|맞다|맞습니다|확인됨/.test(note) && !/확정\s*못|확인\s*못|불확실|모름|알 수 없/.test(note);
+    if (changed) {
+      quoteStore.mergeMeta(slot, { priceDoubt: undefined });
+      say(`${v.name} 가격을 바로잡았어요: ${amt?.toLocaleString('ko-KR')}원 (${priceQty(q)}개 기준 ${q.listedPrice.value?.toLocaleString('ko-KR')}원).${note ? ` ${note}` : ''}`);
+    } else if (confirmed) {
+      say(`${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`);
+    } else {
+      quoteStore.mergeMeta(slot, { priceDoubt: note || '기준 수량을 확인하지 못함' });
+      say(`${v.name}는 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
+    }
+    announced = '';
+    onQuotesSettled();
   }, 2500);
   maybeOpenGate();
 }
@@ -752,8 +796,12 @@ function openDraft(draft: MailDraft) {
 
 // ─── 새 견적 ──────────────────────────────────────────────────
 
-/** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함) */
-async function clearRun() {
+/** 브라우저 정리가 끝나기 전에 새 검색을 시작하지 않도록 기다릴 대상 */
+let resetting: Promise<void> = Promise.resolve();
+
+/** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함).
+ *  상태는 바로 비우고, 시간이 걸리는 브라우저 정리는 돌려주는 Promise로 기다린다 */
+function clearRun() {
   generation++;
   docsShown = false;
   compareShown = false;
@@ -772,7 +820,9 @@ async function clearRun() {
   resetStatuses();
   quoteStore.reset(null);
   setStage('interview', true);
-  await resetAll();
+  // 정리에 실패해도 다음 검색은 진행할 수 있어야 하므로 실패는 삼킨다
+  resetting = resetAll().catch((e) => console.log(`[reset] 브라우저 정리 실패: ${errMsg(e)}`));
+  return resetting;
 }
 
 export async function reset() {
@@ -788,7 +838,7 @@ export async function reset() {
 
 /** fromChat: 채팅으로 이미 새 조건을 받아 둔 경우 (이전 조건으로 덮어쓰지 않고 안내는 호출한 쪽이 함) */
 export async function revise(fromChat = false) {
-  if (!interview || !requirements || !['compare', 'questions', 'draft'].includes(getStage())) return;
+  if (!interview || !requirements || getStage() === 'interview') return;
   const req = requirements;
   const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
   const rec = recommend(quoteStore.quotes, req);
@@ -809,16 +859,18 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
-  await clearRun();
+  // renderer가 이 시점 화면(단계·업체·견적)을 이전 검색으로 얼려 두므로, 상태를 비우기 전에 먼저 알린다
+  emit('revised', { payload: summary });
+  // 탐색 중인 브라우저 정리는 시간이 걸리므로 기다리지 않는다 (시작 버튼이 startSearch에서 잠깐 기다림)
+  void clearRun();
   requirements = null;
   if (!fromChat) {
     // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
     interview.apply(req);
     interview.reopen();
   }
-  emit('revised', { payload: summary });
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
-  emit('requirements_ready', { payload: true });
-  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
+  emit('requirements_ready', { payload: { ready: true, asking: false } });
+  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이 조건으로 찾기 시작"을 눌러 주세요.');
 }

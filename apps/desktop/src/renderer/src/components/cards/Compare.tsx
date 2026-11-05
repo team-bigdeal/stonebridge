@@ -1,21 +1,63 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, ExternalLink, FileText, ShoppingCart, SlidersHorizontal, X } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, SlidersHorizontal, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
-import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, type Check } from '@shared/quote';
+import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
 import { cn } from '@/lib/utils';
 import CountUp from '../CountUp';
+import docIcon from '@/assets/figma/doc.svg';
+import cartIcon from '@/assets/figma/cart.svg';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
+import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources';
+import { CompareChart } from './CompareChart';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
+
+type View = 'table' | 'chart';
+const VIEW_KEY = 'doldari.compareView';
+// 마지막으로 고른 보기 방식은 이 컴퓨터에만 기억한다
+const readView = (): View => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'chart' ? 'chart' : 'table';
+  } catch {
+    return 'table';
+  }
+};
+const saveView = (v: View) => {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* 저장 못 해도 화면은 그대로 */
+  }
+};
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const items: [View, string, typeof Table2][] = [['table', '표', Table2], ['chart', '그래프', BarChart3]];
+  return (
+    <div role="radiogroup" aria-label="보기 방식" className="flex rounded-lg bg-muted p-1">
+      {items.map(([id, label, Icon]) => (
+        <button
+          key={id}
+          role="radio"
+          aria-checked={view === id}
+          onClick={() => onChange(id)}
+          className={cn('flex items-center gap-1.5 rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', view === id ? 'bg-white text-black' : 'text-muted-foreground hover:text-ink')}
+        >
+          <Icon className="size-3.5" /> {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function CompareCard() {
   const { quotes, requirements, stage } = useRunStore();
   const [pop, setPop] = useState<SourceEntry | null>(null);
+  const [view, setView] = useState<View>(readView);
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
@@ -25,15 +67,18 @@ export function CompareCard() {
       <CardContent className="space-y-4 px-5">
         <SectionHead
           title="견적 비교"
-          hint="합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요."
-          right={<span className="text-[12px] text-muted-foreground">금액을 누르면 출처가 보여요</span>}
+          hint={view === 'table' ? '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.' : '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.'}
+          right={<ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />}
         />
+        {view === 'chart' ? (
+          <CompareChart order={order} />
+        ) : (
         <div className="overflow-x-auto" onClick={() => setPop(null)}>
-          <table className="w-full whitespace-nowrap text-[13px]">
+          <table className="w-full border-separate border-spacing-x-0 border-spacing-y-3 whitespace-nowrap text-[13px] font-medium text-black">
             <thead>
-              <tr className="border-b text-left text-[12px] text-muted-foreground">
+              <tr className="text-left text-[13px] text-muted-foreground">
                 {heads.map((h, i) => (
-                  <th key={i} className={cn('px-2.5 pb-2 font-normal', i >= 2 && i <= 8 && 'text-right', i === 9 && 'text-center')}>{h}</th>
+                  <th key={i} className={cn('px-2 font-medium', i >= 2 && i <= 8 && 'text-right', i === 9 && 'text-center')}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -44,6 +89,7 @@ export function CompareCard() {
             </tbody>
           </table>
         </div>
+        )}
         {pop && <SourcePop pop={pop} onClose={() => setPop(null)} />}
         {['questions', 'draft'].includes(stage) && <Recommend />}
       </CardContent>
@@ -54,13 +100,13 @@ export function CompareCard() {
 function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) {
   return (
     <div className="absolute left-1/2 top-16 z-10 w-[460px] -translate-x-1/2 rounded-lg border bg-popover p-4 shadow-xl">
-      <div className="mb-2 flex items-center gap-2 text-[13px] font-medium">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
         출처 <Pill>{CH[pop.channel]}</Pill>
         <button onClick={onClose} aria-label="닫기" className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground">
           <X className="size-4" />
         </button>
       </div>
-      <blockquote className="border-l-2 border-muted-foreground/40 pl-3 text-[13px] leading-relaxed text-muted-foreground">{pop.snippet}</blockquote>
+      <blockquote className="border-l-2 border-muted-foreground/40 pl-3 text-[12px] leading-relaxed text-muted-foreground">{pop.snippet}</blockquote>
       {/^https?:/.test(pop.ref) && (
         <button onClick={() => window.doldari.openExternal(pop.ref)} className="mt-3 flex max-w-full items-center gap-1 text-left text-[12px] text-primary hover:underline">
           <ExternalLink className="size-3 shrink-0" />
@@ -88,7 +134,7 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
       <td
         key={`${keys[0]}-${isFlash(keys) ? flash!.at : 0}`}
         onClick={(e) => { e.stopPropagation(); if (src) onSource(src); }}
-        className={cn('px-2.5 py-3 text-right tabular-nums', isFlash(keys) && 'flash', src && 'cursor-pointer decoration-muted-foreground/40 underline-offset-4 hover:underline', danger && 'text-destructive')}
+        className={cn('px-2 py-2 text-right tabular-nums', isFlash(keys) && 'flash', src && 'cursor-pointer decoration-muted-foreground/40 underline-offset-4 hover:underline', danger && 'text-destructive')}
       >
         {known ? content : f.status === 'asked' ? <Pill tone="warn">질문함</Pill> : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
       </td>
@@ -97,14 +143,14 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
   const n = (v: number | null, zero?: string) => (v === null ? '' : v === 0 && zero ? zero : v.toLocaleString('ko-KR'));
   const wm = q.warrantyMonths.value;
   const ex = extraSum(q);
-  const off = <td className="px-2.5 py-3 text-right text-muted-foreground/40">해당 없음</td>;
+  const off = <td className="px-2 py-2 text-right text-muted-foreground/40">해당 없음</td>;
   return (
-    <motion.tr layout transition={{ type: 'spring', stiffness: 260, damping: 28 }} className={cn('border-b last:border-b-0', top && 'bg-primary/[0.06]')}>
-      <td className={cn('w-8 py-3 pl-2.5 text-center text-[15px] font-semibold tabular-nums', top ? 'text-primary' : 'text-muted-foreground')}>{has ? rank : '–'}</td>
-      <td className="px-2.5 py-3">
+    <motion.tr layout transition={{ type: 'spring', stiffness: 260, damping: 28 }} className={cn('[&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg', top ? '[&>td]:bg-row' : '[&>td]:bg-row-alt')}>
+      <td className={cn('w-8 py-2 pl-4 text-center text-[14px] font-semibold tabular-nums', top ? 'text-primary' : 'text-muted-foreground')}>{has ? rank : '–'}</td>
+      <td className="px-2 py-2">
         <div className="flex items-center gap-2">
           <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[q.vendorId])} />
-          <span className="max-w-[200px] truncate font-medium" title={q.vendorName}>{q.vendorName}</span>
+          <span className="max-w-[200px] truncate text-[14px] font-semibold" title={q.vendorName}>{q.vendorName}</span>
         </div>
         <div className="mt-1 flex items-center gap-1.5 pl-4 text-[11px] text-muted-foreground">
           <span>{CH[q.channel]} 견적</span>
@@ -127,26 +173,26 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
           {q.warrantyExtraFee.value ? <span className="block text-[11px] text-muted-foreground">연장 +{q.warrantyExtraFee.value.toLocaleString('ko-KR')}</span> : null}
         </span>
       ))}
-      <td className="px-2.5 py-3 text-right tabular-nums">{ex ? `+${ex.toLocaleString('ko-KR')}` : <span className="text-muted-foreground/40">없음</span>}</td>
+      <td className="px-2 py-2 text-right tabular-nums">{ex ? `+${ex.toLocaleString('ko-KR')}` : <span className="text-muted-foreground/40">없음</span>}</td>
       {td(['leadTimeDays'], q.leadTimeDays.value !== null ? `${q.leadTimeDays.value}일` : '', cond?.deadline === 'violate')}
-      <td className={cn('px-2.5 py-3 text-right tabular-nums', cond?.budget === 'violate' && 'text-destructive')}>
+      <td className={cn('px-2 py-2 text-right tabular-nums', cond?.budget === 'violate' && 'text-destructive')}>
         {has ? (
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[15px] font-semibold"><CountUp value={confirmedSum(q, req)} /></span>
+            <span className="text-[14px] font-semibold"><CountUp value={confirmedSum(q, req)} /></span>
             {q.missing.length > 0 && <Pill tone="warn" title={q.missing.join(', ')}>일부 미확인</Pill>}
           </div>
         ) : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
       </td>
-      <td className="px-2.5 py-3 text-center">{cond ? <CheckPill c={cond.overall} title={cond.violations.join(', ')} /> : <span className="text-muted-foreground/40">–</span>}</td>
-      <td className="py-3 pl-2.5 pr-1 text-right">
+      <td className="px-2 py-2 text-center">{cond ? <CheckPill c={cond.overall} title={cond.violations.join(', ')} /> : <span className="text-muted-foreground/40">–</span>}</td>
+      <td className="py-2 pl-2 pr-4 text-right">
         {has && (
-          <div className="flex justify-end gap-0.5">
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
-              <FileText className="size-3.5" /> 견적서
+          <div className="flex justify-end gap-1">
+            <Button variant="outline" className={ROW_BTN} onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
+              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 견적서
             </Button>
             {canAct && (
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" onClick={() => api.draftOrder(q.vendorId)}>
-                <ShoppingCart className="size-3.5" /> 주문 문의
+              <Button variant="outline" className={ROW_BTN} onClick={() => api.draftOrder(q.vendorId)}>
+                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 주문 문의
               </Button>
             )}
           </div>
@@ -155,6 +201,9 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
     </motion.tr>
   );
 }
+
+/** 표 안 작은 외곽선 버튼 (디자인 30:1066) */
+const ROW_BTN = 'h-auto gap-1 border-muted-foreground px-2 py-1.5 text-[12px] font-medium';
 
 const Pending = () => <span className="text-[12px] text-muted-foreground/50">확인 중</span>;
 
@@ -172,35 +221,56 @@ export function Recommend() {
   const questions = confirmQuestions(quotes, req);
   const pick = rec.vendorId ? quotes[rec.vendorId] : null;
   return (
-    <div className="grid gap-3 pt-1 lg:grid-cols-[1fr_minmax(0,420px)]">
-      <div className="rounded-lg border border-l-[3px] border-l-primary bg-background/40 px-4 py-3.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-muted-foreground">추천</span>
-          {pick && <span className={cn('size-2 rounded-full', VENDOR_DOT[pick.vendorId])} />}
-          <span className="text-[15px] font-semibold">{pick ? pick.vendorName : '조건을 모두 만족하는 업체가 없어요'}</span>
-          {rec.tentative && pick && <Pill tone="warn">확인 후 확정</Pill>}
-          {pick && (
-            <Button size="sm" className="ml-auto" onClick={() => api.draftOrder(pick.vendorId)}>
-              주문 문의 작성 <ChevronRight className="size-3.5" />
-            </Button>
-          )}
+    <div className="grid gap-4 pt-1 lg:grid-cols-[minmax(0,548px)_minmax(0,1fr)]">
+      {/* 디자인 30:1184: 추천 칩 + 업체 이름 + 합계·납기 + 이유 번호 목록 */}
+      <div className="flex flex-col gap-6 rounded-lg bg-row-alt p-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Pill tone="primary" className="text-[13px]">추천</Pill>
+            {rec.tentative && pick && <Pill tone="warn" className="text-[13px]">확인 후 확정</Pill>}
+          </div>
+          <div className="flex flex-col gap-3 leading-normal">
+            <p className="flex items-center gap-2 text-[21px] font-semibold text-black">
+              {pick && <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[pick.vendorId])} />}
+              {pick ? pick.vendorName : '조건을 모두 만족하는 업체가 없어요'}
+            </p>
+            {pick && (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 font-medium">
+                <span className="flex items-center gap-2">
+                  <span className="text-[17px] text-muted-foreground">합계</span>
+                  <span className="text-[21px] tabular-nums text-black">{won(confirmedSum(pick, req))}</span>
+                </span>
+                {pick.leadTimeDays.value !== null && (
+                  <span className="flex items-center gap-2">
+                    <span className="text-[17px] text-muted-foreground">납기</span>
+                    <span className="text-[21px] tabular-nums text-black">{pick.leadTimeDays.value}일</span>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[13px] leading-relaxed text-muted-foreground marker:text-muted-foreground/50">
+        <ol className="list-decimal space-y-3 pl-6 text-[16px] font-medium leading-normal text-ink">
           {rec.reasons.map((r) => <li key={r}>{r}</li>)}
-        </ul>
+        </ol>
+        {pick && (
+          <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(pick.vendorId)}>
+            주문 문의 작성 <ChevronRight className="size-4" />
+          </Button>
+        )}
       </div>
       {questions.length > 0 && (
-        <div className="rounded-lg border px-4 py-3.5">
-          <div className="text-[13px] font-medium">아직 모르는 항목</div>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">업체에 물어보면 합계를 확정할 수 있어요.</p>
-          <div className="mt-2 divide-y">
+        <div className="rounded-lg bg-row-alt p-6">
+          <div className="text-[16px] font-semibold text-black">아직 모르는 항목</div>
+          <p className="mt-1 text-[13px] text-muted-foreground">업체에 물어보면 합계를 확정할 수 있어요.</p>
+          <div className="mt-3 divide-y divide-line">
             {questions.map((q) => {
               const waiting = vendorStatus[q.vendorId] === 'waiting_reply';
               return (
-                <div key={q.vendorId} className="flex items-center gap-2 py-2 text-[13px]">
+                <div key={q.vendorId} className="flex items-center gap-3 py-3 text-[14px] font-medium">
                   <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[q.vendorId])} />
                   <span className="min-w-0 flex-1">{q.lines.join(' ')}</span>
-                  <Button size="sm" variant="outline" className="h-7 shrink-0 text-[12px]" disabled={waiting} onClick={() => api.draftQuestion(q.vendorId)}>
+                  <Button variant="outline" className="h-auto shrink-0 px-4 py-2 text-[13px]" disabled={waiting} onClick={() => api.draftQuestion(q.vendorId)}>
                     {waiting ? '회신 기다리는 중' : '질문 메일 쓰기'}
                   </Button>
                 </div>
@@ -222,43 +292,42 @@ export function DocsCard() {
   return (
     <div className="space-y-3">
       <SectionHead title="업체별 견적서" hint="업체마다 다른 견적을 같은 양식으로 정리했어요. 누르면 원본과 함께 볼 수 있어요." />
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:gap-10">
         {list.map((id, i) => {
           const doc = buildDoc(quotes[id]!, req, vendors.find((v) => v.id === id)?.url);
           return (
-            <button
-              key={id}
-              onClick={() => set({ viewer: { kind: 'vendor', id } })}
-              className="group flex flex-col rounded-xl border bg-card p-4 text-left transition-colors hover:border-muted-foreground/40"
-            >
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-                <span className={cn('tabular-nums', i === 0 && 'font-semibold text-primary')}>{i + 1}위</span>
-                <span className="text-muted-foreground/40">·</span>
-                {CH[quotes[id]!.channel]} 견적
+            <div key={id} className="group flex flex-col rounded-lg rounded-tl-none bg-card p-6 transition-shadow hover:shadow-[0_0_0_1px_var(--line)]">
+            <button type="button" onClick={() => set({ viewer: { kind: 'vendor', id } })} className="flex flex-1 flex-col gap-6 text-left">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill tone="primary" className="text-[13px]">추천 {i + 1}위</Pill>
+                  <span className="text-[13px] font-medium text-muted-foreground">{CH[quotes[id]!.channel]} 견적</span>
+                  {!doc.complete && <Pill tone="warn" className="text-[13px]">일부 미확인</Pill>}
+                </div>
+                <div className="flex flex-col gap-3 text-[21px] font-semibold leading-normal text-black">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[id])} />
+                    <span className="truncate">{doc.supplier.name}</span>
+                  </span>
+                  <span className="tabular-nums">{doc.total.toLocaleString('ko-KR')}원</span>
+                </div>
+                <div className="-mt-2 text-[13px] font-medium text-muted-foreground">공급가 {doc.supply.toLocaleString('ko-KR')} + 부가세 {doc.vat.toLocaleString('ko-KR')}</div>
               </div>
-              <div className="mt-1.5 flex items-center gap-2">
-                <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[id])} />
-                <span className="truncate text-[15px] font-semibold">{doc.supplier.name}</span>
-              </div>
-              <div className="mt-3 flex items-baseline gap-1 tabular-nums">
-                <span className="text-2xl font-semibold tracking-tight">{doc.total.toLocaleString('ko-KR')}</span>
-                <span className="text-[13px] text-muted-foreground">원</span>
-                {!doc.complete && <Pill tone="warn" className="ml-1 self-center">일부 미확인</Pill>}
-              </div>
-              <div className="text-[12px] text-muted-foreground">공급가 {doc.supply.toLocaleString('ko-KR')} + 부가세 {doc.vat.toLocaleString('ko-KR')}</div>
-              <div className="mt-3 space-y-1 border-t pt-3 text-[12px]">
+              <div className="flex flex-col gap-4 text-[16px] font-medium leading-normal">
                 {doc.lines.filter((l) => l.counted).map((l, k) => (
-                  <div key={k} className="flex justify-between gap-2">
+                  <div key={k} className="flex justify-between gap-3">
                     <span className="truncate text-muted-foreground">{l.name}</span>
-                    <span className="shrink-0 tabular-nums">{l.amount === null ? <span className="text-warn">미확인</span> : l.amount === 0 ? l.note ?? '0' : l.amount.toLocaleString('ko-KR')}</span>
+                    <span className="shrink-0 tabular-nums text-primary">{l.amount === null ? <span className="text-warn">미확인</span> : l.amount === 0 ? l.note ?? '0' : `${l.amount.toLocaleString('ko-KR')}원`}</span>
                   </div>
                 ))}
               </div>
-              {doc.missing.length > 0 && <div className="mt-2 text-[12px] text-warn">확인 필요: {doc.missing.join(', ')}</div>}
-              <div className="mt-auto flex items-center gap-1 pt-3 text-[12px] font-medium text-muted-foreground group-hover:text-foreground">
-                견적서 보기 <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+              {doc.missing.length > 0 && <div className="text-[13px] font-medium text-warn">확인 필요: {doc.missing.join(', ')}</div>}
+              <div className="mt-auto flex items-center justify-center gap-1 rounded-lg bg-secondary px-4 py-2.5 text-[14px] font-medium text-primary">
+                견적서 보기 <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </div>
             </button>
+            <QuoteSources q={quotes[id]!} />
+            </div>
           );
         })}
       </div>
@@ -271,19 +340,52 @@ export function ReportCard() {
   const { set, quotes, busy } = useRunStore();
   const count = Object.values(quotes).filter((q) => q && q.listedPrice.value !== null).length;
   return (
-    <Card className="flex-row items-center gap-4 px-5 py-4">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
-        <FileText className="size-5" />
+    <Card className="flex-row flex-wrap items-center gap-4 p-6">
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary">
+        <FileText className="size-6" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-semibold">통합 견적서가 준비됐어요</div>
-        <div className="mt-0.5 text-[12px] text-muted-foreground">업체 {count}곳의 공급가액·부가세·합계·조건과 추천 이유를 한 장에 정리했어요. PDF로 저장할 수 있어요.</div>
+        <div className="text-[17px] font-semibold text-black">통합 견적서가 준비됐어요</div>
+        <div className="mt-1 text-[14px] font-medium text-muted-foreground">업체 {count}곳의 공급가액·부가세·합계·조건과 추천 이유를 한 장에 정리했어요. PDF로 저장할 수 있어요.</div>
       </div>
-      <Button variant="ghost" disabled={busy} onClick={() => void api.revise()}>
+      <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={busy} onClick={() => void api.revise()}>
         <SlidersHorizontal className="size-4" /> 조건 바꾸기
       </Button>
-      <Button variant="outline" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
-      <Button onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
+      <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
+      <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </Card>
+  );
+}
+
+/** 이 견적의 값들이 어느 페이지에서 왔는지 (AI Elements Sources). 웹 출처가 있을 때만 */
+function QuoteSources({ q }: { q: Quote }) {
+  const refs = new Map<string, string>();
+  for (const k of ['listedPrice', 'installFee', 'shippingFee', 'warrantyMonths', 'warrantyExtraFee', 'leadTimeDays'] as const) {
+    const src = q[k].source;
+    if (src?.channel === 'web' && /^https?:/.test(src.ref) && !refs.has(src.ref)) refs.set(src.ref, src.snippet);
+  }
+  if (refs.size === 0) return null;
+  const host = (u: string) => {
+    try {
+      return new URL(u).host.replace(/^www\./, '');
+    } catch {
+      return u;
+    }
+  };
+  return (
+    <Sources className="group/src mb-0 mt-3 border-t pt-3 text-muted-foreground">
+      <SourcesTrigger count={refs.size} className="text-[12px] hover:text-foreground">
+        <span>출처 {refs.size}곳</span>
+        <ChevronDown className="size-3.5 transition-transform duration-200 group-data-[state=open]/src:rotate-180" />
+      </SourcesTrigger>
+      <SourcesContent className="mt-2 w-full gap-1.5">
+        {[...refs].map(([ref, snippet]) => (
+          <Source key={ref} href={ref} title={host(ref)} className="block rounded-md px-2 py-1.5 text-[12px] hover:bg-muted">
+            <span className="block font-medium text-foreground">{host(ref)}</span>
+            {snippet && <span className="line-clamp-1 text-muted-foreground">“{snippet}”</span>}
+          </Source>
+        ))}
+      </SourcesContent>
+    </Sources>
   );
 }

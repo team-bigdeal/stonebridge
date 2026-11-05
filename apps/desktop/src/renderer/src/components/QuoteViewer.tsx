@@ -49,7 +49,7 @@ export function QuoteViewer() {
             </Button>
           </DialogHeader>
           {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}
           </div>
@@ -81,7 +81,7 @@ export function QuoteViewer() {
             <TabsTrigger value="doc">통일 양식</TabsTrigger>
             <TabsTrigger value="orig">받은 원본 {origs.length > 0 && <span className="tabular-nums text-muted-foreground">{origs.length}</span>}</TabsTrigger>
           </TabsList>
-          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}
           </TabsContent>
@@ -100,7 +100,7 @@ export function QuoteViewer() {
                 </div>
                 {o.image && <img src={o.image} alt="" className="w-full rounded border" />}
                 {o.fileData && o.mime?.startsWith('image/') && <img src={o.fileData} alt="" className="w-full rounded border" />}
-                {o.fileData && o.mime === 'application/pdf' && <iframe title={o.title} src={o.fileData} className="h-[70vh] w-full rounded border bg-white" />}
+                {o.fileData && o.mime === 'application/pdf' && <PdfFrame title={o.title} dataUrl={o.fileData} />}
                 {o.text && <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-muted p-3 font-sans text-[13px]">{o.text}</pre>}
               </div>
             ))}
@@ -242,7 +242,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
         <TemplateBar t={t} />
         {view === 0 && saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
         <div className="relative min-h-0 flex-1">
-          <div className="h-full max-h-[62vh] overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <div className="h-full max-h-[62vh] overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {/* 두 페이지를 계속 그려 둬서 넘겨도 고친 내용이 남는다 */}
             <div className={view === 0 ? '' : 'hidden'}>
@@ -269,4 +269,20 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
       </DialogContent>
     </Dialog>
   );
+}
+
+/** 받은 PDF를 앱 안 PDF 뷰어로 (data: URL은 iframe에서 막히는 경우가 있어 blob: URL로 바꿔 띄운다) */
+function PdfFrame({ title, dataUrl }: { title: string; dataUrl: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [dataUrl]);
+  if (!src) return null;
+  return <iframe title={title} src={src} className="h-[70vh] w-full rounded border bg-white" />;
 }

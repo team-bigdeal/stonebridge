@@ -14,6 +14,8 @@ interface State {
   requirements: Partial<Requirements> | null;
   /** 지금 조건으로 검색을 시작할 수 있는지 (인터뷰가 판단) */
   reqReady: boolean;
+  /** 인터뷰 질문이 아직 남아 있는지 (버튼을 "지금 바로 시작"으로) */
+  reqAsking: boolean;
   timeline: TimelineItem[];
   busy: boolean;
   quotes: Partial<Record<VendorId, Quote>>;
@@ -80,6 +82,7 @@ const initial = () => ({
   stage: 'interview' as Stage,
   requirements: null,
   reqReady: false,
+  reqAsking: false,
   timeline: [
     { id: 'hello', kind: 'assistant', text: '안녕하세요, 돌다리예요. 어떤 견적이 필요하세요?\n말씀해 주시면 웹에서 업체를 찾아 직접 사이트를 돌아보고, 숨은 비용까지 더한 견적을 비교해 드릴게요.' }
   ] as TimelineItem[],
@@ -148,9 +151,11 @@ export const useStore = create<State>((set, get) => ({
       case 'requirements':
         set({ requirements: ev.payload as Partial<Requirements> });
         break;
-      case 'requirements_ready':
-        set({ reqReady: Boolean(ev.payload) });
+      case 'requirements_ready': {
+        const p = ev.payload as { ready: boolean; asking: boolean };
+        set({ reqReady: p.ready, reqAsking: p.asking });
         break;
+      }
       case 'revised': {
         // 이전 검색 카드(요구 조건·브라우저·비교·견적서·메일)는 대화에 그대로 두고, 그 시점 상태를 따로 얼려 둔다.
         // 새 검색은 그 아래로 이어진다.

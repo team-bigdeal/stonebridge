@@ -46,9 +46,9 @@ export default function SettingsModal() {
     setSaved('저장했어요.');
   }
 
-  const select = 'h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/50 dark:bg-input/30';
+  const select = 'h-9 w-full rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/50';
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onKeyDown={(e) => e.key === 'Escape' && close()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={(e) => e.key === 'Escape' && close()}>
       <form
         className="flex max-h-[90vh] w-[520px] flex-col rounded-xl border bg-card shadow-2xl"
         autoComplete="off"

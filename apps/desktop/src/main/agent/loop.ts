@@ -24,6 +24,8 @@ const TOOL_LABEL: Partial<Record<ToolName, string>> = {
   select_option: '옵션 선택',
   expand_all: '펼치기',
   find_in_page: '페이지에서 찾기',
+  download_quote_pdf: '가견적서 받기',
+  save_page_pdf: '견적서 화면 저장',
   report_quote: '견적 기록',
   select_vendors: '업체 확정',
   claim_vendor: '업체 확정',
@@ -62,6 +64,7 @@ export async function runAgent(ctx: ToolContext, task: AgentTask): Promise<Agent
       const done = step(ctx.slot, TOOL_LABEL[use.name as ToolName] ?? use.name, input?.intent || use.name);
       const r = await runTool(ctx, use.name, input);
       done(r.isError ? 'error' : 'done', r.isError ? r.text.slice(0, 160) : undefined);
+      if (r.isError) console.log(`[tool-error] ${ctx.slot} ${use.name}: ${r.text.slice(0, 300)}`);
       results.push({ type: 'tool_result', tool_use_id: use.id, content: r.text, is_error: r.isError });
       outcome ??= r.outcome;
     }
