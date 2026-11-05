@@ -1,12 +1,12 @@
 // 오른쪽 요구 조건 패널: 대화로 채운 조건을 항상 보이는 자리에서 확인·수정하고 검색을 시작한다
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, PanelRight, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { Requirements, ReqSpec } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useApi } from '@/runScope';
 import { cn } from '@/lib/utils';
-import { PANEL_WIDTH, savePanel, saveWidth, useStore } from '@/store';
+import { PANEL_WIDTH, saveWidth, useStore } from '@/store';
 import { ResizeHandle } from './ResizeHandle';
 
 const WARRANTY = [
@@ -17,55 +17,19 @@ const WARRANTY = [
 ];
 
 export function RequirementsPanel() {
-  const { requirements, stage, reqReady, reqAsking, busy, timeline, replay, panelWidth, panelOpen, set } = useStore();
-  const [open, setOpen] = useState(true);
-  const [closing, setClosing] = useState(false);
-  // 대화가 시작돼 요구 조건이 생긴 뒤부터 보인다
-  if (!timeline.some((t) => t.kind === 'requirements')) return null;
+  const { requirements, stage, reqReady, reqAsking, busy, timeline, replay, panelWidth, set } = useStore();
+  // 대화가 시작돼 요구 조건이 생긴 뒤부터 보인다 (늘 열려 있고, 너비만 조절)
+  // (화면을 새로 그려 대화 기록이 비어도 조건 값이 있으면 보인다)
+  if (!timeline.some((t) => t.kind === 'requirements') && !requirements?.item) return null;
   const r = requirements ?? {};
   const editing = stage === 'interview' && !replay;
-  const toggle = (v: boolean) => {
-    savePanel(v);
-    set({ panelOpen: v });
-  };
-  // 닫혀 있으면 오른쪽 끝에 다시 여는 탭만
-  if (!panelOpen) {
-    return (
-      <button
-        type="button"
-        onClick={() => toggle(true)}
-        title="요구 조건 열기"
-        className="flex w-10 shrink-0 flex-col items-center gap-2 border-l bg-card pt-4 text-[13px] font-medium text-muted-foreground hover:text-ink"
-      >
-        <PanelRight className="size-4" />
-        <span className="[writing-mode:vertical-rl]">요구 조건</span>
-      </button>
-    );
-  }
 
   return (
-    <aside className={cn('relative flex shrink-0 flex-col border-l bg-card transition-opacity', closing && 'opacity-40')} style={{ width: panelWidth }}>
-      <ResizeHandle
-        side="left"
-        label="요구 조건 너비 조절"
-        width={panelWidth}
-        range={PANEL_WIDTH}
-        onResize={(w) => set({ panelWidth: w })}
-        onDone={(w) => saveWidth('doldari.panelWidth', w)}
-        onClosing={setClosing}
-        onClose={() => toggle(false)}
-      />
+    <aside className="relative flex shrink-0 flex-col border-l bg-card" style={{ width: panelWidth }}>
+      <ResizeHandle side="left" label="요구 조건 너비 조절" width={panelWidth} range={PANEL_WIDTH} onResize={(w) => set({ panelWidth: w })} onDone={(w) => saveWidth('doldari.panelWidth', w)} />
       <div className="scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="flex items-center justify-between pl-5 pr-3 pb-2 pt-4">
-        <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-left text-[15px] font-semibold text-ink" aria-expanded={open}>
-          요구 조건
-          <ChevronDown className={cn('size-4 text-muted-foreground transition-transform', !open && '-rotate-90')} />
-        </button>
-        <button type="button" onClick={() => toggle(false)} title="요구 조건 닫기" aria-label="요구 조건 닫기" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-ink">
-          <PanelRight className="size-4" />
-        </button>
-      </div>
-      {open && (editing ? <Editor r={r} ready={reqReady} asking={reqAsking} busy={busy} /> : <Summary r={r} />)}
+        <h2 className="px-5 pb-2 pt-5 text-[15px] font-semibold text-ink">요구 조건</h2>
+        {editing ? <Editor r={r} ready={reqReady} asking={reqAsking} busy={busy} /> : <Summary r={r} />}
       </div>
     </aside>
   );
@@ -112,6 +76,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
   const [edit, setEdit] = useState<Partial<Requirements>>({});
   const [specEdit, setSpecEdit] = useState<Record<string, string>>({});
   const [starting, setStarting] = useState(false);
+  const [refitting, setRefitting] = useState(false);
   const prev = useRef(r);
   useEffect(() => {
     const before = prev.current;
@@ -157,8 +122,23 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
         <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(filled / Math.max(1, fields)) * 100}%` }} />
       </div>
 
-      <Field label="품목">
-        <TextBox value={v.item ?? ''} placeholder="어떤 걸 찾으세요?" onChange={(t) => setEdit({ ...edit, item: t })} />
+      <Field label="품목" value={refitting ? '조건 맞추는 중…' : undefined}>
+        <TextBox
+          value={v.item ?? ''}
+          placeholder="어떤 걸 찾으세요?"
+          onChange={(t) => setEdit({ ...edit, item: t })}
+          // 다 쓰고 나면 새 품목에 맞는 조건으로 다시 정한다 (글자마다 부르지 않게)
+          onCommit={async (t) => {
+            if (!t.trim() || t.trim() === (r.item ?? '')) return;
+            setRefitting(true);
+            setSpecEdit({});
+            try {
+              await api.changeItem(t.trim());
+            } finally {
+              setRefitting(false);
+            }
+          }}
+        />
       </Field>
 
       <Field label="수량" value={v.quantity !== undefined ? `${v.quantity.toLocaleString('ko-KR')}개` : undefined}>
@@ -235,7 +215,22 @@ function Field({ label, value, children }: { label: string; value?: string; chil
   );
 }
 
-function TextBox({ value, onChange, placeholder, type = 'text', suffix }: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string; suffix?: string }) {
+function TextBox({
+  value,
+  onChange,
+  onCommit,
+  placeholder,
+  type = 'text',
+  suffix
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  /** 다 썼을 때(포커스 이동·Enter) */
+  onCommit?: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  suffix?: string;
+}) {
   return (
     <label className={cn('flex items-center gap-2 rounded-lg px-4 py-2.5 focus-within:ring-2 focus-within:ring-primary/30', value ? 'bg-tint' : 'bg-muted')}>
       <Input
@@ -243,6 +238,8 @@ function TextBox({ value, onChange, placeholder, type = 'text', suffix }: { valu
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit ? (e) => onCommit(e.target.value) : undefined}
+        onKeyDown={onCommit ? (e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur() : undefined}
         className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]"
       />
       {suffix && value && <span className="shrink-0 text-[13px] text-muted-foreground">{suffix}</span>}

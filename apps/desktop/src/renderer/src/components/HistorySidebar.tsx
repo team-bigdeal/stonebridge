@@ -3,6 +3,7 @@ import { ArrowLeft, History, Plus, Trash2 } from 'lucide-react';
 import type { HistorySummary } from '@shared/types';
 import { saveSidebar, saveWidth, SIDEBAR_WIDTH, useStore } from '@/store';
 import { ResizeHandle } from './ResizeHandle';
+import { NARROW_WIDTH, useViewportWidth } from '@/lib/useNarrow';
 import { cn } from '@/lib/utils';
 import { Pill } from './cards/Section';
 import { exitReplay, openReplay } from '@/replay';
@@ -18,6 +19,12 @@ export function HistorySidebar() {
   const restart = useRestart();
   const [list, setList] = useState<HistorySummary[] | null>(null);
   const [closing, setClosing] = useState(false);
+  const viewport = useViewportWidth();
+  const narrow = viewport < NARROW_WIDTH;
+  // 좁은 창으로 바뀌면 일단 닫는다 (열면 대화 위에 겹쳐 뜸). 저장한 열림 상태는 바꾸지 않는다
+  useEffect(() => {
+    if (narrow) set({ sidebarOpen: false });
+  }, [narrow, set]);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -25,9 +32,17 @@ export function HistorySidebar() {
   }, [sidebarOpen, historyRev]);
 
   if (!sidebarOpen) return null;
+  const close = () => set({ sidebarOpen: false });
   return (
+    <>
+    {/* 좁은 창: 바깥을 누르면 닫힘 */}
+    {narrow && <div className="absolute inset-0 z-20 bg-black/20 animate-in fade-in-0" onClick={close} aria-hidden />}
     <aside
-      className={cn('relative flex shrink-0 animate-in flex-col border-r bg-card transition-opacity fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none', closing && 'opacity-40')}
+      className={cn(
+        'flex shrink-0 animate-in flex-col border-r bg-card transition-opacity fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none',
+        narrow ? 'absolute inset-y-0 left-0 z-30 shadow-xl' : 'relative',
+        closing && 'opacity-40'
+      )}
       style={{ width: sidebarWidth }}
     >
       <ResizeHandle
@@ -114,5 +129,6 @@ export function HistorySidebar() {
         )}
       </div>
     </aside>
+    </>
   );
 }

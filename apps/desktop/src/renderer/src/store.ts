@@ -34,8 +34,6 @@ interface State {
   /** 왼쪽 지난 견적·오른쪽 요구 조건 너비 (경계를 끌어 조절, 이 컴퓨터에 기억) */
   sidebarWidth: number;
   panelWidth: number;
-  /** 오른쪽 요구 조건 패널을 열어 둘지 */
-  panelOpen: boolean;
   /** 히스토리가 바뀔 때마다 올라간다 (사이드 탭이 목록을 다시 읽음) */
   historyRev: number;
   /** 히스토리에서 연 견적 한 건 (상세 창) */
@@ -94,20 +92,6 @@ export function saveWidth(key: 'doldari.sidebarWidth' | 'doldari.panelWidth', n:
     /* 무시 */
   }
 }
-function readPanel() {
-  try {
-    return localStorage.getItem('doldari.panel') !== 'closed';
-  } catch {
-    return true;
-  }
-}
-export function savePanel(open: boolean) {
-  try {
-    localStorage.setItem('doldari.panel', open ? 'open' : 'closed');
-  } catch {
-    /* 무시 */
-  }
-}
 export function saveSidebar(open: boolean) {
   try {
     localStorage.setItem('doldari.sidebar', open ? 'open' : 'closed');
@@ -148,7 +132,6 @@ export const useStore = create<State>((set, get) => ({
   sidebarOpen: readSidebar(),
   sidebarWidth: readWidth('doldari.sidebarWidth', SIDEBAR_WIDTH),
   panelWidth: readWidth('doldari.panelWidth', PANEL_WIDTH),
-  panelOpen: readPanel(),
   historyRev: 0,
   backend: null,
   ...initial(),
