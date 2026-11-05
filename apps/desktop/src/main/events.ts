@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
 import type { AgentEvent, AgentEventType, AgentStep, Slot, Stage, TimelineItem, VendorId, VendorStatus } from '@shared/types';
+import { maskText } from '@shared/privacy';
 
 let win: BrowserWindow | null = null;
 export const bindWindow = (w: BrowserWindow) => (win = w);
@@ -32,14 +33,14 @@ export const say = (text: string) => timeline({ kind: 'assistant', text });
 
 /** 앱 공지 (오류·경고) */
 export const notice = (message: string, vendorId?: VendorId) => {
-  console.log(`[notice]${vendorId ? ` ${vendorId}` : ''} ${message}`);
+  console.log(`[notice]${vendorId ? ` ${vendorId}` : ''} ${maskText(message)}`);
   emit('notice', { message, vendorId });
 };
 
 export function step(slot: Slot, tool: string, intent: string) {
   const s: AgentStep = { id: randomUUID(), slot, tool, intent, status: 'running', at: new Date().toISOString() };
   emit('step', { payload: s });
-  console.log(`[step] ${slot} ${intent}`);
+  console.log(`[step] ${slot} ${maskText(intent)}`);
   return (status: 'done' | 'error', detail?: string) => emit('step', { payload: { ...s, status, detail } });
 }
 
