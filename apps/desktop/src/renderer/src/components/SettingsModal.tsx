@@ -112,7 +112,7 @@ function ThemeTab({ config }: { config: AppConfig }) {
     <div className="flex flex-col gap-5">
       <Row label="화면 테마" hint={error || '시스템은 컴퓨터의 라이트·다크 설정을 따라가요. 견적서와 업체 사이트 화면은 항상 원래 색으로 보여요.'}>
         <Segmented
-          value={config.theme}
+          value={config.theme ?? 'system'}
           options={[
             { value: 'system', label: '시스템' },
             { value: 'light', label: '라이트' },
