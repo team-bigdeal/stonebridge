@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, ChevronRight, ExternalLink, FileText, ShoppingCart, SlidersHorizontal, X } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, ShoppingCart, SlidersHorizontal, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,51 @@ import CountUp from '../CountUp';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
 import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources';
+import { CompareChart } from './CompareChart';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
+
+type View = 'table' | 'chart';
+const VIEW_KEY = 'doldari.compareView';
+// 마지막으로 고른 보기 방식은 이 컴퓨터에만 기억한다
+const readView = (): View => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'chart' ? 'chart' : 'table';
+  } catch {
+    return 'table';
+  }
+};
+const saveView = (v: View) => {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* 저장 못 해도 화면은 그대로 */
+  }
+};
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const items: [View, string, typeof Table2][] = [['table', '표', Table2], ['chart', '그래프', BarChart3]];
+  return (
+    <div role="radiogroup" aria-label="보기 방식" className="flex rounded-md border p-0.5">
+      {items.map(([id, label, Icon]) => (
+        <button
+          key={id}
+          role="radio"
+          aria-checked={view === id}
+          onClick={() => onChange(id)}
+          className={cn('flex items-center gap-1 rounded-[5px] px-2 py-1 text-[12px] transition-colors', view === id ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground hover:text-foreground')}
+        >
+          <Icon className="size-3.5" /> {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function CompareCard() {
   const { quotes, requirements, stage } = useRunStore();
   const [pop, setPop] = useState<SourceEntry | null>(null);
+  const [view, setView] = useState<View>(readView);
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
@@ -26,9 +65,12 @@ export function CompareCard() {
       <CardContent className="space-y-4 px-5">
         <SectionHead
           title="견적 비교"
-          hint="합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요."
-          right={<span className="text-[12px] text-muted-foreground">금액을 누르면 출처가 보여요</span>}
+          hint={view === 'table' ? '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.' : '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.'}
+          right={<ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />}
         />
+        {view === 'chart' ? (
+          <CompareChart order={order} />
+        ) : (
         <div className="overflow-x-auto" onClick={() => setPop(null)}>
           <table className="w-full whitespace-nowrap text-[13px]">
             <thead>
@@ -45,6 +87,7 @@ export function CompareCard() {
             </tbody>
           </table>
         </div>
+        )}
         {pop && <SourcePop pop={pop} onClose={() => setPop(null)} />}
         {['questions', 'draft'].includes(stage) && <Recommend />}
       </CardContent>
