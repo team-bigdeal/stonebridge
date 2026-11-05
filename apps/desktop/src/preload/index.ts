@@ -26,7 +26,6 @@ const api = {
   pasteReply: (vendorId: VendorId, kind: MailKind, text: string) => ipcRenderer.invoke('mail:pasteReply', vendorId, kind, text),
   draftOrder: (id: VendorId) => ipcRenderer.invoke('draft:order', id),
   draftQuestion: (id: VendorId) => ipcRenderer.invoke('draft:question', id),
-  draftBigdeal: (id: VendorId) => ipcRenderer.invoke('draft:bigdeal', id),
   retry: (id: VendorId) => ipcRenderer.invoke('agent:retry', id),
   replace: (id: VendorId) => ipcRenderer.invoke('agent:replace', id),
   skip: (id: VendorId) => ipcRenderer.invoke('agent:skip', id),

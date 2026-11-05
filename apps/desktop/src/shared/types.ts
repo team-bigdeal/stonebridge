@@ -157,7 +157,7 @@ export type VendorStatus =
   | 'done'
   | 'failed';
 
-export type MailKind = 'request' | 'question' | 'order' | 'bigdeal';
+export type MailKind = 'request' | 'question' | 'order';
 
 export interface MailDraft {
   id: string;

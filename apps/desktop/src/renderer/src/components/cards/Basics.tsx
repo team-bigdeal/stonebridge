@@ -39,7 +39,7 @@ export function RequirementsCard() {
   );
 }
 
-const KIND_LABEL = { request: '견적 요청', question: '확인 질문', order: '주문 문의', bigdeal: '🤝 가격 협의 (빅딜)' } as const;
+const KIND_LABEL = { request: '견적 요청', question: '확인 질문', order: '주문 문의' } as const;
 
 export function MailCard({ draft }: { draft: MailDraft }) {
   const { config, vendors, set } = useStore();
