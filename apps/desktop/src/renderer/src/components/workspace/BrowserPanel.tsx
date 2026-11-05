@@ -27,6 +27,17 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
   const api = useApi();
   const { browsers, vendorStatus, vendors, quotes, set, scoped } = useRunStore();
   const b = browsers[slot];
+  // 계속·건너뛰기·다시 시도·다른 업체로: 처리하는 동안 버튼을 잠가 두 번 눌리지 않게
+  const [pending, setPending] = useState(false);
+  const once = (fn: () => unknown) => async () => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await fn();
+    } finally {
+      setPending(false);
+    }
+  };
   const vid = slot === 'search' ? null : (slot as VendorId);
   const vendor = vid ? vendors.find((v) => v.id === vid) : null;
   const status = vid ? vendorStatus[vid] : undefined;
@@ -85,10 +96,10 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
           </div>
           {vid && status === 'needs_user' && (
             <div className="mt-2.5 flex gap-1.5">
-              <Button size="sm" className="h-7 flex-1" onClick={() => api.resume(slot)}>
+              <Button size="sm" className="h-7 flex-1" disabled={pending} onClick={once(() => api.resume(slot))}>
                 <Play className="size-3.5" /> 해결했어요, 계속
               </Button>
-              <Button size="sm" variant="outline" className="h-7 flex-1" onClick={() => api.skip(vid)}>
+              <Button size="sm" variant="outline" className="h-7 flex-1" disabled={pending} onClick={once(() => api.skip(vid))}>
                 <SkipForward className="size-3.5" /> 건너뛰기
               </Button>
             </div>
@@ -111,10 +122,10 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
           )}
           {(status === 'failed' || status === 'stopped') && (
             <>
-              <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.retry(vid)}>
+              <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" disabled={pending} onClick={once(() => api.retry(vid))}>
                 <RefreshCw className="size-4" /> {status === 'stopped' ? '이어서 하기' : '다시 시도'}
               </Button>
-              <Button variant="outline" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.replace(vid)}>
+              <Button variant="outline" className="h-auto flex-1 px-4 py-2.5 text-[14px]" disabled={pending} onClick={once(() => api.replace(vid))}>
                 <Replace className="size-4" /> 다른 업체로
               </Button>
             </>

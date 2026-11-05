@@ -8,8 +8,12 @@ type ImageType = (typeof IMAGE_TYPES)[number];
 // 메일 첨부는 형식이 application/octet-stream으로 오기도 해서 확장자로도 판단한다
 const IMAGE_EXT: Record<string, ImageType> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 
-/** 견적서 파일(PDF·이미지·글)을 Claude 입력 블록으로. 지원하지 않는 형식이면 null */
+/** 올리거나 메일로 받은 견적서 파일 크기 한도 */
+export const MAX_QUOTE_FILE_BYTES = 15 * 1024 * 1024;
+
+/** 견적서 파일(PDF·이미지·글)을 Claude 입력 블록으로. 지원하지 않는 형식이거나 너무 크면 null */
 export function quoteFileBlock(file: { name: string; mime: string; data: Uint8Array }): Anthropic.ContentBlockParam | null {
+  if (file.data.length > MAX_QUOTE_FILE_BYTES) return null;
   const data = Buffer.from(file.data).toString('base64');
   const ext = file.name.toLowerCase().split('.').pop() ?? '';
   if (file.mime === 'application/pdf' || ext === 'pdf') {

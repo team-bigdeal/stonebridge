@@ -29,7 +29,7 @@ import { appendToInbox, cancelAllWatches, cancelWatch, checkNow, isWatching, wat
 import { demoReply, demoReplyMessage } from './channels/demo-mail';
 import { extractQuote } from './channels/extract';
 import { fillLeadTimeFromText } from './quote/normalize';
-import { parseQuoteFile, quoteFileBlock } from './channels/file-parse';
+import { MAX_QUOTE_FILE_BYTES, parseQuoteFile, quoteFileBlock } from './channels/file-parse';
 import { getVendor, listVendors, replaceVendor, setVendorEmail, setVendors, vendorName } from './vendors';
 import { savePdf } from './report';
 
@@ -87,12 +87,16 @@ const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'sna
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
+/** 처리 중인 대화 수: 먼저 끝난 처리가 다른 처리 중에 busy를 끄지 않게 */
+let chatting = 0;
+
 export async function onChat(text: string) {
   if (!hasApiKey()) {
     say('먼저 오른쪽 위 ⚙️ 설정에서 Anthropic API 키를 넣어 주세요.');
     emit('notice', { message: 'API 키가 필요합니다', payload: { openSettings: true } });
     return;
   }
+  chatting++;
   try {
     setBusy(true);
     // "멈춰" 같은 말은 어느 단계에서든 진행 중인 탐색을 멈춘다 (조건 변경으로 해석하지 않게 먼저 본다)
@@ -189,7 +193,8 @@ export async function onChat(text: string) {
   } catch (e) {
     notice(`처리 실패: ${errMsg(e)}`);
   } finally {
-    setBusy(false);
+    chatting = Math.max(0, chatting - 1);
+    if (chatting === 0) setBusy(false);
   }
 }
 
@@ -230,8 +235,11 @@ export async function onItemChange(item: unknown) {
   emit('requirements', { payload: interview.req });
 }
 
+/** 시작 버튼을 연달아 눌러도 검색이 한 번만 시작되게 (정리를 기다리는 동안에도 단계는 아직 interview) */
+let starting = false;
+
 export async function startSearch(patch: Partial<Requirements>) {
-  if (!interview || getStage() !== 'interview') return;
+  if (!interview || getStage() !== 'interview' || starting) return;
   // renderer 입력이라 값을 검증해서 받는다
   const clean: Partial<Requirements> = {};
   if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
@@ -257,7 +265,14 @@ export async function startSearch(patch: Partial<Requirements>) {
   emit('requirements', { payload: requirements });
   emit('requirements_ready', { payload: { ready: false, asking: false } });
   // 조건 변경 직후라면 이전 검색의 브라우저 정리를 기다리되, 정리가 실패하거나 오래 걸려도 시작은 막지 않는다
-  await Promise.race([resetting, sleep(3000)]);
+  starting = true;
+  try {
+    await Promise.race([resetting, sleep(3000)]);
+  } finally {
+    starting = false;
+  }
+  // 기다리는 사이 새 견적을 눌렀으면 시작하지 않는다
+  if (!requirements || getStage() !== 'interview') return;
   if (givenUrls.length) {
     void startWithUrls(requirements, givenUrls);
     return;
@@ -577,18 +592,38 @@ async function captureWeb(slot: VendorId, url: string, force = false) {
   if (photo) emit('original', { vendorId: slot, payload: { ...original, productImage: photo } });
 }
 
+/** 계속·건너뛰기를 처리하는 중인 브라우저. 버튼을 연달아 눌러도 한 브라우저에 에이전트가 하나만 돌게 */
+const pendingSlots = new Set<VendorId>();
+
 /** 사용자가 차단 화면을 해결함 → 같은 단계부터 이어서 */
 export function resume(slot: Slot) {
-  if (slot === 'search') return;
+  if (slot === 'search' || getVendorStatus(slot) !== 'needs_user' || pendingSlots.has(slot)) return;
+  pendingSlots.add(slot);
   const h = handoffMode.get(slot);
   handoffMode.delete(slot);
   say(`브라우저 ${slot}: 이어서 진행할게요.`);
-  void setHandoff(slot, undefined).then(() => (getVendor(slot) ? collect(slot) : hunt(slot, generation, false)));
+  // collect·hunt는 시작하자마자 상태를 browsing으로 바꾸므로 그때 표시를 푼다
+  void setHandoff(slot, undefined)
+    .catch(() => undefined)
+    .then(() => {
+      pendingSlots.delete(slot);
+      return getVendor(slot) ? collect(slot) : hunt(slot, generation, false);
+    });
   void h;
 }
 
 /** 사용자가 건너뜀 → 이 업체(또는 막힌 검색 엔진)를 빼고 다음 업체로 */
 export async function skip(slot: VendorId) {
+  if (!requirements || getVendorStatus(slot) !== 'needs_user' || pendingSlots.has(slot)) return;
+  pendingSlots.add(slot);
+  try {
+    await skipNow(slot);
+  } finally {
+    pendingSlots.delete(slot);
+  }
+}
+
+async function skipNow(slot: VendorId) {
   if (!requirements) return;
   const h = handoffMode.get(slot);
   handoffMode.delete(slot);
@@ -664,13 +699,15 @@ function resumeStopped() {
 }
 
 export function retry(slot: VendorId) {
+  // 실패·멈춘 브라우저만 (collect·hunt가 바로 browsing으로 바꿔 연달아 눌러도 한 번만 돈다)
+  if (!['failed', 'stopped'].includes(getVendorStatus(slot)) || pendingSlots.has(slot)) return;
   void (getVendor(slot) ? collect(slot) : hunt(slot));
 }
 
 /** 막힌 업체를 빼고 같은 브라우저로 새 업체를 찾는다 */
 export function replace(slot: VendorId) {
   const old = getVendor(slot);
-  if (!requirements) return;
+  if (!requirements || !VENDOR_IDS.includes(slot) || pendingSlots.has(slot) || ['browsing', 'parsing'].includes(getVendorStatus(slot))) return;
   if (old) {
     banned.add(hostKey(old.url));
     say(`${old.name}는 빼고 브라우저 ${slot}로 다른 업체를 찾아볼게요.`);
@@ -738,24 +775,32 @@ async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
 
 // ─── 파일 채널 ────────────────────────────────────────────────
 
-export async function onFileUpload(slot: VendorId, file: { name: string; mime: string; data: Uint8Array }) {
-  if (!requirements) return;
-  setVendorStatus(slot, 'parsing');
-  emit('original', {
-    vendorId: slot,
-    payload: {
-      id: randomUUID(),
-      vendorId: slot,
-      channel: 'file',
-      title: file.name,
-      fileName: file.name,
-      mime: file.mime,
-      fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
-      text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
-      capturedAt: new Date().toISOString()
-    } satisfies QuoteOriginal
-  });
+export async function onFileUpload(slot: VendorId, input: { name: string; mime: string; data: Uint8Array }) {
+  if (!requirements || !VENDOR_IDS.includes(slot)) return;
+  // renderer 입력이라 이름·형식·크기를 확인한다
+  const name = typeof input?.name === 'string' ? (input.name.split(/[\\/]/).pop() ?? '').trim().slice(0, 200) : '';
+  const mime = typeof input?.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(input.mime) ? input.mime.toLowerCase() : '';
+  const data = input?.data instanceof Uint8Array ? input.data : null;
+  if (!name || !data) return notice('파일을 읽지 못했어요. 다시 올려 주세요.', slot);
+  if (data.length > MAX_QUOTE_FILE_BYTES) return notice(`파일이 너무 커요 (${Math.ceil(data.length / 1024 / 1024)}MB). 15MB 이하 견적서만 올릴 수 있어요.`, slot);
+  const file = { name, mime, data };
+  if (!quoteFileBlock(file)) return notice(`지원하지 않는 파일 형식이에요 (${name}). PDF·사진·글 파일을 올려 주세요.`, slot);
   try {
+    setVendorStatus(slot, 'parsing');
+    emit('original', {
+      vendorId: slot,
+      payload: {
+        id: randomUUID(),
+        vendorId: slot,
+        channel: 'file',
+        title: file.name,
+        fileName: file.name,
+        mime: file.mime,
+        fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
+        text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
+        capturedAt: new Date().toISOString()
+      } satisfies QuoteOriginal
+    });
     const { fields, meta } = await parseQuoteFile({ vendorId: slot, requirements, ...file });
     const added = applyFields(slot, fields, meta, 'file', file.name);
     setVendorStatus(slot, 'done');
@@ -822,22 +867,35 @@ function afterSent(draft: MailDraft) {
   maybeOpenGate();
 }
 
-export async function onMailSend(draft: MailDraft) {
-  if (!draft.to.trim()) return { ok: false, error: '받는 사람 메일 주소를 넣어 주세요.' };
+/** renderer가 보낸 초안: 이번 검색에서 main이 만든 초안이어야 하고, 고친 받는 사람·제목·본문만 반영한다 (업체·종류·항목은 main 것) */
+function liveDraft(input: MailDraft): MailDraft | null {
+  const stored = typeof input?.id === 'string' ? drafts.get(input.id) : undefined;
+  if (!stored) return null;
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+  return { ...stored, to: str(input.to, 320).trim(), subject: str(input.subject, 300), body: str(input.body, 20000) };
+}
+const STALE_DRAFT = '이 메일 초안은 이미 보냈거나 지난 검색의 초안이라 보낼 수 없어요.';
+
+export async function onMailSend(input: MailDraft) {
+  const draft = liveDraft(input);
+  if (!draft) return { ok: false, error: STALE_DRAFT };
+  if (!draft.to) return { ok: false, error: '받는 사람 메일 주소를 넣어 주세요.' };
   // 보내는 동안 새 견적·조건 변경이 일어나면 이 메일의 회신을 새 검색에 섞지 않는다
   const gen = generation;
-  const full: MailDraft = { ...drafts.get(draft.id), ...draft };
+  // 연달아 눌러도 한 번만 보내도록 보내는 동안 초안을 빼 둔다 (실패하면 되돌림)
+  const stored = drafts.get(draft.id)!;
+  drafts.delete(draft.id);
   let sent: MailRecord;
   try {
-    sent = await sendMail(full);
+    sent = await sendMail(draft);
   } catch (e) {
+    if (gen === generation) drafts.set(draft.id, stored);
     return { ok: false, error: errMsg(e) };
   }
-  drafts.delete(draft.id);
   if (gen !== generation) return { ok: true, imap: false };
   afterSent(draft);
   const demo = isDemoAddress(draft.to);
-  if (demo) scheduleDemoReply(full, sent);
+  if (demo) scheduleDemoReply(draft, sent);
   return { ok: true, imap: imapConfigured() || demo };
 }
 
@@ -889,7 +947,9 @@ function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
   }, DEMO_REPLY_DELAY_MS);
 }
 
-export async function onMailExternal(draft: MailDraft) {
+export async function onMailExternal(input: MailDraft) {
+  const draft = liveDraft(input);
+  if (!draft) return { ok: false, error: STALE_DRAFT };
   const tag = subjectTag(draft);
   const subject = draft.subject.includes(tag) ? draft.subject : `${draft.subject} ${tag}`;
   await shell.openExternal(`mailto:${encodeURIComponent(draft.to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(draft.body)}`);
