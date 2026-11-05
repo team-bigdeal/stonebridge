@@ -94,6 +94,11 @@ export async function onChat(text: string) {
         timeline({ kind: 'requirements' });
       }
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
+      // "시작" 같은 말은 카드의 시작 버튼과 같게 처리한다 (인터뷰로 넘기면 같은 안내만 반복됨)
+      if (START_WORDS.test(text.trim()) && interview.req.item) {
+        await startSearch({});
+        return;
+      }
       const { question, ready } = await interview.next(text);
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
@@ -141,6 +146,13 @@ export async function onChat(text: string) {
 }
 
 // ─── 요구 조건 확인 → 검색 시작 ──────────────────────────────
+
+/** 채팅으로 검색을 시작하라는 짧은 말 ("시작", "검색해줘", "이대로 해줘", "지금 바로 시작" 등).
+ *  "네·응·좋아"는 인터뷰 질문에 대한 대답일 수 있어 넣지 않고, 조건이 섞인 말("아이폰 케이스 찾아줘")은 맞지 않게 전체 일치로 본다 */
+const START_WORDS = new RegExp(
+  String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
+  'i'
+);
 
 const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
 
