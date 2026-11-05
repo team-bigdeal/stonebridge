@@ -49,11 +49,25 @@ function labelGongbang(r: Requirements): DemoQuote {
   };
 }
 
-/** 그 밖의 시연용 주소: 요구 조건(예산·설치·A/S)에 맞춰 그럴듯한 견적을 만든다 */
-function generic(r: Requirements, company: string): DemoQuote {
-  const product = r.budgetMax > 0 ? round((r.budgetMax * 0.55) / 1.1) : round(r.quantity * 1000);
-  const big = product >= 1_000_000;
+/** 다른 업체 최저 총액보다 이만큼 싸게 회신한다 (메일로 물어본 업체가 1위로 올라오는 장면) */
+const CHEAPER_THAN_MARKET = 0.9;
+
+/** 그 밖의 시연용 주소: 요구 조건(예산·설치·A/S)에 맞춰 그럴듯한 견적을 만든다.
+ *  market(다른 업체 최저 총액, 부가세·배송비 포함)이 있으면 총액이 그보다 10% 남짓 싸게 나오도록 제품가를 맞춘다 */
+function generic(r: Requirements, company: string, market?: number): DemoQuote {
   const longWarranty = r.minWarrantyMonths > 12;
+  const shipFor = (p: number) => (r.needDelivery === false ? 0 : p >= 1_000_000 ? 30000 : 3500);
+  // 앱이 비교하는 총액 ≈ (제품가 + 설치비) × 1.1 + 배송비 + A/S 연장비
+  const factor = 1.1 * (1 + (r.needInstall ? 0.12 : 0)) + (longWarranty ? 0.08 : 0);
+  let product = r.budgetMax > 0 ? round((r.budgetMax * 0.45) / 1.1) : round(r.quantity * 1000);
+  if (market && market > 0) {
+    const target = market * CHEAPER_THAN_MARKET;
+    const raw = (target - shipFor(target / factor)) / factor;
+    // 끝자리는 내림으로 맞춰 반올림 때문에 시장가를 넘지 않게
+    const unit = raw >= 100_000 ? 1000 : 100;
+    product = Math.max(unit, Math.floor(raw / unit) * unit);
+  }
+  const big = product >= 1_000_000;
   return {
     company,
     signer: `${company} 드림`,
@@ -70,9 +84,9 @@ function generic(r: Requirements, company: string): DemoQuote {
   };
 }
 
-function quoteFor(to: string, r: Requirements, company: string): DemoQuote {
+function quoteFor(to: string, r: Requirements, company: string, market?: number): DemoQuote {
   if (/@label-gongbang\.test$/i.test(to.trim()) && /스티커|라벨|씰/.test(r.item)) return labelGongbang(r);
-  return generic(r, company);
+  return generic(r, company, market);
 }
 
 const FOOTER = '※ 돌다리 시연용 자동 회신입니다. 실제 업체가 보낸 메일이 아니에요.';
@@ -212,9 +226,9 @@ export interface DemoAttachment {
 
 /** 시연용 회신 (주문 문의에는 회신을 기다리지 않으므로 만들지 않음).
  *  견적 요청 회신에는 견적서 PDF를 붙이고 본문은 짧게 쓴다 (PDF를 못 만들면 본문에 견적 내용을 적는다) */
-export async function demoReply(draft: MailDraft, r: Requirements, company: string): Promise<{ fromName: string; text: string; attachments: DemoAttachment[] } | null> {
+export async function demoReply(draft: MailDraft, r: Requirements, company: string, market?: number): Promise<{ fromName: string; text: string; attachments: DemoAttachment[] } | null> {
   if (draft.kind === 'order') return null;
-  const q = quoteFor(draft.to, r, company);
+  const q = quoteFor(draft.to, r, company, market);
   if (draft.kind === 'question') return { fromName: q.company, text: `${questionText(q, r, draft.fields ?? [])}\n\n${FOOTER}`, attachments: [] };
   try {
     const content = await quotePdf(quoteHtml(q, r, draft.to));
