@@ -59,6 +59,13 @@ function createWindow() {
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // 화면을 다시 불러오면(⌘R·메뉴의 새로 고침 등) 화면은 처음 상태가 되므로 main도 새 견적으로 맞춘다.
+  // 진행 중인 에이전트는 멈추고, 지난 검색은 히스토리에 남는다. 처음 불러올 때는 그대로 둔다
+  let loaded = false;
+  win.webContents.on('did-finish-load', () => {
+    if (loaded) void flow.reset().catch((e) => console.log(`[reload] 초기화 실패: ${e instanceof Error ? e.message : String(e)}`));
+    loaded = true;
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
