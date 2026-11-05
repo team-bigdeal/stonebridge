@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Copy, History, Loader2 } from 'lucide-react';
+import { ArrowLeft, Check, Copy, History, Loader2, Play } from 'lucide-react';
 import type { TimelineItem } from '@shared/types';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Message, MessageAction, MessageActions, MessageContent } from '@/components/ai-elements/message';
@@ -22,7 +22,7 @@ import { SizesCard } from './cards/Sizes';
 import { HistoryCard, MailCard, MessageCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
 import { api } from '@/lib/api';
-import { exitReplay } from '@/replay';
+import { exitReplay, resumeReplay } from '@/replay';
 import { RunContext } from '@/runScope';
 
 /** 처음 화면의 예시 요청 */
@@ -72,9 +72,12 @@ export function Chat() {
         <div className="bg-background px-8 py-3">
           <div className="flex animate-in items-center gap-3 rounded-lg bg-card px-5 py-4 text-[14px] fade-in-0 slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
             <History className="size-5 shrink-0 text-muted-foreground" />
-            <span className="text-muted-foreground">지난 견적을 보는 중이에요. 견적서와 원본은 볼 수 있지만 이어서 진행할 수는 없어요.</span>
-            <Button className="ml-auto h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={exitReplay}>
+            <span className="text-muted-foreground">지난 견적을 보는 중이에요. 이어서 주문하거나 조건을 바꾸려면 "이 견적 이어서 하기"를 누르세요.</span>
+            <Button variant="outline" className="ml-auto h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={exitReplay}>
               <ArrowLeft className="size-3.5" /> 현재 견적으로
+            </Button>
+            <Button className="h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={() => void resumeReplay()}>
+              <Play className="size-3.5" /> 이 견적 이어서 하기
             </Button>
           </div>
         </div>

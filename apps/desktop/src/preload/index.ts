@@ -23,6 +23,8 @@ const api = {
   historyDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('history:delete', id),
   historySaveSession: (id: string, snap: SessionSnapshot): Promise<boolean> => ipcRenderer.invoke('history:saveSession', id, snap),
   historyGetSession: (id: string): Promise<SessionSnapshot | null> => ipcRenderer.invoke('history:getSession', id),
+  /** 지난 견적을 지금 견적으로 되살려 이어서 하기 */
+  historyResume: (id: string): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('history:resume', id),
   saveSettings: (input: SettingsInput): Promise<{ ok: boolean; error?: string; config?: AppConfig }> => ipcRenderer.invoke('settings:save', input),
   clearApiKey: (): Promise<AppConfig> => ipcRenderer.invoke('settings:clearKey'),
   /** 브라우저에서 Google 로그인을 마칠 때까지 기다린다 (토큰은 main에만 있고 여기로 오지 않음) */

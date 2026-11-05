@@ -78,6 +78,22 @@ export async function openReplay(id: string) {
   useStore.setState({ replay: { id } });
 }
 
+/** 보고 있는 지난 견적을 지금 견적으로 이어서 하기: main이 그 견적을 되살리고, 화면은 보던 그대로 지금 견적이 된다 */
+export async function resumeReplay() {
+  const s = useStore.getState();
+  const id = s.replay?.id;
+  if (!id) return;
+  const r = await window.doldari.historyResume(id).catch(() => null);
+  if (!r?.ok) {
+    s.handle({ type: 'notice', at: new Date().toISOString(), message: r?.message ?? '이 견적을 이어서 할 수 없어요.' });
+    return;
+  }
+  // 이전에 하던 견적(보관본)과 보는 동안 쌓인 그 견적의 이벤트는 버린다 (그 견적은 이미 히스토리에 저장됨)
+  stash = null;
+  pendingLive.splice(0);
+  useStore.setState({ replay: null, liveId: id, busy: false });
+}
+
 /** 지금 견적 화면으로 돌아오고, 보는 동안 쌓인 이벤트를 반영 */
 export function exitReplay() {
   if (!useStore.getState().replay) return;

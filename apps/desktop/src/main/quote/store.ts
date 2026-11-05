@@ -49,6 +49,19 @@ class QuoteStore {
   onGateOpen: () => void = () => undefined;
   onDrained: () => void = () => undefined;
 
+  /** 지난 견적을 이어서 할 때 저장된 견적을 그대로 되살린다 (비교는 이미 열린 상태) */
+  restore(req: Requirements, quotes: Partial<Record<VendorId, Quote>>) {
+    this.requirements = req;
+    this.queue = [];
+    this.gateOpen = true;
+    this.quotes = {};
+    for (const [id, q] of Object.entries(quotes)) {
+      if (!q) continue;
+      this.quotes[id as VendorId] = recompute(q, req);
+      emit('quote_update', { vendorId: id as VendorId, payload: { quote: this.quotes[id as VendorId] } });
+    }
+  }
+
   reset(req: Requirements | null, ids: VendorId[] = VENDOR_IDS) {
     this.requirements = req;
     this.quotes = {};

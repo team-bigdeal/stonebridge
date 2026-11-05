@@ -12,7 +12,7 @@ import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
-import { addOriginal, clearOriginals, saveRecord, startRecord } from './history';
+import { addOriginal, clearOriginals, resumeRecord, saveRecord, startRecord } from './history';
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
@@ -193,7 +193,7 @@ export async function onChat(text: string) {
         await revise(true);
         if (question) emit('requirements_ready', { payload: { ready: true, asking: true } });
         if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 위에 그대로 남겨 두었어요.');
-        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이 조건으로 찾기 시작"을 눌러 주세요.');
+        say(question ? `조건을 바꿨어요. ${question}` : '바뀐 조건을 반영했어요. 오른쪽에서 확인하고 "이 조건으로 찾기 시작"을 눌러 주세요.');
         return;
       }
     }
@@ -1380,6 +1380,34 @@ function clearRun() {
   // 정리에 실패해도 다음 검색은 진행할 수 있어야 하므로 실패는 삼킨다
   resetting = resetAll().catch((e) => console.log(`[reset] 브라우저 정리 실패: ${errMsg(e)}`));
   return resetting;
+}
+
+/** 히스토리에서 지난 견적을 골라 이어서 하기: 그 견적의 조건·업체·견적을 지금 견적으로 되살린다.
+ *  이후 주문 페이지 열기·메일·조건 바꾸기 등을 그대로 이어서 할 수 있고, 저장은 같은 기록에 쌓인다 */
+export async function resumeHistory(id: string): Promise<{ ok: boolean; message?: string }> {
+  await reset();
+  const rec = resumeRecord(id);
+  if (!rec) return { ok: false, message: '이 기록을 열 수 없어요.' };
+  interview = new Interview();
+  interview.apply(rec.requirements);
+  requirements = rec.requirements;
+  activeSlots = rec.vendors.map((v) => v.id);
+  setVendors(rec.vendors);
+  emit('vendors', { payload: listVendors() });
+  quoteStore.onGateOpen = showCompare;
+  quoteStore.onDrained = onQuotesSettled;
+  quoteStore.restore(requirements, rec.quotes);
+  for (const v of rec.vendors) setVendorStatus(v.id, quoteStore.get(v.id) ? 'done' : 'failed');
+  // 비교·견적서·추천은 이미 보여 준 견적이라 다시 띄우지 않는다
+  docsShown = compareShown = reportShown = true;
+  setStage('draft', true);
+  emit('requirements', { payload: requirements });
+  // 업체 브라우저는 그 업체 상품 페이지로 다시 열어 둔다 (주문 페이지 열기·직접 확인용)
+  for (const v of rec.vendors) {
+    const url = orderUrl(quoteStore.get(v.id), v.url);
+    if (url) void getDriver(v.id).navigate(url).then(() => refreshState(v.id)).catch(() => undefined);
+  }
+  return { ok: true };
 }
 
 export async function reset() {
