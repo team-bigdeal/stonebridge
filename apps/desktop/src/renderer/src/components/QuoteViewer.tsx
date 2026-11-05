@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
@@ -6,14 +7,15 @@ import { approvalFields, buildApproval, type ApprovalHeader } from '@shared/appr
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ApprovalDocument } from '@/doc/ApprovalDocument';
-import { TemplateBar, TemplateEditor, useApprovalTemplate } from '@/components/ApprovalTemplatePanel';
+import { TemplateBar, TemplatePreview, useApprovalTemplate } from '@/components/ApprovalTemplatePanel';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/store';
 import { QuoteDocument } from '@/doc/QuoteDocument';
 import { IntegratedDocument } from '@/doc/IntegratedDocument';
 import { DOC_CSS } from '@/doc/styles';
-import { saveDocPdf } from '@/doc/print';
+import { saveDocPdf, saveHtmlPdf } from '@/doc/print';
+import { EditablePaper } from '@/doc/EditablePaper';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
 export function QuoteViewer() {
@@ -145,7 +147,8 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
       /* 저장소를 못 쓰면 이번 화면에서만 유지 */
     }
   };
-  const el = <ApprovalDocument doc={doc} header={header} />;
+  const paper = useRef<HTMLDivElement>(null);
+  const markup = useMemo(() => renderToStaticMarkup(<ApprovalDocument doc={doc} header={header} />), [doc, header]);
   const arrow = 'absolute top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border bg-background/95 shadow-md hover:bg-accent';
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -172,7 +175,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
             <DialogDescription>{view === 0 ? `${req.item} · 모든 숫자에 근거 번호를 붙이고 붙임에 출처를 모았어요` : '칸마다 들어갈 글자를 확인하고 고친 뒤 내려받으세요'}</DialogDescription>
           </div>
           {view === 0 ? (
-            <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `품의서_${req.item}`)) ?? '')}>
+            <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveHtmlPdf(paper.current?.innerHTML ?? markup, `품의서_${req.item}`)) ?? '')}>
               <Download className="size-4" /> PDF 저장
             </Button>
           ) : (
@@ -194,7 +197,15 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
         <div className="relative min-h-0 flex-1">
           <div className="h-full max-h-[62vh] overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
             <style>{DOC_CSS}</style>
-            {view === 0 ? el : <TemplateEditor t={t} fields={fields} />}
+            {/* 두 페이지를 계속 그려 둬서 넘겨도 고친 내용이 남는다 */}
+            <div className={view === 0 ? '' : 'hidden'}>
+              <EditablePaper markup={markup} hostRef={paper} />
+            </div>
+            {hasTpl && (
+              <div className={view === 1 ? '' : 'hidden'}>
+                <TemplatePreview t={t} fields={fields} />
+              </div>
+            )}
           </div>
           {hasTpl && view === 0 && (
             <button type="button" className={`${arrow} -right-5`} title="회사 양식 페이지로" onClick={() => setPage(1)}>
