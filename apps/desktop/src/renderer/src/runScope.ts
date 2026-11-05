@@ -21,6 +21,8 @@ export function useRunStore(): State & { scoped: boolean } {
     reqReady: false,
     busy: false,
     flash: null,
+    // 순위 변동 기록이 없는 예전 검색은 지금 검색의 기록을 쓰지 않는다
+    rankLog: scope.rankLog ?? [],
     scoped: true,
     // 이전 검색 카드에서 연 견적서는 그 검색의 값으로 보여 준다
     set: (p) => live.set(p.viewer ? { ...p, viewer: { ...p.viewer, scope } } : p)

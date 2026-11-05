@@ -6,7 +6,7 @@ import type { HistoryRecord, SessionSnapshot, TimelineItem } from '@shared/types
 import { pendingLive, useStore } from '@/store';
 import { useFrames } from '@/components/workspace/LiveFrame';
 
-const KEYS = ['stage', 'requirements', 'timeline', 'quotes', 'vendors', 'vendorStatus', 'steps', 'browsers', 'sources', 'mails', 'originals', 'runs', 'runOf'] as const;
+const KEYS = ['stage', 'requirements', 'timeline', 'quotes', 'vendors', 'vendorStatus', 'steps', 'browsers', 'sources', 'mails', 'originals', 'runs', 'runOf', 'rankLog'] as const;
 
 function takeSnapshot(): SessionSnapshot {
   const s = useStore.getState();
@@ -22,6 +22,7 @@ function applySnapshot(snap: SessionSnapshot) {
     ...Object.fromEntries(KEYS.map((k) => [k, snap[k]])),
     runs: snap.runs ?? {},
     runOf: snap.runOf ?? {},
+    rankLog: snap.rankLog ?? [],
     busy: false,
     flash: null,
     viewer: null,
