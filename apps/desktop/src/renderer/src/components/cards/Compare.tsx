@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, ExternalLink, FileText, ShoppingCart, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, FileText, ShoppingCart, SlidersHorizontal, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import CountUp from '../CountUp';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
+import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 
@@ -226,11 +227,8 @@ export function DocsCard() {
         {list.map((id, i) => {
           const doc = buildDoc(quotes[id]!, req, vendors.find((v) => v.id === id)?.url);
           return (
-            <button
-              key={id}
-              onClick={() => set({ viewer: { kind: 'vendor', id } })}
-              className="group flex flex-col rounded-xl border bg-card p-4 text-left transition-colors hover:border-muted-foreground/40"
-            >
+            <div key={id} className="group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-muted-foreground/40">
+            <button type="button" onClick={() => set({ viewer: { kind: 'vendor', id } })} className="flex flex-1 flex-col text-left">
               <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
                 <span className={cn('tabular-nums', i === 0 && 'font-semibold text-primary')}>{i + 1}위</span>
                 <span className="text-muted-foreground/40">·</span>
@@ -259,6 +257,8 @@ export function DocsCard() {
                 견적서 보기 <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
               </div>
             </button>
+            <QuoteSources q={quotes[id]!} />
+            </div>
           );
         })}
       </div>
@@ -284,5 +284,38 @@ export function ReportCard() {
       </Button>
       <Button onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </Card>
+  );
+}
+
+/** 이 견적의 값들이 어느 페이지에서 왔는지 (AI Elements Sources). 웹 출처가 있을 때만 */
+function QuoteSources({ q }: { q: Quote }) {
+  const refs = new Map<string, string>();
+  for (const k of ['listedPrice', 'installFee', 'shippingFee', 'warrantyMonths', 'warrantyExtraFee', 'leadTimeDays'] as const) {
+    const src = q[k].source;
+    if (src?.channel === 'web' && /^https?:/.test(src.ref) && !refs.has(src.ref)) refs.set(src.ref, src.snippet);
+  }
+  if (refs.size === 0) return null;
+  const host = (u: string) => {
+    try {
+      return new URL(u).host.replace(/^www\./, '');
+    } catch {
+      return u;
+    }
+  };
+  return (
+    <Sources className="group/src mb-0 mt-3 border-t pt-3 text-muted-foreground">
+      <SourcesTrigger count={refs.size} className="text-[12px] hover:text-foreground">
+        <span>출처 {refs.size}곳</span>
+        <ChevronDown className="size-3.5 transition-transform duration-200 group-data-[state=open]/src:rotate-180" />
+      </SourcesTrigger>
+      <SourcesContent className="mt-2 w-full gap-1.5">
+        {[...refs].map(([ref, snippet]) => (
+          <Source key={ref} href={ref} title={host(ref)} className="block rounded-md px-2 py-1.5 text-[12px] hover:bg-muted">
+            <span className="block font-medium text-foreground">{host(ref)}</span>
+            {snippet && <span className="line-clamp-1 text-muted-foreground">“{snippet}”</span>}
+          </Source>
+        ))}
+      </SourcesContent>
+    </Sources>
   );
 }
