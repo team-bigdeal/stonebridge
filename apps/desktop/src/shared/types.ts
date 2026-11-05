@@ -275,6 +275,8 @@ export type TimelineItem =
   | { id: string; kind: 'vendors'; slots?: VendorId[] }
   | { id: string; kind: 'mail'; draft: MailDraft }
   | { id: string; kind: 'upload'; vendorId: VendorId; message?: MessageDraft }
+  /** 메일 회신에 붙어 온 견적서 파일을 읽는 카드 (originalId = 그 회신의 받은 원본) */
+  | { id: string; kind: 'reply_file'; vendorId: VendorId; originalId: string }
   | { id: string; kind: 'compare' }
   | { id: string; kind: 'browser'; slot: Slot; title: string; /** 작게 보여 줄 보조 브라우저 (사이즈 조사) */ compact?: boolean }
   | { id: string; kind: 'docs' }

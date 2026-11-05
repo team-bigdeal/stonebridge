@@ -985,13 +985,14 @@ export async function onOpenSms(slot: VendorId, body: string) {
 
 // ─── 메일 채널 ────────────────────────────────────────────────
 
-function afterSent(draft: MailDraft) {
+/** watch=false: 받은편지함으로 회신을 기다리지 않는다 (계정으로 못 보내 시연으로만 보낸 메일) */
+function afterSent(draft: MailDraft, watch = true) {
   if (draft.kind === 'order') return;
   setVendorStatus(draft.vendorId, 'waiting_reply');
   if (draft.kind === 'question' && draft.fields) quoteStore.markAsked(draft.vendorId, draft.fields);
   // 조건 변경 뒤 늦게 온 이전 검색의 회신은 새 견적에 섞지 않는다
   const gen = generation;
-  if (imapConfigured()) watchReply(draft.vendorId, draft.kind, subjectTag(draft), (r) => void (gen === generation && handleReply(draft.vendorId, draft.kind, r)));
+  if (watch && imapConfigured()) watchReply(draft.vendorId, draft.kind, subjectTag(draft), (r) => void (gen === generation && handleReply(draft.vendorId, draft.kind, r)));
   maybeOpenGate();
 }
 
@@ -1013,7 +1014,7 @@ export async function onMailSend(input: MailDraft) {
   // 연달아 눌러도 한 번만 보내도록 보내는 동안 초안을 빼 둔다 (실패하면 되돌림)
   const stored = drafts.get(draft.id)!;
   drafts.delete(draft.id);
-  let sent: MailRecord;
+  let sent: Awaited<ReturnType<typeof sendMail>>;
   try {
     sent = await sendMail(draft);
   } catch (e) {
@@ -1021,58 +1022,65 @@ export async function onMailSend(input: MailDraft) {
     return { ok: false, error: errMsg(e) };
   }
   if (gen !== generation) return { ok: true, imap: false };
-  afterSent(draft);
+  afterSent(draft, !sent.simulated);
+  // 시연용 주소인데 계정으로 못 보냈으면(토큰 만료 등) 시연이 멈추지 않게 회신만 흉내 낸다
+  if (sent.simulated) notice(`메일 계정으로 보내지 못해 실제 발송 없이 시연용 회신만 받을게요 (${sent.simulated})`, draft.vendorId);
   const demo = isDemoAddress(draft.to);
   if (demo) scheduleDemoReply(draft, sent);
   return { ok: true, imap: imapConfigured() || demo };
 }
 
-/** 받은편지함에 넣은 시연 회신을 이 시간 안에 못 읽으면 바로 반영한다 */
-const DEMO_IMAP_WATCHDOG_MS = 30_000;
+/** 받은편지함 경로: 회신이 약속한 시각(보낸 뒤 DEMO_REPLY_DELAY_MS)쯤 읽히도록 이만큼 먼저 받은편지함에 넣기 시작한다 */
+const DEMO_IMAP_LEAD_MS = 2000;
+/** 받은편지함에 넣은 시연 회신을 약속한 시각 뒤 이 시간 안에 못 읽으면 바로 반영한다 */
+const DEMO_IMAP_WATCHDOG_MS = 3000;
+const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
 
-/** 시연용 주소(.test)로 보낸 메일: 잠시 뒤 목업 업체가 답장한 것처럼 회신을 넣는다.
+/** 시연용 주소(.test)로 보낸 메일: 잠시 뒤 목업 업체가 견적서 PDF를 붙여 답장한 것처럼 회신을 넣는다.
  *  메일 계정이 있으면 진짜 받은편지함에 넣어 평소처럼 IMAP으로 읽게 하고, 없으면 바로 회신으로 처리한다 */
 function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
   if (!requirements) return;
-  const reply = demoReply(draft, requirements, vendorName(draft.vendorId));
-  if (!reply) return;
+  const req = requirements;
   const gen = generation;
   const tag = subjectTag(draft);
-  const inject = () =>
-    handleReply(draft.vendorId, draft.kind, {
-      vendorId: draft.vendorId,
-      tag,
-      messageId: `<demo-${randomUUID()}@doldari.local>`,
-      from: `${reply.fromName} <${draft.to}>`,
-      subject: `Re: ${sent.subject}`,
-      text: reply.text,
-      attachments: []
-    });
-  setTimeout(() => {
-    if (gen !== generation) return cancelWatch(tag);
-    void (async () => {
-      // 보낼 때 IMAP으로 회신을 기다리기 시작한 경우에만 받은편지함 경로를 쓴다 (그 사이 계정 연결이 바뀌어도 회신이 묻히지 않게)
-      if (isWatching(tag) && imapConfigured()) {
-        try {
-          await appendToInbox(await demoReplyMessage({ vendorAddress: draft.to, fromName: reply.fromName, to: mailUser(), subject: sent.subject, inReplyTo: sent.id, text: reply.text }));
-          checkNow();
-          // 폴링이 끝내 못 읽으면 기다림을 거두고 바로 반영한다
-          setTimeout(() => {
-            if (gen !== generation || !isWatching(tag)) return;
-            cancelWatch(tag);
-            void inject().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
-          }, DEMO_IMAP_WATCHDOG_MS);
-          return;
-        } catch (e) {
-          notice(`받은편지함에 시연용 회신을 넣지 못해 바로 반영할게요: ${errMsg(e)}`, draft.vendorId);
-        }
+  const due = Date.now() + DEMO_REPLY_DELAY_MS;
+  void (async () => {
+    // 기다리는 동안 회신(견적서 PDF 포함)을 미리 만든다
+    const reply = await demoReply(draft, req, vendorName(draft.vendorId));
+    if (!reply) return;
+    const inject = () =>
+      handleReply(draft.vendorId, draft.kind, {
+        vendorId: draft.vendorId,
+        tag,
+        messageId: `<demo-${randomUUID()}@doldari.local>`,
+        from: `${reply.fromName} <${draft.to}>`,
+        subject: `Re: ${sent.subject}`,
+        text: reply.text,
+        attachments: reply.attachments
+      });
+    // 보낼 때 IMAP으로 회신을 기다리기 시작한 경우에만 받은편지함 경로를 쓴다 (그 사이 계정 연결이 바뀌어도 회신이 묻히지 않게)
+    if (isWatching(tag) && imapConfigured()) {
+      await waitMs(due - DEMO_IMAP_LEAD_MS - Date.now());
+      if (gen !== generation) return cancelWatch(tag);
+      try {
+        await appendToInbox(await demoReplyMessage({ vendorAddress: draft.to, fromName: reply.fromName, to: mailUser(), subject: sent.subject, inReplyTo: sent.id, text: reply.text, attachments: reply.attachments }));
+        checkNow();
+        // 폴링이 끝내 못 읽으면 기다림을 거두고 바로 반영한다
+        await waitMs(Math.max(due, Date.now()) + DEMO_IMAP_WATCHDOG_MS - Date.now());
+        if (gen !== generation || !isWatching(tag)) return;
+        cancelWatch(tag);
+        await inject();
+        return;
+      } catch (e) {
+        notice(`받은편지함에 시연용 회신을 넣지 못해 바로 반영할게요: ${errMsg(e)}`, draft.vendorId);
       }
-      // 기다리던 IMAP 회신을 거두고 바로 반영한다
-      cancelWatch(tag);
-      if (gen !== generation) return;
-      await inject();
-    })().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
-  }, DEMO_REPLY_DELAY_MS);
+    }
+    await waitMs(due - Date.now());
+    // 기다리던 IMAP 회신을 거두고 바로 반영한다
+    cancelWatch(tag);
+    if (gen !== generation) return;
+    await inject();
+  })().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
 }
 
 export async function onMailExternal(input: MailDraft) {
@@ -1091,6 +1099,17 @@ export async function onPasteReply(slot: VendorId, kind: MailKind, text: string)
   await handleReply(slot, kind, { vendorId: slot, tag: '', messageId: `pasted-${Date.now()}`, from: getVendor(slot)?.email ?? '', subject: '붙여넣은 회신', text, attachments: [] });
 }
 
+/** 업체 이름을 주소(localhost:4102 등)로밖에 못 정했으면, 받은 견적서의 공급자 상호로 바꾼다 */
+function renameFromSupplier(slot: VendorId, supplier?: string) {
+  const v = getVendor(slot);
+  const name = supplier?.trim().slice(0, 60);
+  if (!v || !name || (!provisional.has(slot) && v.name !== hostLabel(v.url))) return;
+  provisional.delete(slot);
+  replaceVendor({ ...v, name });
+  quoteStore.renameVendor(slot, name);
+  emit('vendors', { payload: listVendors() });
+}
+
 async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
   if (!requirements) return;
   recordMail({ id: r.messageId, direction: 'in', vendorId: slot, kind, from: r.from, subject: r.subject, body: r.text, at: new Date().toISOString() });
@@ -1101,10 +1120,11 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
     const mime = block.type === 'document' ? 'application/pdf' : block.type === 'image' && block.source.type === 'base64' ? block.source.media_type : a.contentType;
     return [{ block, name: a.filename || '첨부 파일', mime, data: `data:${mime};base64,${a.content.toString('base64')}` }];
   });
+  const mailId = randomUUID();
   emit('original', {
     vendorId: slot,
     payload: {
-      id: randomUUID(),
+      id: mailId,
       vendorId: slot,
       channel: 'mail',
       title: r.subject,
@@ -1115,8 +1135,20 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
       capturedAt: new Date().toISOString()
     } satisfies QuoteOriginal
   });
+  // 첨부 견적서는 받은 원본에 따로도 넣는다 ("메일 회신" 옆에 "견적서 PDF"로 보이게)
+  for (const d of docs) {
+    emit('original', {
+      vendorId: slot,
+      payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: `메일 첨부 · ${d.name}`, fileName: d.name, ref: r.messageId, mime: d.mime, fileData: d.data, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+    });
+  }
   setVendorStatus(slot, 'parsing');
-  say(`${vendorName(slot)}에서 회신이 왔어요. 견적서 양식으로 정리할게요.`);
+  if (docs.length) {
+    say(`${vendorName(slot)}에서 회신이 왔어요. 첨부된 견적서(${docs.map((d) => d.name).join(', ')})를 읽어 견적서 양식으로 정리할게요.`);
+    timeline({ kind: 'reply_file', vendorId: slot, originalId: mailId });
+  } else {
+    say(`${vendorName(slot)}에서 회신이 왔어요. 견적서 양식으로 정리할게요.`);
+  }
   try {
     const files = docs.map((d) => d.block);
     const { fields, meta } = await extractQuote({
@@ -1130,6 +1162,7 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
         { type: 'text', text: `제목: ${r.subject}\n\n${r.text}` }
       ]
     });
+    renameFromSupplier(slot, meta.supplier?.name);
     const added = applyFields(slot, quoteStore.hasField(slot, 'leadTimeDays') ? fields : fillLeadTimeFromText(fields, r.text), meta, 'mail', r.messageId, kind !== 'request');
     setVendorStatus(slot, 'done');
     say(added.length ? `${vendorName(slot)} 회신에서 ${added.join(', ')}를 확인했어요.` : `${vendorName(slot)} 회신에서 새 견적 값을 찾지 못했어요.`);

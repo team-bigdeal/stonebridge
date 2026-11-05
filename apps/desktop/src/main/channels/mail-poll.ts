@@ -29,6 +29,8 @@ let timer: NodeJS.Timeout | null = null;
 let since = new Date();
 const seen = new Set<string>();
 let polling = false;
+/** 확인 중에 checkNow가 불림 → 끝나면 한 번 더 확인 */
+let again = false;
 
 /** 지금 연결된 계정으로 IMAP 클라이언트를 만든다 (토큰이 바뀔 수 있어 접속할 때마다) */
 async function imapClient() {
@@ -84,7 +86,9 @@ export function cancelAllWatches() {
 /** 다음 폴링을 기다리지 않고 바로 확인 (멈춰 있었으면 다시 시작) */
 export function checkNow() {
   resumePolling();
-  void poll();
+  // 확인 중이면 그 확인이 방금 들어온 메일을 놓쳤을 수 있어 끝나는 대로 한 번 더 본다
+  if (polling) again = true;
+  else void poll();
 }
 
 /** 받은편지함에 메일을 직접 넣는다 (시연용 업체 회신). 넣은 메일은 평소처럼 폴링으로 읽힌다 */
@@ -130,6 +134,8 @@ async function poll() {
         if (!msg || !msg.source) continue;
         const parsed = await simpleParser(msg.source);
         seen.add(String(uid));
+        // 받는 사이에 기다림을 거뒀으면(시연 회신을 바로 반영함) 두 번 처리하지 않는다
+        if (!watches.has(watch.tag)) continue;
         watches.delete(watch.tag);
         watch.resolve({
           vendorId: watch.vendorId,
@@ -154,6 +160,10 @@ async function poll() {
   } finally {
     polling = false;
     if (watches.size === 0) stopPolling();
+    else if (again) {
+      again = false;
+      void poll();
+    }
   }
 }
 

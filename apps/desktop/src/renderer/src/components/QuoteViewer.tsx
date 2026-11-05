@@ -355,7 +355,7 @@ function OriginalView({ o }: { o: QuoteOriginal }) {
 }
 
 /** 받은 PDF를 앱 안 PDF 뷰어로 (data: URL은 iframe에서 막히는 경우가 있어 blob: URL로 바꿔 띄운다) */
-function PdfFrame({ title, dataUrl }: { title: string; dataUrl: string }) {
+export function PdfFrame({ title, dataUrl, className }: { title: string; dataUrl: string; className?: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
@@ -367,5 +367,5 @@ function PdfFrame({ title, dataUrl }: { title: string; dataUrl: string }) {
     return () => URL.revokeObjectURL(url);
   }, [dataUrl]);
   if (!src) return null;
-  return <iframe title={title} src={src} className="h-[70vh] w-full rounded border bg-white" />;
+  return <iframe title={title} src={src} className={cn('h-[70vh] w-full rounded border bg-white', className)} />;
 }

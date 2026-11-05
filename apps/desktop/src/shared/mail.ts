@@ -4,4 +4,4 @@
 export const isDemoAddress = (to: string) => /^[^\s@]+@[^\s@]+\.test$/i.test(to.trim());
 
 /** 시연용 주소로 보낸 뒤 업체 회신이 오기까지 (회신 대기 화면이 잠깐 보이도록) */
-export const DEMO_REPLY_DELAY_MS = 6000;
+export const DEMO_REPLY_DELAY_MS = 3000;
