@@ -2,7 +2,7 @@ import { Check, Maximize, PanelLeft, Plus, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
-import { dropReplay } from '@/replay';
+import { newSession } from '@/replay';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
@@ -18,12 +18,7 @@ const STAGE_LABEL: Partial<Record<(typeof STAGES)[number]['id'], string>> = {
 
 /** 새 견적 시작. 확인 없이 바로 초기화 (헤더·사이드바 공용) */
 export function useRestart() {
-  const { resetAll } = useStore();
-  return async function restart() {
-    dropReplay();
-    await window.doldari.reset();
-    resetAll();
-  };
+  return newSession;
 }
 
 export function TopBar() {

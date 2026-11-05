@@ -3,31 +3,29 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useStore } from './store';
 import { Chat } from './components/Chat';
 import { ExpandedBrowser, Notices, SidebarToggle, TopBar } from './components/Shell';
-import { pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
 import { RequirementsPanel } from './components/RequirementsPanel';
-import { startAutosave } from './replay';
+import { routeEvent, routeFrame, startAutosave } from './replay';
 import { useTheme } from './lib/theme';
 
 export default function App() {
-  const handle = useStore((s) => s.handle);
   const set = useStore((s) => s.set);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   useTheme(useStore((s) => s.config?.theme));
 
   useEffect(() => {
     window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey }));
-    const offEvent = window.doldari.onEvent(handle);
-    const offFrame = window.doldari.onFrame(({ slot, data }) => pushFrame(slot, data));
+    const offEvent = window.doldari.onEvent(routeEvent);
+    const offFrame = window.doldari.onFrame(routeFrame);
     const offSave = startAutosave();
     return () => {
       offEvent();
       offFrame();
       offSave();
     };
-  }, [handle, set]);
+  }, [set]);
 
   return (
     <TooltipProvider>

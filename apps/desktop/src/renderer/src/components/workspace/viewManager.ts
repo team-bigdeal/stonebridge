@@ -63,6 +63,12 @@ function tick() {
   raf = requestAnimationFrame(tick);
 }
 
+/** 보는 견적 세션을 바꾼 뒤: 같은 자리라도 새 세션 뷰가 그 자리에 오도록 모두 다시 보낸다 */
+export function resendViews() {
+  sent.clear();
+  start();
+}
+
 function start() {
   if (!raf) raf = requestAnimationFrame(tick);
 }
