@@ -81,6 +81,9 @@ function registerIpc() {
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));
   ipcMain.handle('mail:external', (_e, draft: MailDraft) => flow.onMailExternal(draft));
   ipcMain.handle('mail:pasteReply', (_e, vendorId: VendorId, kind: MailKind, text: string) => flow.onPasteReply(vendorId, kind, text));
+  ipcMain.handle('message:sent', (_e, vendorId: VendorId) => flow.onMessageSent(vendorId));
+  ipcMain.handle('message:paste', (_e, vendorId: VendorId, text: string) => flow.onPasteMessage(vendorId, text));
+  ipcMain.handle('message:sms', (_e, vendorId: VendorId, body: string) => flow.onOpenSms(vendorId, body));
   ipcMain.handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
   ipcMain.handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
   ipcMain.handle('agent:retry', (_e, id: VendorId) => flow.retry(id));

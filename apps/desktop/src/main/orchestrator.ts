@@ -2,7 +2,7 @@
 // 요구 조건 → 브라우저 3개가 동시에 각자 업체를 찾아 견적 수집(가격 없으면 메일/파일) → 업체별 통일 견적서 → 비교·추천 → 작성 → 통합 견적서
 import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
-import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
+import type { FieldKey, MailDraft, MailKind, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
 import { hasApiKey, imapConfigured, sleep } from './config';
@@ -20,7 +20,7 @@ import { sizeScanStarted, startSizeScan, stopSizeScan } from './sizes';
 import { boardFor, noteVerdict, noteVisit, resetShared, siteKey } from './agent/shared';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
-import { formMessage, orderDraft, parseContact, questionDraft, requestDraft } from './drafts';
+import { formMessage, messageDraft, orderDraft, parseContact, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
 import { watchReply, type IncomingReply } from './channels/mail-poll';
 import { extractQuote } from './channels/extract';
@@ -40,6 +40,8 @@ let docsShown = false;
 let compareShown = false;
 let generation = 0;
 const drafts = new Map<string, MailDraft>();
+/** 브라우저(업체)마다 문자·카톡 문의 초안 (전화번호는 여기서만 꺼내 쓴다) */
+const messages = new Map<VendorId, MessageDraft>();
 /** 교체된 업체는 다시 고르지 않는다 */
 const banned = new Set<string>();
 /** 브라우저마다 웹 견적을 시도할 업체 수. 다 안 되면 그때 메일/파일로 */
@@ -333,8 +335,11 @@ async function useFallback(slot: VendorId, fb: Fallback, exhausted: boolean) {
   } else {
     quoteStore.setChannel(slot, 'file');
     setVendorStatus(slot, 'needs_file');
-    say(`${why}${fb.vendor.name}의 견적서를 직접 받아야 해요 (${clause(fb.reason)}${fb.contact ? `, 연락: ${fb.contact}` : ''}). 받은 PDF·이미지를 올려 주시면 같은 양식으로 정리할게요.`);
-    timeline({ kind: 'upload', vendorId: slot });
+    const message = messageDraft(slot, requirements, fb.contact);
+    messages.set(slot, message);
+    const how = message.chatUrl && message.phone ? '카카오톡이나 문자' : message.chatUrl ? '카카오톡' : message.phone ? '문자' : '카카오톡·문자';
+    say(`${why}${fb.vendor.name}는 ${how}로 견적을 받아야 해요 (${clause(fb.reason)}). 아래 문의 초안을 확인해 보내 주세요. 받은 견적서 PDF를 올리거나 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교할게요.`);
+    timeline({ kind: 'upload', vendorId: slot, message });
   }
 }
 
@@ -668,6 +673,49 @@ export async function onFileUpload(slot: VendorId, file: { name: string; mime: s
   maybeOpenGate();
 }
 
+// ─── 문자·카톡 채널 (사용자가 직접 보내고, 받은 견적서·답장을 넣는다) ─────
+
+/** 사용자가 문의를 보냄 → 회신 대기 */
+export function onMessageSent(slot: VendorId) {
+  if (!messages.has(slot)) return;
+  setVendorStatus(slot, 'waiting_reply');
+  maybeOpenGate();
+}
+
+/** 받은 답장 글을 붙여 넣음 → 견적서와 같은 방식으로 항목을 뽑아 비교에 넣는다 */
+export async function onPasteMessage(slot: VendorId, text: string) {
+  const body = typeof text === 'string' ? text.trim().slice(0, 20000) : '';
+  if (!requirements || !body) return;
+  const ref = '문자·카톡 답장';
+  setVendorStatus(slot, 'parsing');
+  emit('original', {
+    vendorId: slot,
+    payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: ref, text: body, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+  });
+  try {
+    const { fields, meta } = await extractQuote({ vendorId: slot, requirements, hint: ref, ref, channel: 'file', content: [{ type: 'text', text: body }] });
+    const added = applyFields(slot, quoteStore.hasField(slot, 'leadTimeDays') ? fields : fillLeadTimeFromText(fields, body), meta, 'file', ref);
+    setVendorStatus(slot, 'done');
+    say(added.length ? `${vendorName(slot)} 답장에서 ${added.join(', ')}를 확인했어요.` : `${vendorName(slot)} 답장에서 견적 값을 찾지 못했어요. 견적서 PDF를 받으면 올려 주세요.`);
+  } catch (e) {
+    setVendorStatus(slot, 'waiting_reply');
+    notice(`${vendorName(slot)} 답장 분석 실패: ${errMsg(e)}`, slot);
+  }
+  maybeOpenGate();
+}
+
+/** 문자 앱 열기. 번호는 main이 가진 초안에서 꺼낸다 (renderer가 임의 주소를 열지 못하게) */
+export async function onOpenSms(slot: VendorId, body: string) {
+  const phone = messages.get(slot)?.phone;
+  if (!phone || !/^0\d{8,10}$/.test(phone)) return { ok: false, error: '전화번호가 없어요. 초안을 복사해 보내 주세요.' };
+  try {
+    await shell.openExternal(`sms:${phone}?body=${encodeURIComponent(String(body ?? '').slice(0, 2000))}`);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: '이 컴퓨터에서 문자 앱을 열 수 없어요. 초안을 복사해 휴대폰으로 보내 주세요.' };
+  }
+}
+
 // ─── 메일 채널 ────────────────────────────────────────────────
 
 function afterSent(draft: MailDraft) {
@@ -936,6 +984,7 @@ function clearRun() {
   announced = '';
   reportShown = false;
   drafts.clear();
+  messages.clear();
   banned.clear();
   captured.clear();
   verified.clear();
