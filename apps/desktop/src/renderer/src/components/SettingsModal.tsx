@@ -1,59 +1,201 @@
-import { useEffect, useState } from 'react';
-import { ChevronDown, Loader2, Mail, X } from 'lucide-react';
-import type { SettingsInput } from '@shared/types';
+import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, X } from 'lucide-react';
+import type { AppConfig, SettingsInput } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Pill } from './cards/Section';
 import { useStore } from '../store';
 
-const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
+const MODELS = [
+  { id: 'claude-opus-5-5', label: 'Opus' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet' },
+  { id: 'claude-haiku-5-5', label: 'Haiku' }
+];
 
-/** API 키·메일 설정. 비밀값은 main 프로세스로만 가고 화면에 다시 표시하지 않는다 */
+/** 설정 창 (메인 화면 카드와 같은 모양). 모든 항목을 한 화면에서 본다.
+ *  비밀값은 main 프로세스로만 가고 화면에 다시 표시하지 않는다 */
 export default function SettingsModal() {
-  const { settingsOpen, config, set } = useStore();
-  const [form, setForm] = useState<SettingsInput>({});
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [saved, setSaved] = useState('');
-  const [loginUrl, setLoginUrl] = useState('https://www.naver.com');
-  const [google, setGoogle] = useState<'idle' | 'waiting'>('idle');
-  const [googleError, setGoogleError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showClient, setShowClient] = useState(false);
+  const { settingsOpen, settingsTab, config, set } = useStore();
+  const mailRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!settingsOpen || !config) return;
-    setForm({ ANTHROPIC_MODEL: config.model, SMTP_USER: config.smtpUser, BROWSER_BACKEND: config.browserPref });
-    setError('');
-    setSaved('');
-    setGoogleError('');
-    setShowPassword(config.mailAuth === 'password');
+    // 메일 카드의 "Google 계정을 연결하면…"으로 열었으면 메일 항목으로 바로 내려 준다
+    if (settingsTab === 'mail') requestAnimationFrame(() => mailRef.current?.scrollIntoView({ block: 'start' }));
     // 열 때마다 최신 상태로 (Google 연결이 만료됐을 수 있음)
     void window.doldari.config().then((c) => set({ config: c }));
-    // 열 때 한 번만 초기화한다 (config가 바뀔 때마다 하면 연결 중에 입력한 값이 지워짐)
+    // 열 때 한 번만 (config가 바뀔 때마다 하면 입력 중인 값이 지워짐)
   }, [settingsOpen]);
 
   if (!settingsOpen || !config) return null;
-  const up = (k: keyof SettingsInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
-  const close = () => set({ settingsOpen: false });
+  const close = () => set({ settingsOpen: false, settingsTab: undefined });
 
-  async function save() {
-    setSaving(true);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
+      onKeyDown={(e) => e.key === 'Escape' && close()}
+    >
+      <div role="dialog" aria-modal="true" aria-label="설정" className="flex max-h-[88vh] w-full max-w-[720px] flex-col gap-4 rounded-lg bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
+          <div className="flex flex-col gap-2 leading-normal">
+            <p className="text-[19px] font-semibold text-ink">설정</p>
+            <p className="text-[14px] font-medium text-muted-foreground">이 컴퓨터에만 저장돼요.</p>
+          </div>
+          <button type="button" onClick={close} aria-label="닫기" className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-ink">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-1">
+          <div className="flex flex-col gap-8">
+            <Section title="AI 모델">
+              <AiTab config={config} />
+            </Section>
+            <Section title="브라우저">
+              <BrowserTab config={config} />
+            </Section>
+            <Section title="메일" ref={mailRef}>
+              <MailTab config={config} />
+            </Section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children, ref }: { title: string; children: React.ReactNode; ref?: React.Ref<HTMLElement> }) {
+  return (
+    <section ref={ref} className="flex scroll-mt-2 flex-col gap-4">
+      <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** 바뀐 값만 저장하고 결과를 그 자리에서 보여 준다 */
+function useSave() {
+  const set = useStore((s) => s.set);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [error, setError] = useState('');
+  async function save(input: SettingsInput, after?: () => void) {
+    setState('saving');
     setError('');
-    const input: SettingsInput = { ...form };
-    if (input.SMTP_USER) input.IMAP_USER = input.SMTP_USER;
-    if (input.SMTP_PASS) input.IMAP_PASS = input.SMTP_PASS;
-    const res = await window.doldari.saveSettings(input);
-    setSaving(false);
+    const res = await window.doldari.saveSettings(input).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e), config: undefined }));
     if (!res.ok) {
+      setState('idle');
       setError(res.error ?? '저장하지 못했어요');
       return;
     }
-    set({ config: res.config! });
-    setForm((f) => ({ ...f, ANTHROPIC_API_KEY: '', SMTP_PASS: '', GOOGLE_CLIENT_SECRET: '' }));
-    setSaved('저장했어요.');
+    if (res.config) set({ config: res.config });
+    setState('saved');
+    after?.();
+    setTimeout(() => setState((s) => (s === 'saved' ? 'idle' : s)), 2000);
   }
+  return { state, error, save };
+}
+
+function AiTab({ config }: { config: AppConfig }) {
+  const set = useStore((s) => s.set);
+  const [key, setKey] = useState('');
+  const [editKey, setEditKey] = useState(!config.hasApiKey);
+  const [model, setModel] = useState(config.model);
+  const { state, error, save } = useSave();
+  const models = MODELS.some((m) => m.id === config.model) ? MODELS : [{ id: config.model, label: config.model }, ...MODELS];
+  const dirty = model !== config.model || key.trim() !== '';
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Row label="API 키" hint={editKey ? `저장할 때 키가 동작하는지 먼저 확인해요.${config.hasApiKey ? ' 비워 두면 지금 키를 그대로 써요.' : ''}` : '저장한 키는 다시 보여 주지 않아요.'}>
+        {editKey ? (
+          <Box filled={key !== ''}>
+            <BareInput type="password" autoFocus spellCheck={false} placeholder="sk-ant-…" value={key} onChange={setKey} className="font-mono" />
+          </Box>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Box filled>
+              <span className="text-[14px] font-medium text-black">저장됨</span>
+            </Box>
+            <Button type="button" variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => setEditKey(true)}>
+              바꾸기
+            </Button>
+            <button type="button" onClick={async () => set({ config: await window.doldari.clearApiKey() })} className="text-[13px] text-muted-foreground underline-offset-2 hover:text-destructive hover:underline">
+              지우기
+            </button>
+          </div>
+        )}
+      </Row>
+
+      <Row label="모델" hint="Opus는 가장 꼼꼼하고, Haiku는 가장 빨라요.">
+        <Segmented value={model} options={models.map((m) => ({ value: m.id, label: m.label }))} onChange={setModel} />
+      </Row>
+
+      <SaveBar
+        dirty={dirty}
+        state={state}
+        error={error}
+        label={key.trim() ? '키 확인하고 저장' : '저장'}
+        onSave={() =>
+          save({ ...(key.trim() ? { ANTHROPIC_API_KEY: key.trim() } : {}), ANTHROPIC_MODEL: model }, () => {
+            setKey('');
+            setEditKey(false);
+          })
+        }
+      />
+    </div>
+  );
+}
+
+function BrowserTab({ config }: { config: AppConfig }) {
+  const [pref, setPref] = useState(config.browserPref);
+  const [loginUrl, setLoginUrl] = useState('https://www.naver.com');
+  const { state, error, save } = useSave();
+  const dirty = pref !== config.browserPref;
+  const now = config.browser === 'aside' ? 'Aside 브라우저' : config.browser === 'electron' ? '내장 브라우저' : '확인 중';
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Row
+        label="쓸 브라우저"
+        hint={dirty ? '저장하면 바로 바뀌어요. 탐색 중이었다면 진행 중인 탐색은 멈춰요.' : `지금은 ${now}로 탐색해요. Aside 우선은 Aside가 설치돼 있으면 내 Aside 탭을 써요.`}
+      >
+        <Segmented
+          value={pref}
+          options={[
+            { value: 'auto', label: 'Aside 우선' },
+            { value: 'electron', label: '내장 브라우저' }
+          ]}
+          onChange={(v) => setPref(v as AppConfig['browserPref'])}
+        />
+      </Row>
+      <SaveBar dirty={dirty} state={state} error={error} onSave={() => save({ BROWSER_BACKEND: pref })} />
+
+      <Row label="미리 로그인" hint="내장 브라우저에서 쓸 사이트에 직접 로그인해 두세요. 돌다리는 비밀번호를 보지 않아요.">
+        <div className="flex items-center gap-3">
+          <Box filled={loginUrl !== ''} className="flex-1">
+            <BareInput value={loginUrl} onChange={setLoginUrl} placeholder="https://www.naver.com" />
+          </Box>
+          <Button type="button" variant="outline" className="h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={() => window.doldari.openLoginWindow(loginUrl)}>
+            로그인 창 열기
+          </Button>
+        </div>
+      </Row>
+    </div>
+  );
+}
+
+function MailTab({ config }: { config: AppConfig }) {
+  const set = useStore((s) => s.set);
+  const [google, setGoogle] = useState<'idle' | 'waiting'>('idle');
+  const [googleError, setGoogleError] = useState('');
+  const [advanced, setAdvanced] = useState(!config.googleClient || config.mailAuth === 'password');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [smtpUser, setSmtpUser] = useState(config.smtpUser);
+  const [smtpPass, setSmtpPass] = useState('');
+  const client = useSave();
+  const password = useSave();
 
   /** 시스템 브라우저에서 로그인·동의를 마칠 때까지 기다린다 */
   async function connectGoogle() {
@@ -79,189 +221,187 @@ export default function SettingsModal() {
     }
   }
 
-  const select = 'h-9 w-full rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/50';
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={(e) => e.key === 'Escape' && close()}>
-      <form
-        className="flex max-h-[90vh] w-[520px] flex-col rounded-xl border bg-card shadow-2xl"
-        autoComplete="off"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
+    <div className="flex flex-col gap-5">
+      <Row
+        label="Google 계정"
+        hint={
+          google === 'waiting'
+            ? '브라우저에서 Google 로그인과 메일 권한 허용을 마쳐 주세요.'
+            : "연결하면 메일 카드에서 '승인하고 보내기'를 누를 때 이 계정으로 업체에 보내고, 회신도 자동으로 읽어요. 7일마다 다시 연결해야 해요."
+        }
       >
-        <div className="flex items-center gap-3 border-b px-5 py-3.5">
-          <div>
-            <div className="text-[15px] font-semibold">설정</div>
-            <div className="text-[12px] text-muted-foreground">이 컴퓨터에만 저장돼요</div>
-          </div>
-          <Button type="button" size="icon" variant="ghost" className="ml-auto size-8" onClick={close} aria-label="닫기">
-            <X className="size-4" />
-          </Button>
-        </div>
-
-        {/* 지금 상태 한눈에 (상단 바에서 옮겨 옴) */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-b bg-muted/30 px-5 py-2.5 text-[12px] text-muted-foreground">
-          <Status on={config.hasApiKey} bad={!config.hasApiKey}>{config.hasApiKey ? config.model : 'API 키 필요'}</Status>
-          <Status on={config.browser === 'aside'} warn={config.browser === 'electron'} title={config.browser === 'aside' ? '사용자의 Aside 브라우저로 탐색해요' : '앱 안에 보이는 브라우저로 탐색해요'}>
-            {config.browser === 'aside' ? 'Aside 브라우저' : config.browser === 'electron' ? '내장 브라우저' : '브라우저 확인 중'}
-          </Status>
-          <Status on={config.smtpConfigured} title={config.mailUser || undefined}>
-            {config.mailAuth === 'google' ? 'Google 메일 연결됨' : config.mailAuth === 'password' ? '메일 연결됨 (앱 비밀번호)' : '메일 연결 안 됨'}
-          </Status>
-        </div>
-
-        <div className="scroll-thin min-h-0 flex-1 divide-y overflow-y-auto px-5 text-sm">
-          <Section title="Anthropic API 키" status={<Pill tone={config.hasApiKey ? 'ok' : 'bad'}>{config.hasApiKey ? '저장됨' : '필요'}</Pill>}>
-            <Input
-              id="api-key"
-              type="password"
-              autoFocus
-              spellCheck={false}
-              placeholder={config.hasApiKey ? '바꾸려면 새 키를 입력 (비워 두면 그대로)' : 'sk-ant-…'}
-              value={form.ANTHROPIC_API_KEY ?? ''}
-              onChange={up('ANTHROPIC_API_KEY')}
-              className="font-mono"
-            />
-            <label className="block space-y-1">
-              <span className="text-[12px] text-muted-foreground">모델</span>
-              <select value={form.ANTHROPIC_MODEL ?? config.model} onChange={up('ANTHROPIC_MODEL')} className={select}>
-                {[...new Set([config.model, ...MODELS])].map((m) => (
-                  <option key={m}>{m}</option>
-                ))}
-              </select>
-            </label>
-            <Hint>
-              저장할 때 키가 동작하는지 먼저 확인해요. 저장한 키는 다시 보여 주지 않아요.
-              {config.hasApiKey && (
-                <button type="button" onClick={async () => set({ config: await window.doldari.clearApiKey() })} className="ml-2 text-destructive hover:underline">
-                  저장된 키 지우기
-                </button>
-              )}
-            </Hint>
-          </Section>
-
-          <Section
-            title="브라우저"
-            status={<span className="text-[12px] text-muted-foreground">지금 {config.browser === 'aside' ? 'Aside' : config.browser === 'electron' ? '내장 브라우저' : '확인 중'}</span>}
-          >
-            <select value={form.BROWSER_BACKEND ?? config.browserPref} onChange={up('BROWSER_BACKEND')} className={select}>
-              <option value="auto">Aside 우선 (설치돼 있으면 내 Aside 브라우저 사용)</option>
-              <option value="electron">내장 브라우저 (앱 안에서 보이는 브라우저)</option>
-            </select>
-            <Hint>저장하면 바로 바뀌어요. 탐색 중이었다면 진행 중인 탐색은 멈춰요.</Hint>
-            <div className="space-y-1 pt-1">
-              <span className="text-[12px] text-muted-foreground">미리 로그인해 둘 사이트</span>
-              <div className="flex gap-2">
-                <Input value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder="https://www.naver.com" />
-                <Button type="button" variant="outline" className="shrink-0" onClick={() => window.doldari.openLoginWindow(loginUrl)}>
-                  로그인 창 열기
-                </Button>
-              </div>
-            </div>
-            <Hint>내장 브라우저에서 쓸 사이트에 직접 로그인해 두세요. 돌다리는 비밀번호를 보지 않고 로그인 상태만 함께 써요.</Hint>
-          </Section>
-
-          <Section title="메일 (Gmail)" status={config.smtpConfigured ? <Pill tone="ok">연결됨</Pill> : <span className="text-[12px] text-muted-foreground">선택 사항</span>}>
-            {config.googleUser ? (
-              <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Mail className="size-4" />
+        <div className="flex items-center gap-3">
+          {config.googleUser ? (
+            <>
+              <Box filled className="min-w-0 flex-1">
+                <span className="truncate text-[14px] font-medium text-black" title={config.googleUser}>
+                  {config.googleUser}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium" title={config.googleUser}>{config.googleUser}</div>
-                  <div className="text-[12px] text-muted-foreground">Google 계정으로 연결됨</div>
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={() => void disconnectGoogle()}>
-                  연결 해제
-                </Button>
-              </div>
-            ) : google === 'waiting' ? (
-              <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
-                <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
-                <div className="min-w-0 flex-1 text-[13px]">브라우저에서 Google 로그인과 메일 권한 동의를 마쳐 주세요.</div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => void window.doldari.cancelGoogle()}>
-                  취소
-                </Button>
-              </div>
-            ) : (
-              <Button type="button" className="w-full" disabled={!config.googleClient} onClick={() => void connectGoogle()} title={config.googleClient ? undefined : '아래에 OAuth 클라이언트 ID를 먼저 저장해 주세요'}>
-                <Mail className="size-4" /> Google 계정으로 연결
+              </Box>
+              <Button type="button" variant="outline" className="h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={() => void disconnectGoogle()}>
+                연결 해제
               </Button>
-            )}
-            {googleError && <p className="text-[12px] text-destructive">{googleError}</p>}
-            <Hint>연결하면 메일 카드에서 '승인하고 보내기'를 누를 때 이 계정으로 업체에 메일을 보내고, 업체 회신도 자동으로 읽어요. 돌다리는 Google 비밀번호를 보지 않아요.</Hint>
-
-            {config.googleClient && !showClient && (
-              <button type="button" onClick={() => setShowClient(true)} className="text-[12px] text-muted-foreground hover:text-foreground">
-                OAuth 클라이언트 바꾸기
-              </button>
-            )}
-            {(!config.googleClient || showClient) && (
-              <div className="space-y-2 rounded-lg bg-muted/50 p-3">
-                <span className="text-[12px] font-medium">Google OAuth 클라이언트</span>
-                <Input placeholder="클라이언트 ID (….apps.googleusercontent.com)" spellCheck={false} value={form.GOOGLE_CLIENT_ID ?? ''} onChange={up('GOOGLE_CLIENT_ID')} />
-                <Input type="password" placeholder="클라이언트 보안 비밀" value={form.GOOGLE_CLIENT_SECRET ?? ''} onChange={up('GOOGLE_CLIENT_SECRET')} className="font-mono" />
-                <Hint>Google Cloud 콘솔에서 만든 'OAuth 클라이언트 ID (데스크톱 앱)' 값을 넣고 저장하면 연결 버튼이 켜져요. 팀 공용 값은 팀 비밀번호 관리자에서 받으세요.</Hint>
-              </div>
-            )}
-
-            <button type="button" onClick={() => setShowPassword((v) => !v)} className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
-              앱 비밀번호로 연결 (다른 방법)
-              <ChevronDown className={cn('size-3.5 transition-transform', showPassword && 'rotate-180')} />
-            </button>
-            {showPassword && (
-              <div className="space-y-2">
-                <Input type="email" placeholder="Gmail 주소" value={form.SMTP_USER ?? ''} onChange={up('SMTP_USER')} />
-                <Input
-                  type="password"
-                  placeholder={config.mailAuth === 'password' ? '앱 비밀번호 (비워 두면 그대로)' : '앱 비밀번호 16자리'}
-                  value={form.SMTP_PASS ?? ''}
-                  onChange={up('SMTP_PASS')}
-                  className="font-mono"
-                />
-                <Hint>Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호에서 만들 수 있어요. Google 계정이 연결돼 있으면 그쪽을 먼저 써요.</Hint>
-              </div>
-            )}
-          </Section>
+            </>
+          ) : google === 'waiting' ? (
+            <>
+              <Box className="flex-1">
+                <span className="text-[14px] font-medium text-muted-foreground">로그인 기다리는 중…</span>
+              </Box>
+              <Button type="button" variant="outline" className="h-auto shrink-0 px-4 py-2.5 text-[14px]" onClick={() => void window.doldari.cancelGoogle()}>
+                취소
+              </Button>
+            </>
+          ) : (
+            <>
+              <Box className="flex-1">
+                <span className="text-[14px] font-medium text-muted-foreground">연결 안 됨</span>
+              </Box>
+              <Button type="button" variant="secondary" className="h-auto shrink-0 px-4 py-2.5 text-[14px]" disabled={!config.googleClient} onClick={() => void connectGoogle()}>
+                Google 계정으로 연결
+              </Button>
+            </>
+          )}
         </div>
+        {googleError && <p className="rounded-lg bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">{googleError}</p>}
+        {!config.googleClient && !config.googleUser && <p className="text-[13px] text-muted-foreground">먼저 아래 고급 설정에 OAuth 클라이언트를 저장해 주세요.</p>}
+      </Row>
 
-        <div className="flex items-center gap-2 border-t px-5 py-3">
-          {error && <span className="min-w-0 truncate text-[12px] text-destructive" title={error}>{error}</span>}
-          {!error && saved && <span className="text-[12px] text-ok">{saved}</span>}
-          <Button type="button" variant="ghost" className="ml-auto" onClick={close}>
-            닫기
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? '확인 중…' : '저장'}
-          </Button>
-        </div>
-      </form>
+      <button type="button" onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced} className="flex w-fit items-center gap-1 text-[14px] font-medium text-muted-foreground hover:text-ink">
+        고급 설정
+        <ChevronDown className={cn('size-4 transition-transform', advanced && 'rotate-180')} />
+      </button>
+
+      {advanced && (
+        <>
+          <Row label="OAuth 클라이언트" hint={`Google Cloud 콘솔의 '데스크톱 앱' 클라이언트 값이에요. 팀 공용 값은 팀 비밀번호 관리자에서 받으세요.${config.googleClient ? ' 지금 값이 저장돼 있어요.' : ''}`}>
+            <div className="grid grid-cols-2 gap-3">
+              <Box filled={clientId !== ''}>
+                <BareInput placeholder={config.googleClient ? '새 클라이언트 ID' : '클라이언트 ID'} spellCheck={false} value={clientId} onChange={setClientId} />
+              </Box>
+              <Box filled={clientSecret !== ''}>
+                <BareInput type="password" placeholder={config.googleClient ? '새 보안 비밀' : '보안 비밀'} value={clientSecret} onChange={setClientSecret} className="font-mono" />
+              </Box>
+            </div>
+          </Row>
+          <SaveBar
+            dirty={Boolean(clientId.trim() || clientSecret.trim())}
+            state={client.state}
+            error={client.error}
+            onSave={() =>
+              client.save({ ...(clientId.trim() ? { GOOGLE_CLIENT_ID: clientId.trim() } : {}), ...(clientSecret.trim() ? { GOOGLE_CLIENT_SECRET: clientSecret.trim() } : {}) }, () => {
+                setClientId('');
+                setClientSecret('');
+              })
+            }
+          />
+
+          <Row label="앱 비밀번호" hint="다른 방법이에요. Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호에서 만들 수 있어요. Google 계정이 연결돼 있으면 그쪽을 먼저 써요.">
+            <div className="grid grid-cols-2 gap-3">
+              <Box filled={smtpUser !== ''}>
+                <BareInput type="email" placeholder="Gmail 주소" value={smtpUser} onChange={setSmtpUser} />
+              </Box>
+              <Box filled={smtpPass !== ''}>
+                <BareInput type="password" placeholder={config.mailAuth === 'password' ? '새 앱 비밀번호' : '앱 비밀번호 16자리'} value={smtpPass} onChange={setSmtpPass} className="font-mono" />
+              </Box>
+            </div>
+          </Row>
+          <SaveBar
+            dirty={smtpUser.trim() !== config.smtpUser || smtpPass.trim() !== ''}
+            state={password.state}
+            error={password.error}
+            onSave={() =>
+              password.save(
+                {
+                  ...(smtpUser.trim() ? { SMTP_USER: smtpUser.trim(), IMAP_USER: smtpUser.trim() } : {}),
+                  ...(smtpPass.trim() ? { SMTP_PASS: smtpPass.trim(), IMAP_PASS: smtpPass.trim() } : {})
+                },
+                () => setSmtpPass('')
+              )
+            }
+          />
+        </>
+      )}
     </div>
   );
 }
 
-function Section({ title, status, children }: { title: string; status?: React.ReactNode; children: React.ReactNode }) {
+// ─── 메인 화면 카드와 같은 조각 ───────────────────────────────
+
+/** 왼쪽 항목 이름 + 오른쪽 내용, 아래 줄 (메일 카드의 받는 사람·제목 줄과 같은 모양) */
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2.5 py-4">
-      <div className="flex items-center justify-between">
-        <span className="font-medium">{title}</span>
-        {status}
+    <div className="flex gap-5 border-b border-line pb-5">
+      <span className="w-[120px] shrink-0 whitespace-nowrap pt-2.5 text-[14px] font-medium text-ink">{label}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {children}
+        {hint && <p className="text-[13px] leading-[1.6] text-muted-foreground">{hint}</p>}
       </div>
-      {children}
-    </section>
+    </div>
   );
 }
 
-const Hint = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <p className={cn('text-[12px] leading-relaxed text-muted-foreground', className)}>{children}</p>
-);
-
-function Status({ on, warn, bad, title, children }: { on: boolean; warn?: boolean; bad?: boolean; title?: string; children: React.ReactNode }) {
+/** 요구 조건 카드의 칸: 값이 있으면 연한 파랑, 비었으면 회색 */
+function Box({ filled = false, className, children }: { filled?: boolean; className?: string; children: React.ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5" title={title}>
-      <span className={cn('size-1.5 rounded-full', bad ? 'bg-destructive' : on ? 'bg-ok' : warn ? 'bg-warn' : 'bg-muted-foreground/50')} />
+    <label className={cn('flex min-w-0 items-center rounded-lg px-4 py-2.5 transition-shadow focus-within:ring-2 focus-within:ring-primary/30', filled ? 'bg-tint' : 'bg-muted', className)}>
       {children}
-    </span>
+    </label>
+  );
+}
+
+function BareInput({
+  value,
+  onChange,
+  className,
+  ...rest
+}: { value: string; onChange: (v: string) => void; className?: string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  return (
+    <Input
+      {...rest}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn('h-auto w-full rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-black shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]', className)}
+    />
+  );
+}
+
+/** "나란히 / 크게 보기"와 같은 회색 토글 */
+function Segmented({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+  return (
+    <div className="flex w-fit items-center rounded-lg bg-muted p-1" role="radiogroup">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          onClick={() => onChange(o.value)}
+          className={cn('rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', value === o.value ? 'bg-white text-black shadow-sm' : 'text-muted-foreground hover:text-ink')}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** 바뀐 게 있을 때만 보이는 저장 버튼 (메일 카드의 연파랑 버튼) */
+function SaveBar({ dirty, state, error, label = '저장', onSave }: { dirty: boolean; state: 'idle' | 'saving' | 'saved'; error: string; label?: string; onSave: () => void }) {
+  if (!dirty && state !== 'saved' && !error) return null;
+  return (
+    <div className="flex items-center justify-end gap-3">
+      {error && <span className="min-w-0 flex-1 rounded-lg bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">{error}</span>}
+      {state === 'saved' && !error && (
+        <span className="flex items-center gap-1 text-[14px] font-medium text-ok">
+          <Check className="size-4" /> 저장했어요
+        </span>
+      )}
+      {dirty && (
+        <Button type="button" variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" disabled={state === 'saving'} onClick={onSave}>
+          {state === 'saving' ? '확인 중…' : label}
+        </Button>
+      )}
+    </div>
   );
 }
