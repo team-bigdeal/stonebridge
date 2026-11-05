@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, History, Plus, Trash2 } from 'lucide-react';
-import type { HistorySummary } from '@shared/types';
-import { saveSidebar, saveWidth, SIDEBAR_WIDTH, useStore } from '@/store';
+import { ArrowLeft, History, Loader2, Plus, Trash2 } from 'lucide-react';
+import type { HistorySummary, VendorStatus } from '@shared/types';
+import { saveSidebar, saveWidth, SIDEBAR_WIDTH, useStore, type SessionMeta } from '@/store';
 import { ResizeHandle } from './ResizeHandle';
 import { NARROW_WIDTH, useViewportWidth } from '@/lib/useNarrow';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,21 @@ import { exitReplay, openReplay } from '@/replay';
 import { SidebarToggle, useRestart } from './Shell';
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
+
+const ASK: VendorStatus[] = ['needs_user', 'needs_mail', 'needs_file'];
+/** 보고 있지 않은 세션의 상태 배지: 사람 손이 필요하면 확인 필요, 업체를 보는 중이면 진행 중, 비교까지 끝났으면 완료 */
+function SessionBadge({ meta }: { meta: SessionMeta }) {
+  const st = Object.values(meta.vendorStatus);
+  if (st.some((x) => x && ASK.includes(x))) return <Pill tone="warn" className="mr-1.5" title="이 견적에서 직접 확인할 일이 생겼어요">확인 필요</Pill>;
+  if (st.some((x) => x === 'browsing' || x === 'parsing') || meta.stage === 'search' || meta.stage === 'collect')
+    return (
+      <Pill tone="primary" className="mr-1.5" title="다른 견적을 보는 동안에도 계속 진행 중이에요">
+        <Loader2 className="size-3 animate-spin" /> 진행 중
+      </Pill>
+    );
+  if (meta.stage === 'compare' || meta.stage === 'questions' || meta.stage === 'draft') return <Pill tone="ok" className="mr-1.5">완료</Pill>;
+  return <Pill tone="primary" className="mr-1.5">진행 중</Pill>;
+}
 /** 오늘/어제는 "오늘 16:45", 그 전은 "11. 3." */
 const when = (iso: string) => {
   const d = new Date(iso);
@@ -23,7 +38,9 @@ const when = (iso: string) => {
 
 /** 왼쪽 사이드 탭: 지난 견적 목록. 누르면 그 견적 세션(대화·브라우저·비교표)이 그대로 다시 뜬다 */
 export function HistorySidebar() {
-  const { sidebarOpen, historyRev, replay, liveId, sidebarWidth, set } = useStore();
+  const { sidebarOpen, historyRev, replay, liveId, sidebarWidth, set, sessions, focusedSid } = useStore();
+  // 보고 있지 않은 세션이 돌리는 기록 → 그 세션 요약
+  const background = new Map(Object.entries(sessions).filter(([sid, m]) => sid !== focusedSid && m.recordId).map(([, m]) => [m.recordId!, m]));
   const active = replay?.id ?? liveId;
   const restart = useRestart();
   const [list, setList] = useState<HistorySummary[] | null>(null);
@@ -107,7 +124,8 @@ export function HistorySidebar() {
                   <div className="flex items-baseline gap-2 pr-6">
                     <span className={cn('min-w-0 flex-1 truncate text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-ink')}>
                       {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
-                      {h.id !== liveId && h.incomplete && <Pill tone="muted" className="mr-1.5" title="견적 비교 전에 멈춘 검색">미완료</Pill>}
+                      {h.id !== liveId && background.has(h.id) && <SessionBadge meta={background.get(h.id)!} />}
+                      {h.id !== liveId && !background.has(h.id) && h.incomplete && <Pill tone="muted" className="mr-1.5" title="견적 비교 전에 멈춘 검색">미완료</Pill>}
                       {h.item}
                     </span>
                     {h.best && <span className="shrink-0 text-[12px] font-semibold tabular-nums text-ink">{won(h.best.total)}</span>}
@@ -124,7 +142,8 @@ export function HistorySidebar() {
                   onClick={async () => {
                     // 같은 품목 기록이 여러 개일 수 있어 언제 기록인지도 적는다
                     const at = new Date(h.updatedAt).toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    if (!confirm(`${at}에 저장한 "${h.item}" 견적 기록을 삭제할까요?`)) return;
+                    const running = background.has(h.id) ? ' 진행 중인 견적이라 삭제하면 이 견적도 멈춰요.' : '';
+                    if (!confirm(`${at}에 저장한 "${h.item}" 견적 기록을 삭제할까요?${running}`)) return;
                     if (replay?.id === h.id) exitReplay();
                     await window.doldari.historyDelete(h.id);
                   }}

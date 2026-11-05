@@ -139,6 +139,8 @@ const CURSOR_HTML = `<!doctype html><html><body style="margin:0;overflow:hidden;
 <script>window.ring=()=>{const r=document.getElementById('r');r.animate([{transform:'scale(1)',opacity:1},{transform:'scale(3.2)',opacity:0}],{duration:450,easing:'ease-out'})}</script>
 </body></html>`;
 const CURSOR_BOX = 64;
+/** 커서를 마지막 자리에 남겨 두는 시간 (움직일 때마다 다시 잼) */
+const CURSOR_HOLD_MS = 10_000;
 /** 페이지는 항상 이 너비(CSS px)로 배치한다. 카드가 작으면 축소해서 보여 줘 데스크톱 화면 비율을 유지하고,
  *  카드가 보이든 숨든 같은 배치라 에이전트가 읽는 화면도 같다 */
 const LAYOUT_WIDTH = 1100;
@@ -161,7 +163,7 @@ export class ElectronDriver implements BrowserDriver {
   /** 사이트가 window.open으로 띄운 견적서 팝업 (보이지 않는 창). 원래 창(opener)에서 값을 읽어 채우는 견적서가 있어 실제 창으로 연다 */
   private popup: { win: BrowserWindow; at: number; timer: NodeJS.Timeout } | null = null;
 
-  constructor(readonly slot: Slot) {
+  constructor(readonly slot: Slot, readonly sid: string) {
     // disableDialogs: 사이트의 alert/confirm 창이 앱 창 전체를 덮지 않게 한다 (alert는 확인, confirm은 취소로 처리됨)
     this.view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, disableDialogs: true, session: browserSession() } });
     this.view.setBorderRadius?.(8);
@@ -215,7 +217,7 @@ export class ElectronDriver implements BrowserDriver {
     this.frameTimer = setInterval(() => void this.captureFrame(), 2000);
 
     this.offCursor = onCursor((e) => {
-      if (e.slot === this.slot) this.moveCursor(e.x, e.y, Boolean(e.click));
+      if (e.slot === this.slot && e.sid === this.sid) this.moveCursor(e.x, e.y, Boolean(e.click));
     });
   }
 
@@ -266,20 +268,24 @@ export class ElectronDriver implements BrowserDriver {
     const img = await this.view.webContents.capturePage().catch(() => null);
     if (!img || img.isEmpty()) return;
     const out = img.getSize().width > 1100 ? img.resize({ width: 1100 }) : img;
-    send('browser:frame', { slot: this.slot, data: `data:image/jpeg;base64,${out.toJPEG(65).toString('base64')}` });
+    send('browser:frame', { sid: this.sid, slot: this.slot, data: `data:image/jpeg;base64,${out.toJPEG(65).toString('base64')}` });
   }
 
   private moveCursor(nx: number, ny: number, click: boolean) {
-    if (!this.bounds) return;
+    // 실제 뷰가 카드에 없으면 앱 화면이 이미지 위에 커서를 그린다. 클릭 뒤 바뀐 화면이 바로 보이게 한 번 더 찍는다
+    if (!this.bounds) {
+      if (click) setTimeout(() => void this.captureFrame(), 450);
+      return;
+    }
     // 커서 원의 중심이 뷰 안 (20, 20)에 있다
     const x = Math.round(this.bounds.x + nx * this.bounds.width - 20);
     const y = Math.round(this.bounds.y + ny * this.bounds.height - 20);
     this.cursorView.setBounds({ x, y, width: CURSOR_BOX, height: CURSOR_BOX });
     this.cursorView.setVisible(true);
     if (click) void this.cursorView.webContents.executeJavaScript('window.ring && window.ring()').catch(() => undefined);
-    // 잠시 뒤 숨겨서 사용자의 클릭을 가리지 않게
+    // 탐색하는 동안은 마지막 자리에 남겨 두고(다음 동작까지 몇 초씩 걸림), 한동안 움직임이 없으면 숨겨 사용자의 클릭을 가리지 않게
     if (this.cursorTimer) clearTimeout(this.cursorTimer);
-    this.cursorTimer = setTimeout(() => this.cursorView.setVisible(false), 1800);
+    this.cursorTimer = setTimeout(() => this.cursorView.setVisible(false), CURSOR_HOLD_MS);
   }
 
   private adoptPopup(win: BrowserWindow) {
@@ -528,6 +534,8 @@ export class ElectronDriver implements BrowserDriver {
     const sid = this.cdp.refFrame.get(Number(String(ref).replace(/\D/g, '')));
     const native = await this.cdp.callOn<boolean>(id, `function () { return this.tagName === 'SELECT' || !!(this.querySelector && this.querySelector('select')); }`, sid);
     if (!native) return act.selectCustom(this.cdp, Number(String(ref).replace(/\D/g, '')), option);
+    // 값은 스크립트로 바꾸지만 커서는 그 칸으로 가서 누르는 모습을 보여 준다
+    await act.pointAt(this.cdp, id, sid);
     const r = await this.cdp.callOn<{ ok: boolean; options: string[] }>(
       id,
       `function () {

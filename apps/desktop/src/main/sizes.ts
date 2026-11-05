@@ -5,48 +5,49 @@ import type { SizeOption, SizeScanStatus, SizesEventPayload, VendorId } from '@s
 import { runAgent } from './agent/loop';
 import { getDriver } from './browser';
 import { emit, setVendorStatus, timeline } from './events';
+import { scoped } from './session';
 
 const SLOT: VendorId = 'A';
 
-let current: { id: string; item: string; status: SizeScanStatus; options: SizeOption[]; aborted: boolean } | null = null;
+const H = scoped(() => ({ current: null as { id: string; item: string; status: SizeScanStatus; options: SizeOption[]; aborted: boolean } | null }));
 
 /** 같은 사이즈 판단: 0.5mm 단위, 가로·세로 순서 무시 */
 const key = (w: number, h: number) => [Math.round(w * 2) / 2, Math.round(h * 2) / 2].sort((a, b) => b - a).join('x');
 
 function publish() {
-  if (!current) return;
-  emit('sizes', { payload: { id: current.id, status: current.status, options: current.options } satisfies SizesEventPayload });
+  if (!H.current) return;
+  emit('sizes', { payload: { id: H.current.id, status: H.current.status, options: H.current.options } satisfies SizesEventPayload });
 }
 
 function merge(list: { label: string; widthMm: number; heightMm: number; vendor: string; url: string; note?: string }[]) {
-  if (!current) return 0;
+  if (!H.current) return 0;
   for (const s of list) {
     const k = key(s.widthMm, s.heightMm);
-    const hit = current.options.find((o) => key(o.widthMm, o.heightMm) === k);
+    const hit = H.current.options.find((o) => key(o.widthMm, o.heightMm) === k);
     const vendor = { name: s.vendor || (() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return '업체'; } })(), url: s.url };
     if (hit) {
       if (!hit.vendors.some((v) => v.name === vendor.name)) hit.vendors.push(vendor);
       if (!hit.note && s.note) hit.note = s.note;
     } else {
-      current.options.push({ label: s.label || `${s.widthMm}×${s.heightMm}`, widthMm: s.widthMm, heightMm: s.heightMm, vendors: [vendor], note: s.note });
+      H.current.options.push({ label: s.label || `${s.widthMm}×${s.heightMm}`, widthMm: s.widthMm, heightMm: s.heightMm, vendors: [vendor], note: s.note });
     }
   }
   // 여러 업체가 파는 사이즈가 앞으로
-  current.options.sort((a, b) => b.vendors.length - a.vendors.length);
-  current.options = current.options.slice(0, 12);
+  H.current.options.sort((a, b) => b.vendors.length - a.vendors.length);
+  H.current.options = H.current.options.slice(0, 12);
   publish();
-  return current.options.length;
+  return H.current.options.length;
 }
 
-export const sizeScanRunning = () => Boolean(current && current.status === 'searching');
-export const sizeScanStarted = () => Boolean(current);
+export const sizeScanRunning = () => Boolean(H.current && H.current.status === 'searching');
+export const sizeScanStarted = () => Boolean(H.current);
 
 /** 사이즈 조사 시작 (이미 했으면 다시 하지 않는다) */
 export async function startSizeScan(item: string, onDone: (options: SizeOption[]) => void) {
-  if (current) return;
+  if (H.current) return;
   const id = randomUUID();
-  current = { id, item, status: 'searching', options: [], aborted: false };
-  const me = current;
+  H.current = { id, item, status: 'searching', options: [], aborted: false };
+  const me = H.current;
   // 작은 조사 브라우저를 먼저, 그 아래에 사이즈 선택 카드
   timeline({ kind: 'browser', slot: SLOT, title: `"${item}" 사이즈 조사`, compact: true });
   emit('timeline', { payload: { id, kind: 'sizes', item, status: 'searching', options: [] } });
@@ -55,7 +56,7 @@ export async function startSizeScan(item: string, onDone: (options: SizeOption[]
   driver.locked = false;
   try {
     await runAgent(
-      { slot: SLOT, driver, onSizes: (list) => (me === current ? merge(list) : 0) },
+      { slot: SLOT, driver, onSizes: (list) => (me === H.current ? merge(list) : 0) },
       {
         system: `너는 견적 탐색 앱 '돌다리'의 조사 브라우저다. 사용자가 "${item}"을(를) 맞추려는데 어떤 사이즈가 있는지 잘 모른다.
 업체 사이트 2~3곳(전문 인쇄·제작 쇼핑몰 우선)을 돌며 실제로 파는 사이즈 선택지를 모아 report_sizes로 보고한다.
@@ -84,11 +85,11 @@ export async function startSizeScan(item: string, onDone: (options: SizeOption[]
 
 /** 검색 시작·새 견적 때 조사를 멈춘다 */
 export function stopSizeScan(reset = false) {
-  if (current && current.status === 'searching') {
-    current.aborted = true;
-    current.status = current.options.length ? 'done' : 'stopped';
+  if (H.current && H.current.status === 'searching') {
+    H.current.aborted = true;
+    H.current.status = H.current.options.length ? 'done' : 'stopped';
     publish();
     setVendorStatus(SLOT, 'idle');
   }
-  if (reset) current = null;
+  if (reset) H.current = null;
 }
