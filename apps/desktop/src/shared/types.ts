@@ -305,3 +305,27 @@ export interface HistorySummary {
   pricedCount: number;
   best?: { name: string; total: number };
 }
+
+/** 견적 세션 화면 그대로 (대화·카드·브라우저 화면). 히스토리에서 열면 이걸로 다시 그린다 */
+export interface SessionSnapshot {
+  version: 1;
+  stage: Stage;
+  requirements: Partial<Requirements> | null;
+  timeline: TimelineItem[];
+  quotes: Partial<Record<VendorId, Quote>>;
+  vendors: VendorInfo[];
+  vendorStatus: Partial<Record<VendorId, VendorStatus>>;
+  steps: Partial<Record<Slot, AgentStep[]>>;
+  browsers: Partial<Record<Slot, BrowserState>>;
+  sources: (Source & { vendorId: VendorId; field: FieldKey })[];
+  mails: MailRecord[];
+  originals: Partial<Record<VendorId, QuoteOriginal[]>>;
+  /** 브라우저 카드의 마지막 화면 */
+  frames: Partial<Record<Slot, string>>;
+}
+
+/** history 이벤트: 기록이 저장(saved)되거나 삭제(deleted)됨 */
+export interface HistoryEventPayload {
+  id: string;
+  kind: 'saved' | 'deleted';
+}

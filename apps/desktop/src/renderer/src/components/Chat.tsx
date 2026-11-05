@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowLeft, ArrowUp, History } from 'lucide-react';
 import type { TimelineItem } from '@shared/types';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Message, MessageContent } from '@/components/ai-elements/message';
@@ -10,17 +10,19 @@ import { useStore } from '@/store';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
 import { HistoryCard, MailCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
+import { api } from '@/lib/api';
+import { exitReplay } from '@/replay';
 
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation) */
 export function Chat() {
-  const { timeline, busy, stage, push } = useStore();
+  const { timeline, busy, stage, push, replay } = useStore();
   const [text, setText] = useState('');
   async function send() {
     const t = text.trim();
     if (!t) return;
     setText('');
     push({ id: crypto.randomUUID(), kind: 'user', text: t });
-    await window.doldari.sendChat(t);
+    await api.sendChat(t);
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -39,6 +41,17 @@ export function Chat() {
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
+      {replay ? (
+        <div className="border-t bg-background/80 px-6 py-4 backdrop-blur">
+          <div className="mx-auto flex max-w-[1100px] items-center gap-3 rounded-2xl border border-primary/40 bg-primary/5 px-4 py-3 text-[13px]">
+            <History className="size-4 shrink-0 text-primary" />
+            <span className="text-muted-foreground">지난 견적을 보는 중이에요. 견적서·원본은 볼 수 있고, 진행은 할 수 없어요.</span>
+            <Button size="sm" className="ml-auto shrink-0" onClick={exitReplay}>
+              <ArrowLeft className="size-4" /> 현재 견적으로
+            </Button>
+          </div>
+        </div>
+      ) : (
       <div className="border-t bg-background/80 px-6 py-4 backdrop-blur">
         <form
           className="mx-auto flex max-w-[1100px] items-end gap-2 rounded-2xl border bg-card p-2 focus-within:border-primary/70 focus-within:ring-2 focus-within:ring-primary/20"
@@ -65,6 +78,7 @@ export function Chat() {
           </Button>
         </form>
       </div>
+      )}
     </div>
   );
 }

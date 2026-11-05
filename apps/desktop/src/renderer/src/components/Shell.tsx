@@ -3,6 +3,7 @@ import { STAGES } from '@shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
+import { dropReplay } from '@/replay';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
@@ -40,7 +41,7 @@ export function TopBar() {
         ))}
       </div>
       <div className="no-drag flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={async () => { await window.doldari.reset(); resetAll(); }}>
+        <Button size="sm" variant="outline" onClick={async () => { dropReplay(); await window.doldari.reset(); resetAll(); }}>
           <Plus className="size-4" /> 새 견적
         </Button>
         {/* 브라우저·모델·API 키 상태는 설정 창 안에서 본다. API 키가 없을 때만 표시 */}

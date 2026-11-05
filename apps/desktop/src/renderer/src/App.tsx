@@ -6,7 +6,8 @@ import { ExpandedBrowser, Notices, TopBar } from './components/Shell';
 import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
-import { HistoryDetail, HistorySidebar } from './components/HistorySidebar';
+import { HistorySidebar } from './components/HistorySidebar';
+import { startAutosave } from './replay';
 
 export default function App() {
   const handle = useStore((s) => s.handle);
@@ -17,10 +18,12 @@ export default function App() {
     const offEvent = window.doldari.onEvent(handle);
     const offFrame = window.doldari.onFrame(({ slot, data }) => pushFrame(slot, data));
     const offCursor = window.doldari.onCursor(pushCursor);
+    const offSave = startAutosave();
     return () => {
       offEvent();
       offFrame();
       offCursor();
+      offSave();
     };
   }, [handle, set]);
 
@@ -35,7 +38,6 @@ export default function App() {
           </main>
         </div>
         <ExpandedBrowser />
-        <HistoryDetail />
         <QuoteViewer />
         <SettingsModal />
         <Notices />
