@@ -24,6 +24,10 @@ export interface BrowserDriver {
   userInput(input: { type: 'click' | 'wheel' | 'text' | 'key'; x?: number; y?: number; deltaY?: number; text?: string; key?: string }): Promise<void>;
   reset(): Promise<void>;
   close(): Promise<void>;
+  /** 가견적서 PDF 받기: PDF 링크 URL, 링크·버튼 ref (버튼이면 눌러서 내려오는 PDF를 받는다) */
+  downloadPdf(target: { ref?: string; url?: string }): Promise<import('./pdf').PdfFile>;
+  /** 지금 화면(인쇄용 견적서 페이지)을 PDF로 저장 */
+  printPdf(): Promise<import('./pdf').PdfFile>;
 }
 
 export class ToolError extends Error {}

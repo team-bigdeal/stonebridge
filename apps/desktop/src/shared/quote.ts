@@ -101,9 +101,11 @@ export function evaluateConditions(q: Quote, req: Requirements): ConditionResult
   if (q.warrantyMonths.value !== null && q.warrantyMonths.value >= req.minWarrantyMonths) warranty = 'ok';
   else if (q.warrantyExtraFee.value !== null) warranty = 'ok';
   const violations: string[] = [];
+  if (q.meta?.priceDoubt) violations.push('가격 기준(1개·묶음) 확인 필요');
   if (budget === 'violate') violations.push(`총액 ${won(sum)}로 예산 ${won(req.budgetMax)} 초과`);
   if (deadline === 'violate') violations.push(`납기 ${lead}일로 요청 기한(${limit}일) 초과`);
-  const checks = [budget, deadline, warranty];
+  // 가격 기준을 확인하지 못한 견적은 금액 비교 자체를 믿을 수 없으니 조건 위반처럼 추천에서 뺀다
+  const checks = [budget, deadline, warranty, q.meta?.priceDoubt ? ('violate' as Check) : ('ok' as Check)];
   const overall: Check = checks.includes('violate') ? 'violate' : checks.includes('unknown') ? 'unknown' : 'ok';
   return { budget, deadline, warranty, overall, violations };
 }

@@ -14,6 +14,7 @@ import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
 import { ENGINE_ORDER, type Engine } from './browser/page';
+import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
@@ -74,8 +75,8 @@ const hostKey = (url: string) => {
   }
 };
 
-const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
-const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote', 'switch_channel', 'request_user'];
+const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
+const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'report_quote', 'switch_channel', 'request_user'];
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
@@ -312,6 +313,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return applyFields(slot, fields, meta, 'web', url);
         },
         onAfter: () => void refreshState(slot),
+        onPdf: (file) => onQuotePdf(slot, file),
         engine: () => engines.get(slot) ?? 'naver',
         missingOnDone: () => {
           if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
@@ -478,6 +480,34 @@ function showCompare() {
   compareShown = true;
   say('모은 견적을 하나의 양식으로 정리했어요. 숨은 비용이 더해지며 순위가 바뀌는 걸 보세요. 업체별 견적서는 카드의 "견적서 보기"로 열 수 있어요.');
   timeline({ kind: 'compare' });
+}
+
+// ─── 사이트 가견적서 PDF ──────────────────────────────────────
+
+/** 에이전트가 사이트에서 받은 가견적서 PDF: 원본으로 보관하고, Claude가 PDF를 직접 읽어 견적에 반영한다 */
+async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
+  if (!requirements) return [];
+  if (!getVendor(slot)) claim(slot, { name: new URL(file.url).hostname.replace(/^www\./, ''), url: file.url, reason: '가견적서를 받은 사이트' });
+  emit('original', {
+    vendorId: slot,
+    payload: {
+      id: randomUUID(),
+      vendorId: slot,
+      channel: 'file',
+      title: `사이트 가견적서 · ${file.name}`,
+      url: file.url,
+      fileName: file.name,
+      mime: 'application/pdf',
+      fileData: `data:application/pdf;base64,${file.data.toString('base64')}`,
+      capturedAt: new Date().toISOString()
+    } satisfies QuoteOriginal
+  });
+  const { fields, meta } = await parseQuoteFile({ vendorId: slot, requirements, name: file.name, mime: 'application/pdf', data: file.data });
+  const added = applyFields(slot, fields, meta, 'file', file.name);
+  say(
+    `${vendorName(slot)} 사이트에서 가견적서 PDF(${file.name})를 받아 읽었어요${added.length ? `: ${added.join(', ')}` : '. 숫자 항목은 찾지 못했어요'}. 업체 견적서의 "받은 원본"에서 PDF를 볼 수 있어요.`
+  );
+  return added;
 }
 
 // ─── 파일 채널 ────────────────────────────────────────────────
@@ -688,11 +718,19 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
     if (!q || !requirements) return;
     const changed = q.listedPrice.value !== before.listed || priceQty(q) !== before.pq;
     const amt = productAmount(q, requirements);
-    say(
-      changed
-        ? `${v.name} 가격을 바로잡았어요: ${amt?.toLocaleString('ko-KR')}원 (${priceQty(q)}개 기준 ${q.listedPrice.value?.toLocaleString('ko-KR')}원).${note ? ` ${note}` : ''}`
-        : `${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`
-    );
+    // 바뀌지도 않았고 "맞음"이라고 확인하지도 못했으면 믿을 수 없는 금액 → 추천에서 빼고 사용자 확인을 부탁한다
+    const confirmed = /맞음|맞다|맞습니다|확인됨/.test(note) && !/확정\s*못|확인\s*못|불확실|모름|알 수 없/.test(note);
+    if (changed) {
+      quoteStore.mergeMeta(slot, { priceDoubt: undefined });
+      say(`${v.name} 가격을 바로잡았어요: ${amt?.toLocaleString('ko-KR')}원 (${priceQty(q)}개 기준 ${q.listedPrice.value?.toLocaleString('ko-KR')}원).${note ? ` ${note}` : ''}`);
+    } else if (confirmed) {
+      say(`${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`);
+    } else {
+      quoteStore.mergeMeta(slot, { priceDoubt: note || '기준 수량을 확인하지 못함' });
+      say(`${v.name}는 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
+    }
+    announced = '';
+    onQuotesSettled();
   }, 2500);
   maybeOpenGate();
 }

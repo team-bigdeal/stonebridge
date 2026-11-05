@@ -1,13 +1,18 @@
 // 내장 브라우저 드라이버: 앱 창 안에 보이는 WebContentsView. 사용자가 직접 보고 쓰는 브라우저와 같은 방식으로 동작한다.
 // 화면 위치는 renderer의 카드 자리(placeholder)를 따라가고, 에이전트 커서는 페이지가 아니라 앱 레이어(작은 커서 뷰)에 그린다.
-import { session as electronSession, WebContentsView } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { session as electronSession, WebContentsView, type DownloadItem, type WebContents } from 'electron';
 import type { Slot } from '@shared/types';
 import { CdpSession } from '../cdp/session';
 import * as act from '../cdp/actions';
 import { takeSnapshot } from '../cdp/snapshot';
 import { getWindow, send } from '../events';
 import { onCursor } from './cursor';
-import type { BrowserDriver } from './driver';
+import { type BrowserDriver, ToolError } from './driver';
+import { checkPdf, MAX_PDF_BYTES, pdfName, showingPdf, type PdfFile } from './pdf';
 
 export const BROWSER_PARTITION = 'persist:doldari-browser';
 let sessionReady = false;
@@ -19,8 +24,46 @@ export function browserSession() {
     sessionReady = true;
     // 위치·알림·카메라 등 권한 요청은 모두 거부
     ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    // 다운로드: 에이전트가 가견적서를 기다리는 중인 PDF만 받고, 나머지(실행 파일 등)는 모두 취소
+    ses.on('will-download', (_e, item, wc) => handleDownload(item, wc));
   }
   return ses;
+}
+
+type DownloadResult = PdfFile | { error: string };
+/** webContents id → 가견적서 PDF를 기다리는 중인 드라이버 */
+const downloadWaiters = new Map<number, (r: DownloadResult) => void>();
+
+function handleDownload(item: DownloadItem, wc: WebContents | undefined) {
+  const waiter = wc ? downloadWaiters.get(wc.id) : undefined;
+  const name = item.getFilename();
+  const pdf = /pdf/i.test(item.getMimeType()) || /\.pdf$/i.test(name);
+  if (!waiter || !pdf) {
+    item.cancel();
+    if (waiter) waiter({ error: `PDF가 아닌 파일(${name})이라 받지 않았습니다.` });
+    return;
+  }
+  if (item.getTotalBytes() > MAX_PDF_BYTES) {
+    item.cancel();
+    waiter({ error: '파일이 너무 큽니다. 15MB 이하 PDF만 받습니다.' });
+    return;
+  }
+  // 임시 폴더에 받았다가 읽고 바로 지운다 (열거나 실행하지 않음)
+  const tmp = path.join(os.tmpdir(), `doldari-${randomUUID()}.pdf`);
+  item.setSavePath(tmp);
+  item.once('done', (_e, state) => {
+    try {
+      if (state !== 'completed') return waiter({ error: `다운로드가 끝나지 않았습니다 (${state}).` });
+      const data = fs.readFileSync(tmp);
+      try {
+        waiter(checkPdf(data, item.getURL(), name));
+      } catch (err) {
+        waiter({ error: err instanceof Error ? err.message : String(err) });
+      }
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  });
 }
 
 export interface Rect {
@@ -40,6 +83,8 @@ const CURSOR_BOX = 64;
 /** 페이지는 항상 이 너비(CSS px)로 배치한다. 카드가 작으면 축소해서 보여 줘 데스크톱 화면 비율을 유지하고,
  *  카드가 보이든 숨든 같은 배치라 에이전트가 읽는 화면도 같다 */
 const LAYOUT_WIDTH = 1100;
+/** 카드가 화면 밖일 때 뷰를 두는 곳 (창 밖이라 보이지 않지만 입력·렌더링은 그대로) */
+const OFFSCREEN = { x: -20000, y: 0, width: LAYOUT_WIDTH, height: 700 };
 
 export class ElectronDriver implements BrowserDriver {
   readonly kind = 'electron' as const;
@@ -55,9 +100,9 @@ export class ElectronDriver implements BrowserDriver {
     // disableDialogs: 사이트의 alert/confirm 창이 앱 창 전체를 덮지 않게 한다 (alert는 확인, confirm은 취소로 처리됨)
     this.view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, disableDialogs: true, session: browserSession() } });
     this.view.setBorderRadius?.(8);
-    this.view.setVisible(false);
-    // 화면에 붙기 전에도 페이지가 정상 크기로 배치되도록 기본 크기
-    this.view.setBounds({ x: 0, y: 0, width: LAYOUT_WIDTH, height: 700 });
+    // 숨길 때도 setVisible(false)를 쓰지 않고 창 밖으로 옮긴다: 숨긴 뷰는 마우스·키 입력을 받지 않아
+    // 카드가 화면 밖일 때 에이전트의 클릭이 조용히 사라지고 화면 캡처도 멈췄다
+    this.view.setBounds(OFFSCREEN);
     this.cursorView = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true } });
     this.cursorView.setBackgroundColor('#00000000');
     this.cursorView.setVisible(false);
@@ -82,24 +127,23 @@ export class ElectronDriver implements BrowserDriver {
     wc.on('did-navigate', () => this.applyZoom());
     wc.on('did-navigate-in-page', () => this.applyZoom());
     void wc.loadURL('about:blank').then(() => this.cdp.init());
+    // 화면 캡처는 카드가 보이든 말든 2초마다
+    this.frameTimer = setInterval(() => void this.captureFrame(), 2000);
 
     this.offCursor = onCursor((e) => {
       if (e.slot === this.slot) this.moveCursor(e.x, e.y, Boolean(e.click));
     });
   }
 
-  /** renderer가 알려 준 카드 자리. null이면 숨기고 마지막 화면 이미지를 카드에 남긴다 */
+  /** renderer가 알려 준 카드 자리. null이면 창 밖으로 옮기고(입력·캡처는 계속) 카드에는 화면 이미지를 남긴다 */
   async setBounds(rect: Rect | null) {
     if (!rect) {
       if (this.bounds) await this.captureFrame();
       this.bounds = null;
-      this.view.setVisible(false);
-      // 숨은 동안에도 같은 배치로 계속 일하도록 기본 크기로 되돌린다
-      this.view.setBounds({ x: 0, y: 0, width: LAYOUT_WIDTH, height: 700 });
+      // 창 밖에서도 같은 배치(1100px)로 계속 일한다
+      this.view.setBounds(OFFSCREEN);
       this.applyZoom();
       this.cursorView.setVisible(false);
-      if (this.frameTimer) clearInterval(this.frameTimer);
-      this.frameTimer = null;
       return;
     }
     const prev = this.bounds;
@@ -107,7 +151,6 @@ export class ElectronDriver implements BrowserDriver {
     this.bounds = rect;
     this.view.setBounds(rect);
     this.applyZoom();
-    this.view.setVisible(true);
     // 위로 올려 앱 화면보다 앞에 보이게 (커서 뷰는 그 위).
     // 뷰를 다시 붙이면 키보드 포커스를 가져가 채팅 입력이 끊기므로, 스크롤로 위치만 바뀔 때는 하지 않고
     // 다시 보이거나 크기가 바뀔 때(크게 보기)만 하되 그 전에 앱 화면에 있던 포커스는 돌려준다
@@ -118,7 +161,6 @@ export class ElectronDriver implements BrowserDriver {
       win?.contentView.addChildView(this.cursorView);
       if (keepFocus) win?.webContents.focus();
     }
-    this.frameTimer ??= setInterval(() => void this.captureFrame(), 2000);
   }
 
   private applyZoom() {
@@ -129,9 +171,9 @@ export class ElectronDriver implements BrowserDriver {
     if (Math.abs(wc.getZoomFactor() - z) > 0.001) wc.setZoomFactor(z);
   }
 
-  /** 카드가 화면 밖일 때 보여 줄 썸네일 */
+  /** 카드가 화면 밖일 때 보여 줄 썸네일 (창 밖에 있어도 계속 찍는다 → 히스토리에도 화면이 남음) */
   private async captureFrame() {
-    if (this.view.webContents.isDestroyed() || !this.view.getVisible()) return;
+    if (this.view.webContents.isDestroyed() || !/^https?:/.test(this.view.webContents.getURL())) return;
     const img = await this.view.webContents.capturePage().catch(() => null);
     if (!img || img.isEmpty()) return;
     const out = img.getSize().width > 1100 ? img.resize({ width: 1100 }) : img;
@@ -199,6 +241,66 @@ export class ElectronDriver implements BrowserDriver {
     const h = this.view.webContents.navigationHistory;
     if (h.canGoBack()) h.goBack();
   }
+  /** 세션 쿠키를 그대로 써서 PDF URL을 받는다 (다른 출처 CDN 파일도 가능) */
+  private async fetchPdf(url: string): Promise<PdfFile> {
+    if (!/^https?:\/\//.test(url)) throw new ToolError('http(s) 주소의 PDF만 받을 수 있습니다.');
+    const res = await browserSession().fetch(url).catch((e: unknown) => {
+      throw new ToolError(`PDF를 받지 못했습니다 (${e instanceof Error ? e.message : String(e)}).`);
+    });
+    if (!res.ok) throw new ToolError(`PDF를 받지 못했습니다 (HTTP ${res.status}).`);
+    const len = Number(res.headers.get('content-length') || 0);
+    if (len > MAX_PDF_BYTES) throw new ToolError('파일이 너무 큽니다. 15MB 이하 PDF만 받습니다.');
+    const cd = res.headers.get('content-disposition') ?? '';
+    const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd)?.[1];
+    return checkPdf(Buffer.from(await res.arrayBuffer()), url, named ? decodeURIComponent(named) : undefined);
+  }
+
+  async downloadPdf(target: { ref?: string; url?: string }): Promise<PdfFile> {
+    if (target.url) return this.fetchPdf(target.url);
+    if (!target.ref) throw new ToolError('ref나 url 중 하나가 필요합니다.');
+    const refNum = Number(String(target.ref).replace(/\D/g, ''));
+    const id = this.cdp.refs.get(refNum);
+    if (!id) throw new ToolError(`ref=${target.ref}를 찾을 수 없습니다. snapshot을 다시 찍으세요.`);
+    // 링크면 주소로 바로 받는다
+    const href = await this.cdp
+      .callOn<string>(id, `function () { const a = this.closest('a'); return a && a.href && !/^javascript:/i.test(a.href) ? a.href : ''; }`)
+      .catch(() => '');
+    if (href && /^https?:/.test(href)) {
+      try {
+        return await this.fetchPdf(href);
+      } catch {
+        /* PDF가 아니면 눌러서 받아 본다 */
+      }
+    }
+    // 버튼: 누르고, 내려오는 PDF(다운로드) 또는 PDF 화면으로의 이동을 기다린다
+    const wc = this.view.webContents;
+    const before = wc.getURL();
+    const got = new Promise<DownloadResult>((resolve) => downloadWaiters.set(wc.id, resolve));
+    try {
+      await act.click(this.cdp, refNum);
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const r = await Promise.race([got, new Promise<null>((res) => setTimeout(() => res(null), 500))]);
+        if (r) {
+          if ('error' in r) throw new ToolError(r.error);
+          return r;
+        }
+        const pdfUrl = wc.getURL() !== before ? await showingPdf(this) : null;
+        if (pdfUrl) return this.fetchPdf(pdfUrl);
+      }
+      throw new ToolError('버튼을 눌렀지만 PDF가 내려오지 않았습니다. 인쇄용 견적서 화면이 열렸다면 save_page_pdf로 그 화면을 PDF로 저장하세요.');
+    } finally {
+      downloadWaiters.delete(wc.id);
+    }
+  }
+
+  async printPdf(): Promise<PdfFile> {
+    const wc = this.view.webContents;
+    if (wc.isDestroyed() || !/^https?:/.test(wc.getURL())) throw new ToolError('저장할 페이지가 없습니다.');
+    const data = await wc.printToPDF({ printBackground: true, pageSize: 'A4' });
+    return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서 화면'));
+  }
+
   /** 내장 브라우저는 사용자가 뷰를 직접 조작하므로 카드 이미지 입력은 쓰지 않는다 */
   async userInput() {}
   async reset() {

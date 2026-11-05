@@ -3,6 +3,7 @@
 //  B :4102 가격 비공개, 메일 문의만
 //  D :4104 가격은 보이지만 배송비·제작 기간은 닫힌 "배송/교환" 탭 안에만 있음 (숨은 정보 탐색 테스트용)
 //  E :4105 시트 단위 가격 (1시트 = 24개) — 1개 가격으로 잘못 읽으면 금액이 수십 배로 튐 (수량 재확인 테스트용)
+//  F :4106 화면엔 가격이 없고, 수량을 고른 뒤 "견적서 다운로드"를 누르면 가견적서 PDF가 내려옴 (PDF 받기·분석 테스트용)
 //  C :4103 첫 방문은 HTTP 418 "보안 확인" 화면 → 사용자가 "확인" 누르면 정상 페이지 (차단 감지·handoff 테스트용)
 import http from 'node:http';
 
@@ -91,6 +92,60 @@ const E = page(
   <footer>스티커몰 · 대표 이수현 · 사업자등록번호 456-78-90123 · 031-777-0202</footer>`
 );
 
+const F = page(
+  '스티커팩토리 - 가견적서 발행',
+  `<h1>원형 방수 스티커 50mm (유광)</h1>
+  <p>가격은 가견적서로 확인하세요. 수량을 고른 뒤 <b>견적서 다운로드</b>를 누르면 PDF로 받을 수 있어요.</p>
+  <form id="f" onsubmit="return false">
+    <label for="qty">수량</label>
+    <select id="qty" name="qty"><option value="1000">1000매</option><option value="3000">3000매</option><option value="5000">5000매</option></select>
+    <button id="dl">견적서 다운로드</button>
+  </form>
+  <script>document.getElementById('dl').addEventListener('click', (e) => { e.preventDefault(); location.href = '/quote.pdf?qty=' + document.getElementById('qty').value; });</script>
+  <footer>스티커팩토리 · 대표 정민호 · 사업자등록번호 567-89-01234 · 053-222-0303 · 대구 북구 · quote@stickerfactory.test</footer>`
+);
+
+/** 아주 작은 PDF (Helvetica, 영문·숫자만) */
+function makePdf(lines) {
+  const esc = (t) => t.replace(/[\\()]/g, (m) => '\\' + m);
+  const content = 'BT /F1 12 Tf 50 780 Td 18 TL ' + lines.map((l) => `(${esc(l)}) Tj T*`).join(' ') + ' ET';
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+  ];
+  let out = '%PDF-1.4\n';
+  const offs = [];
+  objs.forEach((o, i) => {
+    offs.push(Buffer.byteLength(out));
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+const F_SUPPLY = { 1000: 25000, 3000: 60000, 5000: 90000 };
+const won = (n) => n.toLocaleString('en-US') + ' KRW';
+function fQuote(qty) {
+  const supply = F_SUPPLY[qty] ?? F_SUPPLY[3000];
+  return makePdf([
+    'ESTIMATE (preliminary quote)  No. SF-20261105-' + qty,
+    'Supplier: Sticker Factory  Biz No. 567-89-01234  Tel 053-222-0303',
+    'Item: Round waterproof sticker, 50mm, glossy laminate',
+    'Quantity: ' + qty + ' pcs',
+    'Supply amount: ' + won(supply),
+    'VAT (10%): ' + won(supply / 10),
+    'Total (VAT incl.): ' + won(supply * 1.1),
+    'Shipping: ' + won(2500) + ' (parcel, prepaid)',
+    'Production: 4 business days after artwork approval, delivery 1 day',
+    'Valid until: 2026-11-30',
+    'Payment: bank transfer before production'
+  ]);
+}
+
 const send = (res, status, html, headers = {}) => {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(html);
@@ -102,6 +157,16 @@ http.createServer((req, res) => send(res, 200, D)).listen(4104);
 http.createServer((req, res) => send(res, 200, E)).listen(4105);
 http
   .createServer((req, res) => {
+    if (req.url.startsWith('/quote.pdf')) {
+      const qty = Number(new URL(req.url, 'http://x').searchParams.get('qty')) || 3000;
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="estimate-${qty}.pdf"`, 'cache-control': 'no-store' });
+      return res.end(fQuote(qty));
+    }
+    send(res, 200, F);
+  })
+  .listen(4106);
+http
+  .createServer((req, res) => {
     // /always 는 확인해도 계속 막힌다 (건너뛰기 테스트용)
     if (req.url.startsWith('/always')) return send(res, 418, C_BLOCK.replace('/verify', '/always'));
     if (req.url.startsWith('/verify')) return send(res, 302, '', { location: '/', 'set-cookie': 'passed=1; Path=/' });
@@ -109,4 +174,4 @@ http
     send(res, 200, C);
   })
   .listen(4103);
-console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105');
+console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105  F(가견적서 PDF) http://localhost:4106');
