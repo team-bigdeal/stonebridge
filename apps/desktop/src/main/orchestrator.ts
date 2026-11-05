@@ -7,7 +7,7 @@ import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
 import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
 import { isDemoAddress } from '@shared/mail';
-import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
+import { confirmedSum, INFO_PAGE, missingKeys, needsWarrantyExtension, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { demoMailTo, hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
@@ -1163,7 +1163,7 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
 let announced = '';
 let reportShown = false;
 /** 받은 견적서에 적힌 합계와 앱이 계산한 합계를 맞춰 본다. 다르면 빠진 항목이 있을 수 있으니 한 번 알린다
- *  (견적서 합계가 배송비 별도인 경우도 맞는 것으로 본다) */
+ *  (견적서 합계가 배송비 별도인 경우, 요구 A/S 기간에 맞추려고 앱이 연장비를 더한 경우도 맞는 것으로 본다) */
 function checkStatedTotals() {
   if (!requirements) return;
   for (const v of listVendors()) {
@@ -1172,8 +1172,10 @@ function checkStatedTotals() {
     if (!q || !stated || q.listedPrice.value === null) continue;
     const computed = confirmedSum(q, requirements);
     const ship = q.shippingFee.value ?? 0;
+    // A/S 연장비는 업체 견적서 합계에는 없고 앱이 비교용으로 더한 금액
+    const warranty = needsWarrantyExtension(q, requirements) ? q.warrantyExtraFee.value ?? 0 : 0;
     const near = (a: number) => Math.abs(a - stated) <= Math.max(100, stated * 0.01);
-    if (near(computed) || near(computed - ship)) {
+    if ([computed, computed - warranty].some((c) => near(c) || near(c - ship))) {
       if (q.meta?.totalMismatch) quoteStore.mergeMeta(v.id, { totalMismatch: undefined });
       continue;
     }

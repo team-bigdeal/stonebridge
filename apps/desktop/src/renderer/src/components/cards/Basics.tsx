@@ -3,7 +3,7 @@ import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, FileText, FlaskCon
 import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
 import { isDemoAddress } from '@shared/mail';
-import { productAmount, rankQuotes, won } from '@shared/quote';
+import { needsWarrantyExtension, productAmount, rankQuotes, won } from '@shared/quote';
 import { maskEmail, maskPhone, maskText } from '@shared/privacy';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -529,11 +529,17 @@ export function ReplyFileCard({ vendorId, originalId }: { vendorId: VendorId; or
   const rank = priced.indexOf(vendorId) + 1;
   const [big, setBig] = useState(false);
   const product = q ? productAmount(q, req) : null;
+  // 총액(confirmedSum)에 들어가는 항목을 모두 보여 줘서 더한 값이 보이게 한다
+  const install = q && (req?.needInstall ?? true) ? q.installFee.value : null;
+  const warranty = q && needsWarrantyExtension(q, req) ? q.warrantyExtraFee.value : null;
+  const stated = q?.meta?.statedTotal;
   const rows: [string, string][] = q && product !== null
     ? [
         ['제품가', won(product)],
+        ...(install !== null ? [['설치비', install ? won(install) : '포함'] as [string, string]] : []),
         ...(q.meta?.extras ?? []).filter((e) => e.required).map((e): [string, string] => [e.name, won(e.amount)]),
-        ...(q.shippingFee.value !== null ? [['배송비', q.shippingFee.value ? won(q.shippingFee.value) : '무료'] as [string, string]] : []),
+        ...(warranty !== null && req ? [[`A/S 연장 (${req.minWarrantyMonths}개월 맞춤)`, won(warranty)] as [string, string]] : []),
+        ...(q.shippingFee.value !== null && req?.needDelivery !== false ? [['배송비', q.shippingFee.value ? won(q.shippingFee.value) : '무료'] as [string, string]] : []),
         ...(q.leadTimeDays.value !== null ? [['납기', `${q.leadTimeDays.value}일`] as [string, string]] : [])
       ]
     : [];
@@ -570,6 +576,11 @@ export function ReplyFileCard({ vendorId, originalId }: { vendorId: VendorId; or
             {q?.totalPrice != null ? `총액 ${won(q.totalPrice)}` : '총액 확인 중'}
             {rank > 0 && priced.length > 1 && <span className="ml-2 text-primary">{priced.length}곳 중 {rank}위</span>}
           </p>
+          {warranty ? (
+            <p className="text-[13px] font-medium text-muted-foreground">
+              요구한 A/S {req?.minWarrantyMonths}개월에 맞추려고 연장비 {won(warranty)}을 더한 금액이에요{stated ? ` (첨부 견적서 합계 ${won(stated)})` : ''}
+            </p>
+          ) : null}
         </div>
       ) : (
         <p className="px-2 text-[14px] font-medium text-muted-foreground">첨부 견적서에서 견적 값을 찾지 못했어요. "견적서 보기"에서 원본을 확인해 주세요.</p>
