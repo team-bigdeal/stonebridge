@@ -35,7 +35,7 @@ export function RequirementsPanel() {
         type="button"
         onClick={() => toggle(true)}
         title="요구 조건 열기"
-        className="flex w-10 shrink-0 flex-col items-center gap-2 border-l bg-white pt-4 text-[13px] font-medium text-muted-foreground hover:text-ink"
+        className="flex w-10 shrink-0 flex-col items-center gap-2 border-l bg-card pt-4 text-[13px] font-medium text-muted-foreground hover:text-ink"
       >
         <PanelRight className="size-4" />
         <span className="[writing-mode:vertical-rl]">요구 조건</span>
@@ -44,7 +44,7 @@ export function RequirementsPanel() {
   }
 
   return (
-    <aside className={cn('relative flex shrink-0 flex-col border-l bg-white transition-opacity', closing && 'opacity-40')} style={{ width: panelWidth }}>
+    <aside className={cn('relative flex shrink-0 flex-col border-l bg-card transition-opacity', closing && 'opacity-40')} style={{ width: panelWidth }}>
       <ResizeHandle
         side="left"
         label="요구 조건 너비 조절"
@@ -92,7 +92,7 @@ function Summary({ r }: { r: Partial<Requirements> }) {
         {rows.map(([k, v]) => (
           <div key={k} className="flex items-baseline justify-between gap-4 border-b border-line/60 py-2.5 text-[14px]">
             <dt className="shrink-0 text-muted-foreground">{k}</dt>
-            <dd className={cn('min-w-0 truncate text-right font-medium', v ? 'text-black' : 'text-muted-foreground/60')} title={v}>
+            <dd className={cn('min-w-0 truncate text-right font-medium', v ? 'text-ink' : 'text-muted-foreground/60')} title={v}>
               {v ?? '—'}
             </dd>
           </div>
@@ -228,7 +228,7 @@ function Field({ label, value, children }: { label: string; value?: string; chil
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
-        {value && <span className="text-[15px] font-semibold tabular-nums text-black">{value}</span>}
+        {value && <span className="text-[15px] font-semibold tabular-nums text-ink">{value}</span>}
       </div>
       {children}
     </div>
@@ -243,7 +243,7 @@ function TextBox({ value, onChange, placeholder, type = 'text', suffix }: { valu
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-black shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]"
+        className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]"
       />
       {suffix && value && <span className="shrink-0 text-[13px] text-muted-foreground">{suffix}</span>}
     </label>
@@ -261,7 +261,7 @@ function Toggle({ value, options, onChange }: { value?: string; options: { value
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cn('flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors', value === o.value ? 'bg-white text-black shadow-sm' : 'text-muted-foreground hover:text-ink')}
+          className={cn('flex-1 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors', value === o.value ? 'bg-card text-ink shadow-sm dark:bg-input' : 'text-muted-foreground hover:text-ink')}
         >
           {o.label}
         </button>
@@ -341,7 +341,7 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
             setTyping(null);
           }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          className="w-[88px] shrink-0 rounded-md bg-muted px-2 py-1 text-right text-[13px] font-medium tabular-nums text-black outline-none focus:ring-2 focus:ring-primary/30"
+          className="w-[88px] shrink-0 rounded-md bg-muted px-2 py-1 text-right text-[13px] font-medium tabular-nums text-ink outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
       {/* 아래 예시 값: 누르면 그 값으로 */}

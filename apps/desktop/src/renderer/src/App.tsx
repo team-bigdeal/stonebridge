@@ -9,11 +9,13 @@ import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
 import { RequirementsPanel } from './components/RequirementsPanel';
 import { startAutosave } from './replay';
+import { useTheme } from './lib/theme';
 
 export default function App() {
   const handle = useStore((s) => s.handle);
   const set = useStore((s) => s.set);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
+  useTheme(useStore((s) => s.config?.theme));
 
   useEffect(() => {
     window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey, backend: c.browser }));
@@ -37,7 +39,7 @@ export default function App() {
           <HistorySidebar />
           <main className="relative min-w-0 flex-1">
             {/* 사이드바가 닫혀 있으면 그 자리(왼쪽 위)에서 다시 연다 */}
-            {!sidebarOpen && <SidebarToggle className="absolute left-2 top-2 z-10 bg-white/80 shadow-sm" />}
+            {!sidebarOpen && <SidebarToggle className="absolute left-2 top-2 z-10 bg-card/80 shadow-sm" />}
             <Chat />
           </main>
           {/* 요구 조건은 대화 안이 아니라 오른쪽에 늘 보이게 */}

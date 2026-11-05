@@ -114,7 +114,7 @@ function Composer() {
                 suggestion={c}
                 onClick={pick}
                 variant="ghost"
-                className="h-auto rounded-lg bg-white px-4 py-2.5 text-[14px] font-medium text-muted-foreground hover:bg-secondary hover:text-primary"
+                className="h-auto rounded-lg bg-card px-4 py-2.5 text-[14px] font-medium text-muted-foreground hover:bg-secondary hover:text-primary"
               />
             ))}
           </Suggestions>
@@ -133,7 +133,7 @@ function Composer() {
           // 디자인: 흰 입력칸 + 오른쪽 파란 보내기 버튼 (둘 사이 12px)
           className="[&>[data-slot=input-group]]:h-auto [&>[data-slot=input-group]]:items-stretch [&>[data-slot=input-group]]:gap-3 [&>[data-slot=input-group]]:overflow-visible [&>[data-slot=input-group]]:border-0 [&>[data-slot=input-group]]:shadow-none [&>[data-slot=input-group]]:ring-0!"
         >
-          <PromptInputBody className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-5 py-3 transition-shadow focus-within:ring-2 focus-within:ring-primary/30">
+          <PromptInputBody className="flex min-w-0 flex-1 items-center rounded-lg bg-card px-5 py-3 transition-shadow focus-within:ring-2 focus-within:ring-primary/30">
             <PromptInputTextarea
               autoFocus
               placeholder={
@@ -143,7 +143,7 @@ function Composer() {
                     ? '답변을 작성해주세요'
                     : '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요'
               }
-              className="min-h-0 p-0 py-1 text-[17px] font-medium leading-normal text-black placeholder:text-muted-foreground md:text-[17px]"
+              className="min-h-0 p-0 py-1 text-[17px] font-medium leading-normal text-ink placeholder:text-muted-foreground md:text-[17px]"
             />
           </PromptInputBody>
           <PromptInputSubmit
@@ -195,7 +195,7 @@ function Typing() {
   return (
     <div className="flex items-start gap-2" role="status">
       <Mascot size={42} />
-      <div className="flex items-center gap-2.5 rounded-lg rounded-tl-none bg-white px-4 py-2.5 text-[16px] font-medium text-muted-foreground">
+      <div className="flex items-center gap-2.5 rounded-lg rounded-tl-none bg-card px-4 py-2.5 text-[16px] font-medium text-muted-foreground">
         <span className="flex gap-1">
           {[0, 1, 2].map((i) => (
             <span key={i} className="size-1.5 animate-bounce rounded-full bg-primary/60" style={{ animationDelay: `${i * 120}ms` }} />
@@ -214,7 +214,7 @@ function Hero() {
       <div className="mx-auto flex w-full max-w-[1174px] animate-in flex-col gap-8 pb-[6vh] fade-in-0 slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
         <Mascot size={60} />
         <div className="flex flex-col gap-4 leading-normal">
-          <p className="text-[24px] font-medium text-black xl:text-[30px]">안녕하세요, 어떤 견적이 필요하세요?</p>
+          <p className="text-[24px] font-medium text-ink xl:text-[30px]">안녕하세요, 어떤 견적이 필요하세요?</p>
           <p className="text-[28px] font-semibold text-primary xl:text-[36px]">돌다리가 최적의 견적을 찾아드릴게요</p>
         </div>
       </div>
@@ -258,7 +258,7 @@ function ItemBody({ item }: { item: TimelineItem }) {
             <div className="flex items-start gap-2">
               <Mascot size={42} />
               <div className="flex min-w-0 max-w-[85%] flex-col gap-1">
-                <MessageContent className="whitespace-pre-wrap rounded-lg rounded-tl-none bg-white px-4 py-2.5 text-[17px] font-medium leading-normal group-[.is-assistant]:text-black">{item.text}</MessageContent>
+                <MessageContent className="whitespace-pre-wrap rounded-lg rounded-tl-none bg-card px-4 py-2.5 text-[17px] font-medium leading-normal group-[.is-assistant]:text-ink">{item.text}</MessageContent>
                 <MessageActions className="opacity-0 transition-opacity duration-200 group-hover/msg:opacity-100 focus-within:opacity-100">
                   <CopyAction text={item.text} />
                 </MessageActions>

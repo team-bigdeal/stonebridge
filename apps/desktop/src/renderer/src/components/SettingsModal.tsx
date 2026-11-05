@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
-import type { AppConfig, SettingsInput } from '@shared/types';
+import type { AppConfig, SettingsInput, ThemeMode } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,7 @@ export default function SettingsModal() {
       onMouseDown={(e) => e.target === e.currentTarget && close()}
       onKeyDown={(e) => e.key === 'Escape' && close()}
     >
-      <div role="dialog" aria-modal="true" aria-label="설정" className="flex max-h-[88vh] w-full max-w-[720px] flex-col gap-4 rounded-lg bg-white p-5 shadow-xl">
+      <div role="dialog" aria-modal="true" aria-label="설정" className="flex max-h-[88vh] w-full max-w-[720px] flex-col gap-4 rounded-lg bg-card p-5 shadow-xl">
         <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
           <div className="flex flex-col gap-2 leading-normal">
             <p className="text-[19px] font-semibold text-ink">설정</p>
@@ -49,6 +49,9 @@ export default function SettingsModal() {
 
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-1">
           <div className="flex flex-col gap-8">
+            <Section title="화면">
+              <ThemeTab config={config} />
+            </Section>
             <Section title="AI 모델">
               <AiTab config={config} />
             </Section>
@@ -96,6 +99,35 @@ function useSave() {
   return { state, error, save };
 }
 
+/** 선택하면 바로 저장하고 바로 반영한다 (재시작 필요 없음) */
+function ThemeTab({ config }: { config: AppConfig }) {
+  const set = useStore((s) => s.set);
+  const { error, save } = useSave();
+  // 고른 값은 여기서 들고 있다가 바로 보여 준다 (저장 응답이 config를 덮어써도 강조가 되돌아가지 않게)
+  const [theme, setTheme] = useState<ThemeMode>(config.theme ?? 'system');
+  const pick = (v: string) => {
+    const mode = v as ThemeMode;
+    setTheme(mode);
+    set({ config: { ...useStore.getState().config!, theme: mode } });
+    void save({ THEME: v }, () => set({ config: { ...useStore.getState().config!, theme: mode } }));
+  };
+  return (
+    <div className="flex flex-col gap-5">
+      <Row label="화면 테마" hint={error || '시스템은 컴퓨터의 라이트·다크 설정을 따라가요. 견적서와 업체 사이트 화면은 항상 원래 색으로 보여요.'}>
+        <Segmented
+          value={theme}
+          options={[
+            { value: 'system', label: '시스템' },
+            { value: 'light', label: '라이트' },
+            { value: 'dark', label: '다크' }
+          ]}
+          onChange={pick}
+        />
+      </Row>
+    </div>
+  );
+}
+
 function AiTab({ config }: { config: AppConfig }) {
   const set = useStore((s) => s.set);
   const [key, setKey] = useState('');
@@ -115,7 +147,7 @@ function AiTab({ config }: { config: AppConfig }) {
         ) : (
           <div className="flex items-center gap-3">
             <Box filled>
-              <span className="text-[14px] font-medium text-black">저장됨</span>
+              <span className="text-[14px] font-medium text-ink">저장됨</span>
             </Box>
             <Button type="button" variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => setEditKey(true)}>
               바꾸기
@@ -235,7 +267,7 @@ function MailTab({ config }: { config: AppConfig }) {
           {config.googleUser ? (
             <>
               <Box filled className="min-w-0 flex-1">
-                <span className="truncate text-[14px] font-medium text-black" title={config.googleUser}>
+                <span className="truncate text-[14px] font-medium text-ink" title={config.googleUser}>
                   {config.googleUser}
                 </span>
               </Box>
@@ -361,7 +393,7 @@ function BareInput({
       {...rest}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={cn('h-auto w-full rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-black shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]', className)}
+      className={cn('h-auto w-full rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]', className)}
     />
   );
 }
@@ -377,7 +409,7 @@ function Segmented({ value, options, onChange }: { value: string; options: { val
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cn('rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', value === o.value ? 'bg-white text-black shadow-sm' : 'text-muted-foreground hover:text-ink')}
+          className={cn('rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', value === o.value ? 'bg-card text-ink dark:bg-input shadow-sm' : 'text-muted-foreground hover:text-ink')}
         >
           {o.label}
         </button>

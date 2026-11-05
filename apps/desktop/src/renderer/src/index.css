@@ -45,6 +45,48 @@
   --row-alt: #f9fafc;
   --ink: #1d1d1d;
   --line: #c7c7c7;
+  color-scheme: light;
+}
+
+/* 다크: 토스 다크 팔레트 기준 (앱 화면에만 적용. 견적서 문서·내장 브라우저 화면은 그대로) */
+.dark {
+  color-scheme: dark;
+  --background: #17171c;
+  --foreground: #e4e4e5;
+  --card: #202027;
+  --card-foreground: #e4e4e5;
+  --popover: #202027;
+  --popover-foreground: #e4e4e5;
+  --primary: #4593fc;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c35;
+  --secondary-foreground: #6fb0ff;
+  --muted: #2c2c35;
+  --muted-foreground: #9e9ea4;
+  --accent: #2c2c35;
+  --accent-foreground: #e4e4e5;
+  --destructive: #f04452;
+  --border: #3c3c47;
+  --input: #4d4d59;
+  --ring: #4593fc;
+  --ok: #1ea866;
+  --warn: #fe9800;
+  --chart-1: #4593fc;
+  --chart-2: #a78bfa;
+  --chart-3: #2dd4bf;
+  --sidebar: #202027;
+  --sidebar-foreground: #e4e4e5;
+  --sidebar-primary: #4593fc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2c2c35;
+  --sidebar-accent-foreground: #6fb0ff;
+  --sidebar-border: #3c3c47;
+  --sidebar-ring: #4593fc;
+  --tint: #1c1c23;
+  --row: #25252d;
+  --row-alt: #1b1b21;
+  --ink: #e4e4e5;
+  --line: #3c3c47;
 }
 
 @theme inline {
@@ -102,7 +144,7 @@
     @apply bg-background text-foreground antialiased;
     word-break: keep-all;
   }
-  input, textarea, select { color-scheme: light; }
+  /* 입력칸·스크롤바 기본 색은 <html>의 color-scheme(라이트/다크)을 따른다 */
 }
 
 /* 로고 글씨: 둥근 굵은 글꼴 (Ok Mallang이 설치돼 있으면 그걸 쓴다) */

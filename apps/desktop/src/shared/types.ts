@@ -223,7 +223,12 @@ export interface MailRecord {
   at: string;
 }
 
+/** 화면 테마: 시스템(OS 설정 따라감) | 라이트 | 다크 */
+export type ThemeMode = 'system' | 'light' | 'dark';
+
 export interface AppConfig {
+  /** 앱 화면 테마 (견적서 문서와 내장 브라우저 화면에는 적용하지 않음) */
+  theme: ThemeMode;
   browser: 'aside' | 'electron' | null;
   /** 설정값: auto(Aside 우선) | electron(내장 브라우저) */
   browserPref: 'auto' | 'electron';
@@ -350,7 +355,7 @@ export interface BrowserInput {
 }
 
 export type SettingsInput = Partial<
-  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
+  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
 >;
 
 /** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */

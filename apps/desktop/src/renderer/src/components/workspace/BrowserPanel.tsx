@@ -43,23 +43,23 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
   return (
     <div className={cn('flex min-w-0 flex-col', className)}>
       {/* 탭: 업체 이름 (디자인의 파일 이름 탭 자리) */}
-      <div className="flex max-w-full items-center gap-2 self-start rounded-t-lg bg-[#fffffd] px-4 py-2.5 text-[14px] font-medium text-muted-foreground xl:text-[16px]">
+      <div className="flex max-w-full items-center gap-2 self-start rounded-t-lg bg-card px-4 py-2.5 text-[14px] font-medium text-muted-foreground xl:text-[16px]">
         {vid && <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[vid])} />}
         <span className="truncate" title={vendor?.name}>{title ?? (vendor ? vendor.name : vid ? '업체 찾는 중' : '웹 검색')}</span>
       </div>
     <Card className="gap-5 overflow-hidden rounded-tl-none px-5 py-6">
       {/* 주소줄 */}
       <div className="flex items-center gap-1 rounded-full bg-muted py-1.5 pl-2 pr-2 text-[14px] font-medium text-muted-foreground">
-        <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => api.browserBack(slot)} title="뒤로" aria-label="뒤로">
+        <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-card" onClick={() => api.browserBack(slot)} title="뒤로" aria-label="뒤로">
           <ArrowLeft className="size-4" />
         </Button>
         <span className="min-w-0 flex-1 truncate px-1" title={b?.url}>{host || '페이지 준비 중'}</span>
         {web && (
-          <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => window.doldari.openExternal(b!.url)} title="기본 브라우저로 열기" aria-label="기본 브라우저로 열기">
+          <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-card" onClick={() => window.doldari.openExternal(b!.url)} title="기본 브라우저로 열기" aria-label="기본 브라우저로 열기">
             <ExternalLink className="size-4" />
           </Button>
         )}
-        {!scoped && <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
+        {!scoped && <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-card" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
           <Maximize2 className="size-4" />
         </Button>}
       </div>
@@ -168,7 +168,7 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
                 key={l}
                 type="button"
                 onClick={() => choose(l)}
-                className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors', layout === l ? 'bg-white text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
+                className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors', layout === l ? 'bg-card text-ink dark:bg-input shadow-sm' : 'text-muted-foreground hover:text-ink')}
               >
                 {l === 'focus' ? <PanelLeft className="size-3.5" /> : <Columns3 className="size-3.5" />}
                 {l === 'focus' ? '크게 보기' : '나란히'}
