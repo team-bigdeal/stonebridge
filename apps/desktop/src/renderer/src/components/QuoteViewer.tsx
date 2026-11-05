@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Sparkles } from 'lucide-react';
 import type { Quote, Requirements, VendorId } from '@shared/types';
@@ -140,8 +140,15 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
   const [polish, setPolish] = useState<{ key: string; result: PolishResult } | null>(null);
   const [polishMsg, setPolishMsg] = useState('');
   const [polishBusy, setPolishBusy] = useState(false);
+  useEffect(() => {
+    if (tried.current !== polishKey) void runPolish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polishKey]);
   const doc = useMemo(() => (polish && polish.key === polishKey ? applyPolished(baseDoc, polish.result) : baseDoc), [baseDoc, polish, polishKey]);
+  /** 같은 사실에 대해 자동 다듬기를 한 번만 시도한다 (되돌리거나 실패해도 다시 돌지 않게) */
+  const tried = useRef('');
   const runPolish = async () => {
+    tried.current = polishKey;
     setPolishBusy(true);
     setPolishMsg('');
     try {
@@ -217,8 +224,11 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
             <Input className="h-8 w-28" placeholder="기안자" value={header.author} onChange={(e) => update({ author: e.target.value })} />
             <span className="text-muted-foreground">결재선</span>
             <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
-            <Button size="sm" variant="outline" className="ml-auto h-8" disabled={polishBusy} onClick={() => void runPolish()}>
-              <Sparkles className="size-3.5" /> {polishBusy ? '다듬는 중…' : doc.polishedCount ? 'AI로 다시 다듬기' : 'AI로 문장 다듬기'}
+            <span className="ml-auto flex items-center gap-1 text-muted-foreground">
+              <Sparkles className="size-3.5" /> {polishBusy ? 'AI가 문장을 다듬는 중…' : doc.polishedCount ? `AI가 ${doc.polishedCount}문장을 다듬었어요` : 'AI 다듬기 없음'}
+            </span>
+            <Button size="sm" variant="ghost" className="h-8" disabled={polishBusy} onClick={() => void runPolish()}>
+              다시 다듬기
             </Button>
             {doc.polishedCount ? (
               <Button size="sm" variant="ghost" className="h-8" onClick={() => { setPolish(null); setPolishMsg('템플릿 문장으로 되돌렸어요.'); }}>
