@@ -35,6 +35,8 @@ const api = {
   startSearch: (patch: Partial<Requirements>) => ipcRenderer.invoke('flow:start', patch),
   /** 요구 조건 패널에서 품목을 바꿈 → 새 품목에 맞는 세부 조건으로 다시 */
   changeItem: (item: string): Promise<void> => ipcRenderer.invoke('req:item', item),
+  /** 요구 조건 패널에서 고친 값을 바로 main에 (채팅으로 시작해도 고친 값이 쓰이게) */
+  editRequirements: (patch: Partial<Requirements>): Promise<void> => ipcRenderer.invoke('req:edit', patch),
   revise: () => ipcRenderer.invoke('flow:revise'),
   uploadFile: (vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => ipcRenderer.invoke('file:upload', vendorId, file),
   sendMail: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:send', draft),

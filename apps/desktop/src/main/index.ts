@@ -162,6 +162,7 @@ function registerIpc() {
   });
   ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
   ipcMain.handle('req:item', (_e, item: string) => flow.onItemChange(item));
+  ipcMain.handle('req:edit', (_e, patch: Partial<Requirements>) => flow.editRequirements(patch ?? {}));
   ipcMain.handle('flow:revise', () => flow.revise());
   ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));

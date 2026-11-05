@@ -5,6 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
+import { requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
@@ -245,25 +246,45 @@ export async function onItemChange(item: unknown) {
 /** 시작 버튼을 연달아 눌러도 검색이 한 번만 시작되게 (정리를 기다리는 동안에도 단계는 아직 interview) */
 let starting = false;
 
-export async function startSearch(patch: Partial<Requirements>) {
-  if (!interview || getStage() !== 'interview' || starting) return;
-  // renderer 입력이라 값을 검증해서 받는다
+/** renderer가 보낸 요구 조건 값을 검증해서 받는다 (범위를 벗어난 수량·예산은 버림) */
+function cleanPatch(patch: Partial<Requirements>, int: Interview): Partial<Requirements> {
   const clean: Partial<Requirements> = {};
+  if (!patch || typeof patch !== 'object') return clean;
   if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
-  if (posInt(patch.quantity)) clean.quantity = patch.quantity;
-  if (posInt(patch.budgetMax)) clean.budgetMax = patch.budgetMax;
+  if (posInt(patch.quantity) && !valueIssue('quantity', patch.quantity!)) clean.quantity = patch.quantity;
+  if (posInt(patch.budgetMax) && !valueIssue('budgetMax', patch.budgetMax!)) clean.budgetMax = patch.budgetMax;
+  // 지난 날짜도 받아 두고 시작할 때 막는다 (패널에 보이는 값과 main 값이 어긋나지 않게)
   if (typeof patch.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(patch.deadline)) clean.deadline = patch.deadline;
   if (typeof patch.needInstall === 'boolean') clean.needInstall = patch.needInstall;
   if (typeof patch.minWarrantyMonths === 'number' && Number.isInteger(patch.minWarrantyMonths) && patch.minWarrantyMonths >= 0) clean.minWarrantyMonths = patch.minWarrantyMonths;
   if (typeof patch.region === 'string') clean.region = patch.region.trim().slice(0, 100) || undefined;
   // 품목별 세부 조건: 이름은 인터뷰가 정한 것만, 값만 사용자가 고친다
-  if (Array.isArray(patch.specs) && interview.req.specs) {
+  if (Array.isArray(patch.specs) && int.req.specs) {
     const edited = new Map(patch.specs.filter((x) => x && typeof x.label === 'string').map((x) => [x.label, typeof x.value === 'string' ? x.value.trim().slice(0, 100) || null : null]));
-    clean.specs = interview.req.specs.map((sp) => (edited.has(sp.label) ? { ...sp, value: edited.get(sp.label) ?? null } : sp));
+    clean.specs = int.req.specs.map((sp) => (edited.has(sp.label) ? { ...sp, value: edited.get(sp.label) ?? null } : sp));
   }
-  interview.apply(clean);
+  return clean;
+}
+
+/** 요구 조건 패널에서 값을 고칠 때마다: 채팅으로 "시작"해도, 다음 질문을 받아도 고친 값이 쓰이게 main에 바로 반영한다.
+ *  품목은 다 쓴 뒤 onItemChange가 세부 조건까지 다시 정하므로 여기서는 받지 않는다 */
+export function editRequirements(patch: Partial<Requirements>) {
+  if (!interview || getStage() !== 'interview' || starting) return;
+  const { item: _item, ...rest } = cleanPatch(patch, interview);
+  interview.apply(rest);
+}
+
+export async function startSearch(patch: Partial<Requirements>) {
+  if (!interview || getStage() !== 'interview' || starting) return;
+  interview.apply(cleanPatch(patch, interview));
   if (!interview.req.item) {
     say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
+    return;
+  }
+  // 수량·예산이 말이 안 되거나 납기가 이미 지났으면 시작하지 않고 고칠 곳을 알린다
+  const issue = requirementIssue(interview.result());
+  if (issue) {
+    say(`${issue} 오른쪽 요구 조건에서 고친 뒤 다시 시작해 주세요.`);
     return;
   }
   requirements = interview.result();
