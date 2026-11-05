@@ -264,6 +264,40 @@ export function deliveryText(t: import('./types').QuoteTerms | undefined, leadDa
   return text ?? days;
 }
 
+/** 영어 결제 조건의 흔한 표현 → 한국어 (때: 앞에 붙임 / 방법: 그 자리에서 바꿈) */
+const PAY_WHEN: [RegExp, string][] = [
+  [/\bbefore (?:production|manufacturing|printing)\b/i, '제작 전'],
+  [/\b(?:after|upon|on) (?:delivery|receipt)\b/i, '납품 후'],
+  [/\b(?:upon|on|at|with) (?:order(?:ing)?|placing (?:the )?order)\b/i, '주문 시'],
+  [/\bwithin (\d+) days?\b/i, '$1일 이내']
+];
+const PAY_HOW: [RegExp, string][] = [
+  [/\b(?:bank|wire) transfer\b|\bremittance\b/gi, '계좌이체'],
+  [/\b(?:credit )?card(?: payment)?\b/gi, '카드 결제'],
+  [/\bcash\b/gi, '현금'],
+  [/\b(?:in advance|prepayment|prepaid|upfront|advance payment)\b/gi, '선결제'],
+  [/\b(?:and|or)\b/gi, ','],
+  [/\b(?:payment|by|via)\b/gi, ' ']
+];
+
+/** 영어로만 적힌 결제 조건을 한국어로 ("bank transfer before production" → "제작 전 계좌이체").
+ *  모르는 말이 남으면 원문 그대로 둔다 */
+export function koreanPayment(text: string | undefined): string | undefined {
+  if (!text || /[가-힣]/.test(text) || !/[A-Za-z]/.test(text)) return text;
+  // "cash on delivery"는 때("on delivery")보다 먼저 착불로
+  let rest = text.trim().replace(/[.:;]+$/, '').replace(/\bcash on delivery\b|\bCOD\b/gi, '착불');
+  const when: string[] = [];
+  for (const [re, ko] of PAY_WHEN) {
+    const m = re.exec(rest);
+    if (!m) continue;
+    when.push(m[0].replace(re, ko));
+    rest = rest.replace(re, ' ');
+  }
+  for (const [re, ko] of PAY_HOW) rest = rest.replace(re, ko);
+  const out = [...when, rest].join(' ').replace(/\s*,[\s,]*/g, ', ').replace(/\s+/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '');
+  return out && !/[A-Za-z]{2,}/.test(out) ? out : text;
+}
+
 /** 서로 다른 형태(웹·메일·파일)의 견적을 하나의 양식으로 */
 export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
   const qty = req.quantity || 1;
@@ -326,7 +360,7 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     terms: {
       validity: m.terms?.validity,
       delivery: deliveryText(m.terms, q.leadTimeDays.value),
-      payment: m.terms?.payment,
+      payment: koreanPayment(m.terms?.payment),
       place: m.terms?.place ?? req.region
     },
     lines,
