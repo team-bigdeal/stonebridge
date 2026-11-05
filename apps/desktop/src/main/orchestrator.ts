@@ -110,7 +110,7 @@ export async function onChat(text: string) {
         await startSearch({});
         return;
       }
-      const { question, ready, askingSize } = await interview.next(text);
+      const { question, ready, askingSize, defaulted } = await interview.next(text);
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
@@ -125,7 +125,9 @@ export async function onChat(text: string) {
         }
         return;
       }
-      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
+      // 기본값으로 채운 항목은 숨기지 않고 알린다 (카드에도 그 값이 보인다)
+      const filled = defaulted?.length ? ` ${defaulted.join('·')}은(는) 말씀이 없어서 기본값으로 넣어 뒀어요.` : '';
+      say(ready ? `요구 조건을 정리했어요.${filled} 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.` : '어떤 품목의 견적이 필요한지 알려 주세요.');
       return;
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
