@@ -10,6 +10,7 @@ export function reqText(r: Requirements) {
     `- 설치/시공 필요: ${r.needInstall ? '예' : '아니오'}`,
     `- 최소 A/S 기간: ${r.minWarrantyMonths}개월`,
     r.region ? `- 지역: ${r.region}` : '',
+    ...(r.specs ?? []).filter((s) => s.value).map((s) => `- ${s.label}: ${s.value}${s.unit ?? ''}`),
     r.notes ? `- 메모: ${r.notes}` : ''
   ]
     .filter(Boolean)
