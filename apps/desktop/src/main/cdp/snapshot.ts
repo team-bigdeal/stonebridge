@@ -25,8 +25,10 @@ const KEEP_RE = /견적|PDF|출력|인쇄|합계|총\s*(금액|액)|결제\s*금
 
 export async function takeSnapshot(cdp: CdpSession): Promise<string> {
   const { nodes } = await cdp.send<{ nodes: AXNode[] }>('Accessibility.getFullAXTree');
-  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  let byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  let frame: string | undefined;
   cdp.refs.clear();
+  cdp.refFrame.clear();
   let nextRef = 1;
   const lines: string[] = [];
 
@@ -45,6 +47,7 @@ export async function takeSnapshot(cdp: CdpSession): Promise<string> {
       if (INTERACTIVE.has(role) && node.backendDOMNodeId) {
         const ref = nextRef++;
         cdp.refs.set(ref, node.backendDOMNodeId);
+        if (frame) cdp.refFrame.set(ref, frame);
         const value = text(node.value);
         const expanded = node.properties?.find((p) => p.name === 'expanded');
         const extra = [value ? `value="${value}"` : '', expanded ? `expanded=${expanded.value.value}` : ''].filter(Boolean).join(' ');
@@ -63,6 +66,19 @@ export async function takeSnapshot(cdp: CdpSession): Promise<string> {
   }
 
   if (nodes[0]) walk(nodes[0].nodeId, 0, '');
+  // 다른 출처 iframe(옵션·가격 계산기 등)의 내용도 이어 붙인다. 같은 [ref=N]으로 조작할 수 있다
+  for (const f of cdp.frameSessions()) {
+    if (!/^https?:/.test(f.url)) continue;
+    const visible = await cdp.frameOffset(f.sessionId).then(() => true).catch(() => false);
+    if (!visible) continue;
+    const r = await cdp.send<{ nodes: AXNode[] }>('Accessibility.getFullAXTree', {}, f.sessionId).catch(() => null);
+    if (!r?.nodes?.length) continue;
+    byId = new Map(r.nodes.map((n) => [n.nodeId, n]));
+    frame = f.sessionId;
+    lines.push(`- iframe "${(() => { try { return new URL(f.url).host; } catch { return f.url; } })()}" (옵션·가격 영역일 수 있음)`);
+    walk(r.nodes[0].nodeId, 1, '');
+    frame = undefined;
+  }
   const title = await cdp.evaluate<string>('document.title').catch(() => '');
   let out = `페이지: ${title}\nURL: ${cdp.url()}\n${lines.join('\n')}`;
   if (out.length > MAX_CHARS) {

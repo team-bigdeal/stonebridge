@@ -55,7 +55,10 @@ export async function readText(d: BrowserDriver, maxChars = 12000) {
     body.length > maxChars
       ? `${body.slice(0, maxChars - 3000)}\n\n…(중간 ${(body.length - maxChars).toLocaleString()}자 생략 — find_in_page로 찾을 수 있음)…\n\n${body.slice(-3000)}`
       : body;
-  return `URL: ${await d.url()}${prices}${hints ? `\n\n## 배송·납기·비용 관련 문구 (탭·접힌 영역 포함)\n${hints}` : ''}\n\n## 본문\n${shown}`;
+  // 다른 출처 iframe 안(옵션 선택·가격 계산기)도 함께 준다
+  const frames = (await d.frameTexts?.().catch(() => [])) ?? [];
+  const frameText = frames.map((f) => `\n\n## iframe (${f.host}) 안 내용\n${f.text}`).join('');
+  return `URL: ${await d.url()}${prices}${hints ? `\n\n## 배송·납기·비용 관련 문구 (탭·접힌 영역 포함)\n${hints}` : ''}\n\n## 본문\n${shown}${frameText}`;
 }
 
 /** 견적에 자주 빠지는 정보의 키워드 */

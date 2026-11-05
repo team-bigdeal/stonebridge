@@ -33,7 +33,7 @@ export const TOOL_DEFS = {
   read_text: T('read_text', '현재 페이지 본문 텍스트. 가격·조건을 빠르게 찾을 때 사용.'),
   click: T('click', 'snapshot이 준 ref 요소를 클릭한다. 제출·결제 버튼은 거부된다.', { ref: { type: 'string', description: 'snapshot의 ref 값 그대로' } }, ['ref']),
   fill: T('fill', 'ref 입력칸의 기존 값을 지우고 text를 입력한다.', { ref: { type: 'string' }, text: { type: 'string' } }, ['ref', 'text']),
-  select_option: T('select_option', '드롭다운(<select>)에서 옵션을 고른다. 수량·규격·용지 등을 요구 조건에 맞추면 금액이 다시 계산된다.', { ref: { type: 'string' }, option: { type: 'string', description: '보이는 옵션 글자 그대로 (예: "1000매")' } }, ['ref', 'option']),
+  select_option: T('select_option', '드롭다운에서 옵션을 고른다. <select>뿐 아니라 눌러서 목록이 펼쳐지는 커스텀 드롭다운(button/combobox, 현재 값이 글자로 보이는 칸)도 된다: 그 칸의 ref와 고를 글자를 주면 펼쳐서 누른다. 수량·규격·용지·인쇄 도수 등을 요구 조건에 맞추면 금액이 다시 계산된다. 옵션 글자가 정확하지 않으면 실패 메시지에 펼쳐진 목록이 나온다.', { ref: { type: 'string', description: 'snapshot의 숫자 ref (예: "12")' }, option: { type: 'string', description: '보이는 옵션 글자 그대로 (예: "1000매")' } }, ['ref', 'option']),
   find_in_page: T(
     'find_in_page',
     '페이지 전체(숨은 탭·접힌 영역·iframe 포함)에서 키워드 주변 문장과 관련 안내 링크를 찾는다. 배송비·납기·설치비가 본문에 안 보일 때 사용.',

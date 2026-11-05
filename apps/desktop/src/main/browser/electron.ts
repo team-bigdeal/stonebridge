@@ -299,16 +299,39 @@ export class ElectronDriver implements BrowserDriver {
     if (this.cdp.locked) throw new Error('handoff 이후에는 조작할 수 없습니다.');
     const id = this.cdp.refs.get(Number(String(ref).replace(/\D/g, '')));
     if (!id) throw new Error(`ref=${ref}를 찾을 수 없습니다. snapshot을 다시 찍으세요.`);
-    const ok = await this.cdp.callOn<boolean>(
+    // 네이티브 <select>가 아니면(Vuetify·커스텀 드롭다운) 펼쳐서 목록 항목을 누른다
+    const sid = this.cdp.refFrame.get(Number(String(ref).replace(/\D/g, '')));
+    const native = await this.cdp.callOn<boolean>(id, `function () { return this.tagName === 'SELECT' || !!(this.querySelector && this.querySelector('select')); }`, sid);
+    if (!native) return act.selectCustom(this.cdp, Number(String(ref).replace(/\D/g, '')), option);
+    const r = await this.cdp.callOn<{ ok: boolean; options: string[] }>(
       id,
-      `function () { const v = ${JSON.stringify(option)}; const o = [...(this.options || [])].find((o) => o.text.trim() === v || o.value === v); if (!o) return false; this.value = o.value; this.dispatchEvent(new Event('input', { bubbles: true })); this.dispatchEvent(new Event('change', { bubbles: true })); return true; }`
+      `function () {
+        const el = this.tagName === 'SELECT' ? this : this.querySelector('select');
+        const norm = ${act.NORM_FN};
+        const v = ${JSON.stringify(option)};
+        const opts = [...(el.options || [])];
+        const o = opts.find((o) => o.text.trim() === v || o.value === v) || opts.find((o) => norm(o.text) === norm(v)) || opts.find((o) => norm(o.text).includes(norm(v)));
+        if (!o) return { ok: false, options: opts.map((o) => o.text.trim()).slice(0, 30) };
+        el.value = o.value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true, options: [] };
+      }`,
+      sid
     );
-    if (!ok) throw new Error(`"${option}" 옵션이 없습니다.`);
+    if (!r?.ok) throw new Error(`"${option}" 옵션이 없습니다. 있는 옵션: ${(r?.options ?? []).join(' / ')}`);
     await new Promise((r) => setTimeout(r, 800));
     return `옵션 선택 완료: ${option}. read_text로 다시 계산된 금액을 확인하세요.`;
   }
   evaluate<T>(expression: string) {
     return this.cdp.evaluate<T>(expression);
+  }
+  async frameTexts() {
+    const out: { host: string; text: string }[] = [];
+    for (const f of this.cdp.frameSessions()) {
+      if (!/^https?:/.test(f.url)) continue;
+      const text = await this.cdp.evaluate<string>('document.body ? document.body.innerText : ""', f.sessionId).catch(() => '');
+      if (text && text.trim().length > 20) out.push({ host: new URL(f.url).host, text: text.replace(/\n{3,}/g, '\n\n').slice(0, 4000) });
+    }
+    return out;
   }
   async screenshot() {
     const img = await this.view.webContents.capturePage().catch(() => null);
@@ -346,7 +369,7 @@ export class ElectronDriver implements BrowserDriver {
     if (!id) throw new ToolError(`ref=${target.ref}를 찾을 수 없습니다. snapshot을 다시 찍으세요.`);
     // 링크면 주소로 바로 받는다
     const href = await this.cdp
-      .callOn<string>(id, `function () { const a = this.closest('a'); return a && a.href && !/^javascript:/i.test(a.href) ? a.href : ''; }`)
+      .callOn<string>(id, `function () { const a = this.closest('a'); return a && a.href && !/^javascript:/i.test(a.href) ? a.href : ''; }`, this.cdp.refFrame.get(refNum))
       .catch(() => '');
     if (href && /^https?:/.test(href)) {
       try {
