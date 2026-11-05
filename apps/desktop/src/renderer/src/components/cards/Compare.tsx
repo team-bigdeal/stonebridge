@@ -66,14 +66,15 @@ export function CompareCard() {
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   // 순위 변동 다시 보기: i번째 기록 단계를 그린다 (at = 그 단계를 띄운 시각, 바뀐 칸 깜빡임용)
   const [rp, setRp] = useState<{ i: number; playing: boolean; at: number } | null>(null);
+  const [speed, setSpeed] = useState(1);
   const canReplay = useMemo(() => hasRankChange(rankLog, req), [rankLog, req]);
   const live = useLiveRankFx(rankLog, req);
   const sv: StepView | null = rp ? stepView(rankLog, Math.min(rp.i, rankLog.length - 1), req) : live;
   useEffect(() => {
     if (!rp?.playing) return;
-    const t = setTimeout(() => setRp((p) => (p ? (p.i < rankLog.length - 1 ? { i: p.i + 1, playing: true, at: Date.now() } : { ...p, playing: false }) : p)), 1600);
+    const t = setTimeout(() => setRp((p) => (p ? (p.i < rankLog.length - 1 ? { i: p.i + 1, playing: true, at: Date.now() } : { ...p, playing: false }) : p)), 1600 / speed);
     return () => clearTimeout(t);
-  }, [rp, rankLog.length]);
+  }, [rp, rankLog.length, speed]);
   const quotes = rp && sv ? sv.quotes : liveQuotes;
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
@@ -115,7 +116,7 @@ export function CompareCard() {
             </div>
           }
         />
-        {rp && <ReplayBar i={Math.min(rp.i, rankLog.length - 1)} n={rankLog.length} playing={rp.playing} onChange={(i, playing) => setRp({ i, playing, at: Date.now() })} onClose={() => setRp(null)} />}
+        {rp && <ReplayBar i={Math.min(rp.i, rankLog.length - 1)} n={rankLog.length} playing={rp.playing} speed={speed} onSpeed={setSpeed} onChange={(i, playing) => setRp({ i, playing, at: Date.now() })} onClose={() => setRp(null)} />}
         <AnimatePresence mode="wait">
           {sv && (
             <motion.div
@@ -182,8 +183,10 @@ function RankDelta({ d }: { d?: number }) {
   );
 }
 
-/** 다시 보기 조작: 처음부터·이전·재생/멈춤·다음, 단계 막대, 닫기 */
-function ReplayBar({ i, n, playing, onChange, onClose }: { i: number; n: number; playing: boolean; onChange: (i: number, playing: boolean) => void; onClose: () => void }) {
+const SPEEDS = [0.5, 1, 2, 4];
+
+/** 다시 보기 조작: 처음부터·이전·재생/멈춤·다음, 단계 막대, 배속, 닫기 */
+function ReplayBar({ i, n, playing, speed, onSpeed, onChange, onClose }: { i: number; n: number; playing: boolean; speed: number; onSpeed: (s: number) => void; onChange: (i: number, playing: boolean) => void; onClose: () => void }) {
   const btn = 'flex size-8 items-center justify-center rounded-md text-ink hover:bg-card disabled:opacity-40';
   const end = i >= n - 1;
   return (
@@ -204,6 +207,20 @@ function ReplayBar({ i, n, playing, onChange, onClose }: { i: number; n: number;
         className="mx-2 h-1.5 flex-1 cursor-pointer accent-primary"
       />
       <span className="w-20 text-right text-[13px] font-medium tabular-nums text-muted-foreground">{i + 1} / {n}단계</span>
+      <div role="radiogroup" aria-label="재생 속도" className="flex rounded-md bg-card/60 p-0.5">
+        {SPEEDS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={speed === s}
+            onClick={() => onSpeed(s)}
+            className={cn('rounded px-2 py-1 text-[12px] font-semibold tabular-nums', speed === s ? 'bg-primary text-white' : 'text-muted-foreground hover:text-ink')}
+          >
+            {s}×
+          </button>
+        ))}
+      </div>
       <button type="button" className={btn} aria-label="다시 보기 닫기" onClick={onClose}><X className="size-4" /></button>
     </div>
   );
