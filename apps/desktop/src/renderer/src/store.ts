@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type {
   AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
   Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus, SizesEventPayload } from '@shared/types';
+import { addOriginal } from '@shared/originals';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
 export interface Notice { id: number; message: string; vendorId?: VendorId }
@@ -237,9 +238,9 @@ export const useStore = create<State>((set, get) => ({
         break;
       }
       case 'original': {
+        // 같은 원본·같은 웹 화면은 바꿔 끼우고, 넘치면 웹 화면부터 버린다 (받은 견적서는 남김)
         const o = ev.payload as QuoteOriginal;
-        const list = (s.originals[o.vendorId] ?? []).filter((x) => !(o.url && x.url === o.url));
-        set({ originals: { ...s.originals, [o.vendorId]: [...list, o].slice(-4) } });
+        set({ originals: { ...s.originals, [o.vendorId]: addOriginal(s.originals[o.vendorId] ?? [], o) } });
         break;
       }
       case 'history': {

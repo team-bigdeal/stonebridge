@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChevronLeft, ChevronRight, Download, ExternalLink, Sparkles } from 'lucide-react';
-import type { Quote, Requirements, VendorId } from '@shared/types';
+import type { Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
+import { orderOriginals, originalLabel } from '@shared/originals';
+import { cn } from '@/lib/utils';
 import { applyPolished, approvalFields, buildApproval, buildPolishInput, type ApprovalHeader, type PolishResult } from '@shared/approval';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,25 +105,8 @@ export function QuoteViewer() {
             <style>{DOC_CSS}</style>
             {el}
           </TabsContent>
-          <TabsContent value="orig" className="min-h-0 space-y-3 overflow-y-auto">
-            {origs.length === 0 && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">아직 보관한 원본이 없어요. 웹 화면, 메일 회신, 올린 파일이 여기에 쌓여요.</div>}
-            {[...origs].reverse().map((o) => (
-              <div key={o.id} className="rounded-lg border bg-card p-3">
-                <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
-                  <span className="font-semibold text-foreground">{o.channel === 'web' ? '웹 화면' : o.channel === 'mail' ? '메일 회신' : '견적서 파일'}</span>
-                  <span className="truncate">{o.title}</span>
-                  {o.url && (
-                    <Button size="sm" variant="ghost" className="ml-auto h-6" onClick={() => window.doldari.openExternal(o.url!)}>
-                      <ExternalLink className="size-3.5" /> 열기
-                    </Button>
-                  )}
-                </div>
-                {o.image && <img src={o.image} alt="" className="w-full rounded border" />}
-                {o.fileData && o.mime?.startsWith('image/') && <img src={o.fileData} alt="" className="w-full rounded border" />}
-                {o.fileData && o.mime === 'application/pdf' && <PdfFrame title={o.title} dataUrl={o.fileData} />}
-                {o.text && <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-muted p-3 font-sans text-[13px]">{o.text}</pre>}
-              </div>
-            ))}
+          <TabsContent value="orig" className="min-h-0 overflow-y-auto">
+            <OriginalsPane list={origs} q={q} />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -286,6 +271,86 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** 받은 원본: 견적을 뽑은 문서(견적서 PDF·메일 회신)를 먼저 골라 두고, 웹 화면은 뒤에. 여러 개면 이름표로 바꿔 본다 */
+function OriginalsPane({ list, q }: { list: QuoteOriginal[]; q: Quote }) {
+  const ordered = orderOriginals(list, q);
+  const [sel, setSel] = useState<string | null>(null);
+  const cur = ordered.find((o) => o.id === sel) ?? ordered[0];
+  if (!cur) return <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">아직 보관한 원본이 없어요. 받은 견적서, 메일 회신, 웹 화면이 여기에 쌓여요.</div>;
+  return (
+    <div className="space-y-3">
+      {ordered.length > 1 && (
+        <div role="tablist" aria-label="받은 원본 고르기" className="flex flex-wrap gap-2">
+          {ordered.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              role="tab"
+              aria-selected={o.id === cur.id}
+              onClick={() => setSel(o.id)}
+              className={cn('flex max-w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-[13px] transition-colors', o.id === cur.id ? 'border-primary bg-tint text-primary' : 'border-line bg-card text-ink hover:bg-muted/50')}
+            >
+              <span className="shrink-0 font-semibold">{originalLabel(o)}</span>
+              <span className="truncate text-muted-foreground">{o.fileName ?? o.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <OriginalView key={cur.id} o={cur} />
+    </div>
+  );
+}
+
+const atText = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/** 원본 하나를 받은 모양 그대로: PDF는 PDF 뷰어, 사진은 사진, 메일은 보낸 사람·제목·본문·첨부, 웹은 화면 캡처 */
+function OriginalView({ o }: { o: QuoteOriginal }) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+        <span className="shrink-0 font-semibold text-foreground">{originalLabel(o)}</span>
+        <span className="truncate">{o.title}</span>
+        <span className="shrink-0 tabular-nums">{atText(o.capturedAt)}</span>
+        {o.url && (
+          <Button size="sm" variant="ghost" className="ml-auto h-6" onClick={() => window.doldari.openExternal(o.url!)}>
+            <ExternalLink className="size-3.5" /> 열기
+          </Button>
+        )}
+      </div>
+      {o.channel === 'mail' && (
+        <dl className="mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded bg-muted px-3 py-2 text-[13px]">
+          {o.from && (
+            <>
+              <dt className="text-muted-foreground">보낸 사람</dt>
+              <dd className="min-w-0 truncate">{o.from}</dd>
+            </>
+          )}
+          <dt className="text-muted-foreground">제목</dt>
+          <dd className="min-w-0 truncate">{o.title}</dd>
+          <dt className="text-muted-foreground">받은 시각</dt>
+          <dd className="tabular-nums">{atText(o.capturedAt)}</dd>
+          {o.attachments?.length ? (
+            <>
+              <dt className="text-muted-foreground">첨부</dt>
+              <dd className="min-w-0 truncate">{o.attachments.map((a) => a.name).join(', ')}</dd>
+            </>
+          ) : null}
+        </dl>
+      )}
+      {o.image && <img src={o.image} alt={`${o.title} 화면`} className="w-full rounded border" />}
+      {o.fileData && o.mime?.startsWith('image/') && <img src={o.fileData} alt={o.fileName ?? o.title} className="w-full rounded border" />}
+      {o.fileData && o.mime === 'application/pdf' && <PdfFrame title={o.fileName ?? o.title} dataUrl={o.fileData} />}
+      {o.text && <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-muted p-3 font-sans text-[13px]">{o.text}</pre>}
+      {o.attachments?.map((a, i) => (
+        <div key={i} className="mt-3 space-y-1.5">
+          <div className="text-[12px] font-semibold text-muted-foreground">첨부 · {a.name}</div>
+          {a.mime === 'application/pdf' ? <PdfFrame title={a.name} dataUrl={a.data} /> : <img src={a.data} alt={a.name} className="w-full rounded border" />}
+        </div>
+      ))}
+    </div>
   );
 }
 

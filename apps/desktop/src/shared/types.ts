@@ -129,6 +129,12 @@ export interface QuoteOriginal {
   fileName?: string;
   fileData?: string; // data URL
   mime?: string;
+  /** 이 원본에서 읽은 견적 값의 출처 ref (파일 이름·메일 messageId). 원본 탭에서 견적을 뽑은 원본을 먼저 보여 준다 */
+  ref?: string;
+  /** 메일 회신: 보낸 사람 */
+  from?: string;
+  /** 메일 회신에 붙은 견적서 파일 (PDF·사진, data URL) */
+  attachments?: { name: string; mime: string; data: string }[];
   capturedAt: string;
 }
 

@@ -865,6 +865,7 @@ async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
       title: `사이트 가견적서 · ${file.name}`,
       url: file.url,
       fileName: file.name,
+      ref: file.name,
       mime: 'application/pdf',
       fileData: `data:application/pdf;base64,${file.data.toString('base64')}`,
       capturedAt: new Date().toISOString()
@@ -900,6 +901,7 @@ export async function onFileUpload(slot: VendorId, input: { name: string; mime: 
         channel: 'file',
         title: file.name,
         fileName: file.name,
+        ref: file.name,
         mime: file.mime,
         fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
         text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
@@ -934,7 +936,7 @@ export async function onPasteMessage(slot: VendorId, text: string) {
   setVendorStatus(slot, 'parsing');
   emit('original', {
     vendorId: slot,
-    payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: ref, text: body, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+    payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: ref, ref, text: body, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
   });
   try {
     const { fields, meta } = await extractQuote({ vendorId: slot, requirements, hint: ref, ref, channel: 'file', content: [{ type: 'text', text: body }] });
@@ -1071,17 +1073,31 @@ export async function onPasteReply(slot: VendorId, kind: MailKind, text: string)
 async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
   if (!requirements) return;
   recordMail({ id: r.messageId, direction: 'in', vendorId: slot, kind, from: r.from, subject: r.subject, body: r.text, at: new Date().toISOString() });
+  // 첨부 중 견적서로 볼 PDF·사진만 (명함 vcf 같은 글 첨부는 뺀다). 원본에도 그대로 붙여 메일 모양으로 보여 준다
+  const docs = r.attachments.flatMap((a) => {
+    const block = quoteFileBlock({ name: a.filename, mime: a.contentType, data: a.content });
+    if (!block || block.type === 'text') return [];
+    const mime = block.type === 'document' ? 'application/pdf' : block.type === 'image' && block.source.type === 'base64' ? block.source.media_type : a.contentType;
+    return [{ block, name: a.filename || '첨부 파일', mime, data: `data:${mime};base64,${a.content.toString('base64')}` }];
+  });
   emit('original', {
     vendorId: slot,
-    payload: { id: randomUUID(), vendorId: slot, channel: 'mail', title: r.subject, text: r.text, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+    payload: {
+      id: randomUUID(),
+      vendorId: slot,
+      channel: 'mail',
+      title: r.subject,
+      ref: r.messageId,
+      from: r.from || undefined,
+      text: r.text,
+      attachments: docs.length ? docs.map(({ name, mime, data }) => ({ name, mime, data })) : undefined,
+      capturedAt: new Date().toISOString()
+    } satisfies QuoteOriginal
   });
   setVendorStatus(slot, 'parsing');
   say(`${vendorName(slot)}에서 회신이 왔어요. 견적서 양식으로 정리할게요.`);
   try {
-    // 첨부 중 견적서로 볼 PDF·사진만 (명함 vcf 같은 글 첨부는 뺀다)
-    const files = r.attachments
-      .map((a) => quoteFileBlock({ name: a.filename, mime: a.contentType, data: a.content }))
-      .filter((b) => b !== null && b.type !== 'text');
+    const files = docs.map((d) => d.block);
     const { fields, meta } = await extractQuote({
       vendorId: slot,
       requirements,

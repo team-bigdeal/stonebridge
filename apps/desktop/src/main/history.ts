@@ -7,9 +7,9 @@ import { app } from 'electron';
 import type { HistoryEventPayload, HistoryRecord, HistorySummary, Quote, QuoteOriginal, Requirements, SessionSnapshot, VendorId, VendorInfo } from '@shared/types';
 import { confirmedSum, recommend } from '@shared/quote';
 import { scrubContacts } from '@shared/privacy';
+import { addOriginal as addTo, MAX_ORIGINALS } from '@shared/originals';
 import { emit } from './events';
 
-const MAX_ORIGINALS = 4;
 const dir = () => path.join(app.getPath('userData'), 'history');
 
 let current: { id: string; createdAt: string } | null = null;
@@ -35,8 +35,8 @@ export function resumeRecord(id: string): HistoryRecord | null {
 }
 
 export function addOriginal(vendorId: VendorId, o: QuoteOriginal) {
-  // 같은 원본을 다시 보내면(제품 사진을 나중에 붙인 경우) 바꿔 끼운다
-  originals[vendorId] = [...(originals[vendorId] ?? []).filter((x) => x.id !== o.id), o].slice(-MAX_ORIGINALS);
+  // 같은 원본을 다시 보내면(제품 사진을 나중에 붙인 경우) 바꿔 끼우고, 넘치면 웹 화면부터 버린다 (화면과 같은 규칙)
+  originals[vendorId] = addTo(originals[vendorId] ?? [], o);
 }
 
 /** 다른 업체로 바뀐 자리의 원본은 버린다 */
