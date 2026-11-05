@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, History, Trash2 } from 'lucide-react';
+import { ArrowLeft, History, Plus, Trash2 } from 'lucide-react';
 import type { HistorySummary } from '@shared/types';
 import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill } from './cards/Section';
 import { exitReplay, openReplay } from '@/replay';
-import { SidebarToggle } from './Shell';
+import { SidebarToggle, useRestart } from './Shell';
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -14,6 +14,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'nu
 export function HistorySidebar() {
   const { sidebarOpen, historyRev, replay, liveId } = useStore();
   const active = replay?.id ?? liveId;
+  const restart = useRestart();
   const [list, setList] = useState<HistorySummary[] | null>(null);
 
   useEffect(() => {
@@ -24,10 +25,20 @@ export function HistorySidebar() {
   if (!sidebarOpen) return null;
   return (
     <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-white fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
+      {/* 새 견적 버튼 + 사이드바 닫기 */}
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <button
+          type="button"
+          onClick={() => void restart()}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[14px] font-medium text-primary hover:bg-[#dce8f7]"
+        >
+          <Plus className="size-4" /> 새 견적 추가하기
+        </button>
+        <SidebarToggle />
+      </div>
       <div className="flex h-12 items-center gap-2 pl-5 pr-3 text-[14px] font-semibold text-black">
         <History className="size-4 text-muted-foreground" /> 지난 견적
         {list && list.length > 0 && <span className="tabular-nums text-muted-foreground">{list.length}</span>}
-        <SidebarToggle className="ml-auto" />
       </div>
       {replay && (
         <button type="button" onClick={exitReplay} className="mx-3 mb-2 flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[13px] font-medium text-primary hover:bg-[#dce8f7]">
