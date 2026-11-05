@@ -396,14 +396,18 @@ function uniqueSites(urls: string[]) {
  *  차단·오류 화면이면 빈 이름: claim이 주소로 채우고, 사용자가 화면을 해결한 뒤 진짜 이름으로 바꾼다 */
 async function siteName(url: string): Promise<string> {
   const host = hostLabel(url);
-  if (!/^(localhost|127\.0\.0\.1)(:|$)/.test(host)) return host;
+  const local = /^(localhost|127\.0\.0\.1)(:|$)/.test(host);
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
     // 차단·오류 화면의 제목("보안 확인" 등)을 업체 이름으로 쓰지 않는다
-    if (!res.ok) return '';
-    const html = await res.text();
-    const title = /<title>([^<]+)<\/title>/i.exec(html)?.[1]?.split(/\s[-|·:]\s/)[0]?.trim();
-    return title && !BLOCK_TITLE.test(title) ? title : host;
+    if (!res.ok) return local ? '' : host;
+    const html = (await res.text()).slice(0, 300_000);
+    // 사이트 이름: og:site_name → 페이지 제목의 업체 이름 부분 ("고급명함제작 | 비즈팩토리" → 비즈팩토리, "라벨공방 - …" → 라벨공방)
+    const og = /<meta[^>]+property=["']og:site_name["'][^>]*content=["']([^"']{2,30})["']/i.exec(html)?.[1]?.trim();
+    const parts = (/<title>([^<]+)<\/title>/i.exec(html)?.[1] ?? '').split(/\s*[-|·:–]\s*/).map((t) => t.replace(/\s*(홈페이지|공식\s*몰|쇼핑몰|온라인\s*몰)$/, '').trim()).filter((t) => t.length >= 2);
+    const titleName = local ? parts[0] : parts.length > 1 ? parts.find((t) => t.length <= 12 && !/[0-9]|제작|주문|인쇄|상품|명함|스티커/.test(t)) ?? parts[parts.length - 1] : parts[0];
+    const name = [og, titleName].find((t) => t && t.length <= 20 && !BLOCK_TITLE.test(t));
+    return name ?? host;
   } catch {
     return host;
   }
@@ -1177,12 +1181,12 @@ function onQuotesSettled() {
   // 비교가 바뀔 때마다 히스토리에 저장 (같은 견적 건은 같은 파일을 덮어씀)
   saveRecord(requirements, listVendors(), quoteStore.quotes);
   const rec = recommend(quoteStore.quotes, requirements);
-  const key = `${rec.vendorId}:${rec.tentative}:${rec.reasons.join('|')}`;
-  if (key === announced) return;
-  announced = key;
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
-  // 금액·이유는 아래 추천 카드에 있으니 채팅은 한 줄로
-  say(`${rec.vendorId ? `${josa(vendorName(rec.vendorId), '을/를')} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
+  // 금액·이유는 아래 추천 카드에 있으니 채팅은 한 줄로. 보이는 문장이 같으면 다시 말하지 않는다 (이유 속 숫자만 바뀐 경우 등)
+  const line = `${rec.vendorId ? `${josa(vendorName(rec.vendorId), '을/를')} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`;
+  if (line === announced) return;
+  announced = line;
+  say(line);
   // 통합 견적서 카드는 내용이 실시간으로 바뀌므로 한 번만 띄운다
   if (reportShown) return;
   reportShown = true;
@@ -1278,7 +1282,7 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
       quoteStore.mergeMeta(slot, { priceDoubt: note || '기준 수량을 확인하지 못함' });
       say(`${josa(v.name, '은/는')} 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
     }
-    announced = '';
+    // 추천 문장이 바뀌었을 때만 다시 알린다 (같은 문장이면 onQuotesSettled가 건너뜀)
     onQuotesSettled();
   }, 2500);
   maybeOpenGate();
