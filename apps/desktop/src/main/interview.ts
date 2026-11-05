@@ -25,6 +25,8 @@ interface StepOut {
   needDelivery: boolean | null;
   region: string | null;
   notes: string | null;
+  vendors: string[] | null;
+  onlyVendors: boolean | null;
   nextQuestion: string | null;
   ready: boolean;
 }
@@ -46,13 +48,14 @@ export class Interview {
 설치가 의미 없는 품목이면 needInstall=false로 두고 묻지 않는다.
 A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판촉물·단체복, 소모품, 식품, 꽃 등)이면 minWarrantyMonths=0으로 두고 A/S는 묻지 않는다.
 배송이 필요 없으면(방문 수령, 매장 픽업, 현장 서비스) needDelivery=false, 택배·배송·설치 장소가 있으면 true. 모르면 null. 사용자가 "상관없어", "알아서"라고 하면 합리적인 값을 채운다.
+사용자가 특정 업체·사이트 이름을 말하면(예: "와우프레스에서", "비즈하우스랑 와우프레스 비교") vendors에 그 이름을 넣는다. 그 업체에서만 받고 싶어 하면(예: "와우프레스에서 견적 받아줘", "여기 두 곳만 비교") onlyVendors=true, 다른 업체와 함께 비교하길 원하면(예: "와우프레스도 포함해서") false. 업체를 말하지 않았으면 둘 다 null. 업체 이름은 묻지 않는다.
 질문은 최대 5개. 충분하면 nextQuestion=null.
 남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.`,
       content: JSON.stringify({ current: this.req, conversation: this.history, questionsAsked: this.asked }),
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'nextQuestion', 'ready'],
+        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'nextQuestion', 'ready'],
         properties: {
           item: nullable('string'),
           quantity: nullable('integer'),
@@ -63,6 +66,8 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
           needDelivery: nullable('boolean'),
           region: nullable('string'),
           notes: nullable('string'),
+          vendors: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+          onlyVendors: nullable('boolean'),
           nextQuestion: nullable('string'),
           ready: { type: 'boolean' }
         }
@@ -80,6 +85,8 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
     if (this.req.item && NO_WARRANTY_ITEM.test(this.req.item) && !MENTIONS_WARRANTY.test(said)) this.req.minWarrantyMonths = 0;
     if (out.region) this.req.region = out.region;
     if (out.notes) this.req.notes = out.notes;
+    if (out.vendors?.length) this.req.vendors = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].slice(0, 3);
+    if (out.onlyVendors !== null) this.req.onlyVendors = out.onlyVendors;
     if (!out.nextQuestion || this.asked >= 5) return { question: null, ready: Boolean(this.req.item) };
     this.asked++;
     this.history.push({ role: 'assistant', text: out.nextQuestion });

@@ -101,6 +101,10 @@ export interface ToolContext {
   missingOnDone?: () => string[];
   doneNudged?: boolean;
   shipNudged?: boolean;
+  /** 페이지에 도착하면 기록하고, 다른 브라우저가 이미 본 곳이면 그 메모 */
+  onVisit?: (url: string, title: string) => string | null;
+  /** 다른 브라우저들이 본 사이트·판단 메모 (검색 결과 아래에 붙임) */
+  board?: () => string;
 }
 
 export interface ToolResult {
@@ -133,7 +137,14 @@ const PAGE_CHANGING = new Set(['search_web', 'navigate', 'click', 'select_option
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runTool(ctx: ToolContext, name: string, input: any): Promise<ToolResult> {
-  const r = await runToolInner(ctx, name, input);
+  let r = await runToolInner(ctx, name, input);
+  // 다른 브라우저와 본 페이지 공유: 새 페이지에 도착하면 기록하고, 이미 다른 브라우저가 본 곳이면 알려 준다
+  if (PAGE_CHANGING.has(name) && !r.isError && ctx.onVisit) {
+    const url = await ctx.driver.url().catch(() => '');
+    const note = url ? ctx.onVisit(url, await ctx.driver.title().catch(() => '')) : null;
+    if (note) r = { ...r, text: `${r.text}\n${note}` };
+  }
+  if (name === 'search_web' && !r.isError && ctx.board) r = { ...r, text: r.text + ctx.board() };
   if (!PAGE_CHANGING.has(name) || r.outcome) return r;
   const block = await pageTools.detectBlock(ctx.driver, name === 'navigate' ? String(input.url) : undefined).catch(() => null);
   if (!block) return r;

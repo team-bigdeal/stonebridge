@@ -61,6 +61,13 @@ class QuoteStore {
     }
   }
 
+  /** 검색 중에 새 브라우저 자리를 열 때 (빈 견적을 만든다) */
+  ensure(id: VendorId) {
+    if (!this.requirements || this.quotes[id]) return;
+    this.quotes[id] = recompute(emptyQuote(id, 'web'), this.requirements);
+    emit('quote_update', { vendorId: id, payload: { quote: this.quotes[id] } });
+  }
+
   renameVendor(id: VendorId, name: string) {
     const q = this.quotes[id];
     if (!q) return;

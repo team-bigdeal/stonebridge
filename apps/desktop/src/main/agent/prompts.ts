@@ -54,9 +54,9 @@ const COLLECT_RULES = (req: Requirements) => `## 찾아야 하는 견적 정보
 - 가격이 공개되어 있지 않으면 오래 찾지 말고 바로 알린다: 견적용 메일 주소가 있으면 switch_channel(channel="mail", contact=메일 주소), 카톡·전화·상담 신청으로만 견적을 주면 switch_channel(channel="file"). 돌다리가 먼저 다른 사이트를 시도하고, 그래도 없을 때만 이 방법을 쓴다.
 - 다 보고했으면 report_quote(done=true)로 끝낸다.`;
 
-export function huntSystemPrompt(slot: VendorId, req: Requirements, tried: string[] = []) {
+export function huntSystemPrompt(slot: VendorId, req: Requirements, tried: string[] = [], target?: string, count = 3) {
   return `너는 견적 탐색 앱 '돌다리'의 브라우저 에이전트 ${slot}다. 오늘은 ${today()}이다. 사용자 대신 여러 사이트를 돌아다니며 견적을 받는 번거로움을 없애는 것이 목적이다.
-브라우저 3개가 동시에 일하고 있고, 너는 그중 하나다. 너의 담당 경로: ${ANGLES[slot]}
+${target ? `사용자가 업체를 "${target}"(으)로 지정했다. search_web으로 "${target}"의 공식 사이트를 찾아 이 품목 페이지로 가서 claim_vendor로 확정한다. 다른 업체는 고르지 않는다. 사이트가 차단·로그인 벽이면 request_user로 넘긴다.` : count > 1 ? `브라우저 ${count}개가 동시에 일하고 있고, 너는 그중 하나다. 너의 담당 경로: ${ANGLES[slot]}` : `너의 담당 경로: ${ANGLES[slot]}`}
 
 ## 사용자 요구 조건
 ${reqText(req)}
@@ -67,6 +67,7 @@ ${tried.length ? `이미 시도했지만 웹 견적이 안 된 업체 (다시 �
 2. 후보를 navigate + read_text로 직접 열어 확인한다. 상품 페이지에 견적서 출력·다운로드 버튼이 있는지 find_in_page(["견적서"])로 함께 본다. 차단·CAPTCHA·"접속 불가" 화면이 아니고, 실제로 이 품목을 팔거나 시공하는 곳이며, 가격이 보이거나 웹으로 견적을 요청할 방법이 있는 곳만 고른다.
 3. 가격 비교 사이트, 블로그, 뉴스, 지식인은 고르지 않는다.
 4. claim_vendor로 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체라고 거부되면 다른 후보를 고른다.
+- 브라우저끼리 본 페이지를 공유한다. 도구 결과에 [다른 브라우저 메모]가 붙으면 그 사이트는 이미 다른 브라우저가 확인한 곳이니 다시 살펴보지 말고 다른 후보로 넘어간다.
 
 ## 2단계: 견적 받기
 확정한 업체 페이지에서 견적 정보를 모은다.

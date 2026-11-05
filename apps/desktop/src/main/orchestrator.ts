@@ -16,6 +16,7 @@ import { getDriver, refreshState, resetAll, setHandoff } from './browser';
 import { ENGINE_ORDER, type Engine } from './browser/page';
 import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
+import { boardFor, noteVerdict, noteVisit, resetShared, siteKey } from './agent/shared';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
 import { formMessage, orderDraft, questionDraft, requestDraft } from './drafts';
@@ -56,6 +57,10 @@ const triedNames = new Map<VendorId, string[]>();
 const engines = new Map<VendorId, Engine>();
 /** 처음 요청에 업체 URL이 있으면 검색 대신 그 업체들로 */
 let givenUrls: string[] = [];
+/** 이번 검색에 쓰는 브라우저 (지정 업체·URL 수만큼만 띄운다) */
+let activeSlots: VendorId[] = [...VENDOR_IDS];
+/** 사용자가 이름으로 지정한 업체를 맡은 브라우저 → 업체 이름 */
+const targets = new Map<VendorId, string>();
 /** 사용자에게 넘긴 브라우저가 어떤 단계였는지 (계속/건너뛰기용) */
 const handoffMode = new Map<VendorId, { mode: 'hunt' | 'collect'; url?: string }>();
 const captured = new Set<string>();
@@ -66,18 +71,8 @@ const OUTLIER_RATIO = 3;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
-const hostKey = (url: string) => {
-  try {
-    const u = new URL(url);
-    // 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인으로 본다 (dev.·shop.·m. 같은 하위 도메인도 같은 업체)
-    if (/(smartstore|11st|gmarket|auction|ssg|lotteon)/.test(u.hostname)) return u.host.replace(/^(www|m)\./, '') + u.pathname.split('/').slice(0, 3).join('/');
-    const parts = u.hostname.split('.');
-    const n = parts.length >= 3 && /^(co|or|go|ne|ac|re|pe|com|net|org)$/.test(parts[parts.length - 2]) ? 3 : 2;
-    return parts.slice(-n).join('.');
-  } catch {
-    return url;
-  }
-};
+/** 같은 업체 판단 키: 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인 (dev.·shop.·m. 하위 도메인도 같은 업체) */
+const hostKey = siteKey;
 
 const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
 const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'report_quote', 'switch_channel', 'request_user'];
@@ -126,6 +121,12 @@ export async function onChat(text: string) {
       for (const url of urls.slice(0, 3)) {
         const slot = VENDOR_IDS.find((id) => !getVendor(id) || ['failed', 'needs_user'].includes(getVendorStatus(id)));
         if (!slot) break;
+        // 쓰지 않던 브라우저면 자리를 열고 카드도 하나 띄운다
+        if (!activeSlots.includes(slot)) {
+          activeSlots = [...activeSlots, slot];
+          quoteStore.ensure(slot);
+          timeline({ kind: 'browser', slot, title: new URL(url).hostname.replace(/^www\./, '') });
+        }
         claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '사용자가 지정' });
         void collect(slot);
       }
@@ -195,25 +196,39 @@ export async function startSearch(patch: Partial<Requirements>) {
   emit('requirements_ready', { payload: { ready: false, asking: false } });
   // 조건 변경 직후라면 이전 검색의 브라우저 정리를 기다리되, 정리가 실패하거나 오래 걸려도 시작은 막지 않는다
   await Promise.race([resetting, sleep(3000)]);
-  void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
+  if (givenUrls.length) {
+    void startWithUrls(requirements, givenUrls);
+    return;
+  }
+  // 이름으로 지정한 업체는 앞 브라우저부터 맡긴다. "거기서만"이면 그 수만큼만 띄운다
+  const named = (requirements.vendors ?? []).slice(0, VENDOR_IDS.length);
+  const slots = requirements.onlyVendors && named.length ? VENDOR_IDS.slice(0, named.length) : [...VENDOR_IDS];
+  void startHunt(requirements, slots, named);
 }
 
 // ─── 브라우저 3개가 동시에: 업체 찾기 → 견적 받기 ──────────────
 
-async function startHunt(req: Requirements) {
+async function startHunt(req: Requirements, slots: VendorId[] = [...VENDOR_IDS], named: string[] = []) {
   setStage('search');
   setVendors([]);
   emit('vendors', { payload: [] });
-  quoteStore.reset(req, VENDOR_IDS);
+  activeSlots = slots;
+  targets.clear();
+  resetShared();
+  named.forEach((name, i) => targets.set(slots[i], name));
+  quoteStore.reset(req, slots);
   quoteStore.onGateOpen = showCompare;
   quoteStore.onDrained = onQuotesSettled;
-  say(`좋아요. 브라우저 3개가 동시에 "${req.item}" 업체를 찾아 견적을 받아 올게요.\nA는 전문 업체·공식몰, B는 쇼핑몰, C는 시공·설치 업체 쪽을 맡아요.`);
-  timeline({ kind: 'vendors' });
+  const free = slots.filter((id) => !targets.has(id));
+  if (!free.length) say(`좋아요. ${named.join(', ')}에서 "${req.item}" 견적을 받아 올게요. ${slots.length === 1 ? '브라우저 1개로' : `브라우저 ${slots.length}개가 한 곳씩`} 진행해요.`);
+  else if (named.length) say(`좋아요. ${named.join(', ')}은(는) 바로 찾아가고, 나머지 브라우저 ${free.length}개는 비교할 다른 업체를 찾아 "${req.item}" 견적을 받아 올게요.`);
+  else say(`좋아요. 브라우저 3개가 동시에 "${req.item}" 업체를 찾아 견적을 받아 올게요.\nA는 전문 업체·공식몰, B는 쇼핑몰, C는 시공·설치 업체 쪽을 맡아요.`);
+  timeline({ kind: 'vendors', slots });
   tries.clear();
   fallbacks.clear();
   triedNames.clear();
   const gen = generation;
-  await Promise.all(VENDOR_IDS.map((id) => hunt(id, gen)));
+  await Promise.all(slots.map((id) => hunt(id, gen)));
   // 조건 변경·새 견적으로 멈춘 검색이면 비교를 다시 열지 않는다
   if (gen === generation) maybeOpenGate();
 }
@@ -222,7 +237,10 @@ async function startHunt(req: Requirements) {
 async function startWithUrls(req: Requirements, urls: string[]) {
   setStage('search');
   setVendors([]);
-  quoteStore.reset(req, VENDOR_IDS.slice(0, urls.length));
+  activeSlots = VENDOR_IDS.slice(0, urls.length);
+  targets.clear();
+  resetShared();
+  quoteStore.reset(req, activeSlots);
   quoteStore.onGateOpen = showCompare;
   quoteStore.onDrained = onQuotesSettled;
   tries.clear();
@@ -230,7 +248,7 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   triedNames.clear();
   say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.`);
   urls.forEach((url, i) => claim(VENDOR_IDS[i], { name: new URL(url).host.replace(/^www\./, ''), url, reason: '사용자가 지정' }));
-  timeline({ kind: 'vendors' });
+  timeline({ kind: 'vendors', slots: activeSlots });
   const gen = generation;
   await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
   if (gen === generation) maybeOpenGate();
@@ -243,10 +261,11 @@ function claim(slot: VendorId, v: PickedVendor): string | null {
   const dup = listVendors().find((x) => x.id !== slot && hostKey(x.url) === key);
   if (dup) return `브라우저 ${dup.id}가 이미 고른 업체(${dup.name})입니다. 다른 업체를 고르세요.`;
   const info: VendorInfo = { id: slot, ...v };
+  noteVerdict(slot, v.url, `${v.name} 업체로 확정해 견적 받는 중`);
   replaceVendor(info);
   quoteStore.renameVendor(slot, v.name);
   emit('vendors', { payload: listVendors() });
-  if (VENDOR_IDS.every((id) => getVendor(id))) setStage('collect');
+  if (activeSlots.every((id) => getVendor(id))) setStage('collect');
   return null;
 }
 
@@ -260,8 +279,10 @@ async function hunt(slot: VendorId, gen = generation, countTry = true) {
     slot,
     gen,
     {
-      system: huntSystemPrompt(slot, requirements, triedNames.get(slot) ?? []),
-      goal: '담당 경로로 웹에서 바로 견적을 낼 수 있는 업체 1곳을 찾아 claim_vendor로 확정한 뒤, 그 업체의 견적 정보를 report_quote로 보고해 줘.',
+      system: huntSystemPrompt(slot, requirements, triedNames.get(slot) ?? [], targets.get(slot), activeSlots.length),
+      goal: targets.has(slot)
+        ? `"${targets.get(slot)}" 사이트에서 이 품목 페이지를 찾아 claim_vendor로 확정한 뒤, 견적 정보를 report_quote로 보고해 줘.`
+        : '담당 경로로 웹에서 바로 견적을 낼 수 있는 업체 1곳을 찾아 claim_vendor로 확정한 뒤, 그 업체의 견적 정보를 report_quote로 보고해 줘.',
       tools: HUNT_TOOLS
     },
     'hunt'
@@ -343,6 +364,13 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return applyFields(slot, fields, meta, 'web', url);
         },
         onAfter: () => void refreshState(slot),
+        // 자기 업체 사이트 안에서 움직일 때는 기록만 하고 알림은 붙이지 않는다
+        onVisit: (url, title) => {
+          const note = noteVisit(slot, url, title);
+          const own = getVendor(slot);
+          return own && hostKey(own.url) === hostKey(url) ? null : note;
+        },
+        board: () => boardFor(slot),
         onPdf: (file) => onQuotePdf(slot, file),
         engine: () => engines.get(slot) ?? 'naver',
         missingOnDone: () => {
@@ -381,6 +409,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
       if (left) {
         if (v) {
           banned.add(hostKey(v.url));
+          noteVerdict(slot, v.url, `${v.name}: 웹 견적 안 됨 (${reason})`);
           triedNames.set(slot, [...(triedNames.get(slot) ?? []), `${v.name}(${reason})`]);
           if (fb) void captureWeb(slot, await driver.url(), true);
           say(`브라우저 ${slot}: ${v.name}는 웹에서 바로 견적을 낼 수 없어요 (${reason}). 다른 사이트를 찾아볼게요 (${(tries.get(slot) ?? 0) + 1}/${MAX_TRIES}).`);
@@ -525,11 +554,15 @@ export function replace(slot: VendorId) {
   }
   dropVendor(slot);
   tries.set(slot, 0);
+  // 사용자가 지정한 업체였어도 "다른 업체로"를 누르면 자유롭게 찾는다
+  targets.delete(slot);
   void hunt(slot);
 }
 
 function applyFields(slot: VendorId, fields: ReportedFields, meta: QuoteMeta, channel: 'web' | 'mail' | 'file', ref: string, answered = false) {
   quoteStore.mergeMeta(slot, meta);
+  const p = fields.listedPrice?.value;
+  if (channel === 'web' && typeof p === 'number') noteVerdict(slot, ref, `${getVendor(slot)?.name ?? '이 업체'} 가격 ${p.toLocaleString('ko-KR')}원 확인함`);
   return quoteStore.apply(slot, fields, { channel, ref }, answered);
 }
 
@@ -888,6 +921,9 @@ function clearRun() {
   triedNames.clear();
   engines.clear();
   handoffMode.clear();
+  targets.clear();
+  activeSlots = [...VENDOR_IDS];
+  resetShared();
   setVendors([]);
   resetStatuses();
   quoteStore.reset(null);
