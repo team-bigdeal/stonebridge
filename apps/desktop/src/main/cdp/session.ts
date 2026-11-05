@@ -1,6 +1,7 @@
 // webContents.debugger(CDP) 래퍼. 업체 뷰마다 하나.
 import type { WebContents } from 'electron';
 import type { Slot } from '@shared/types';
+import { asAgent } from '../browser/focus';
 
 export class CdpSession {
   /** snapshot이 부여한 ref ↔ backendDOMNodeId */
@@ -53,7 +54,9 @@ export class CdpSession {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async send<T = any>(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<T> {
     if (!this.attached) await this.init();
-    return (sessionId ? this.wc.debugger.sendCommand(method, params, sessionId) : this.wc.debugger.sendCommand(method, params)) as Promise<T>;
+    const run = () => (sessionId ? this.wc.debugger.sendCommand(method, params, sessionId) : this.wc.debugger.sendCommand(method, params)) as Promise<T>;
+    // 에이전트의 클릭·키 입력은 사람 입력과 구분해 둔다 (그 때문에 생긴 포커스 이동은 되돌림)
+    return method.startsWith('Input.') ? asAgent(this.wc, run) : run();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
