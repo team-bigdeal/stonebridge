@@ -5,7 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
-import { hasApiKey, imapConfigured } from './config';
+import { hasApiKey, imapConfigured, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
@@ -124,12 +124,10 @@ export async function onChat(text: string) {
       const { question } = await interview.next(text);
       if (snapshot() !== before) {
         const wasSearching = ['search', 'collect'].includes(getStage());
-        // 화면은 revise가 바로 바꾸고, 브라우저 정리는 안내를 띄운 뒤 기다린다
-        const revised = revise(true);
+        await revise(true);
         if (question) emit('requirements_ready', { payload: { ready: true, asking: true } });
         if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 이전 검색 요약으로 남겨 두었어요.');
         say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
-        await revised;
         return;
       }
     }
@@ -165,8 +163,8 @@ export async function startSearch(patch: Partial<Requirements>) {
   requirements = interview.result();
   emit('requirements', { payload: requirements });
   emit('requirements_ready', { payload: { ready: false, asking: false } });
-  // 조건 변경 직후라면 이전 검색의 브라우저 정리가 끝난 뒤 시작
-  await resetting;
+  // 조건 변경 직후라면 이전 검색의 브라우저 정리를 기다리되, 정리가 실패하거나 오래 걸려도 시작은 막지 않는다
+  await Promise.race([resetting, sleep(3000)]);
   void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
 }
 
@@ -784,7 +782,8 @@ function clearRun() {
   resetStatuses();
   quoteStore.reset(null);
   setStage('interview', true);
-  resetting = resetAll();
+  // 정리에 실패해도 다음 검색은 진행할 수 있어야 하므로 실패는 삼킨다
+  resetting = resetAll().catch((e) => console.log(`[reset] 브라우저 정리 실패: ${errMsg(e)}`));
   return resetting;
 }
 
@@ -822,8 +821,8 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
-  // 탐색 중인 브라우저를 정리하는 데 시간이 걸리므로 화면(요약·확인 카드)을 먼저 바꾼다
-  const cleared = clearRun();
+  // 탐색 중인 브라우저 정리는 시간이 걸리므로 기다리지 않는다 (시작 버튼이 startSearch에서 잠깐 기다림)
+  void clearRun();
   requirements = null;
   if (!fromChat) {
     // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
@@ -835,5 +834,4 @@ export async function revise(fromChat = false) {
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: { ready: true, asking: false } });
   if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
-  await cleared;
 }
