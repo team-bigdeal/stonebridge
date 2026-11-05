@@ -5,6 +5,8 @@
 //  E :4105 시트 단위 가격 (1시트 = 24개) — 1개 가격으로 잘못 읽으면 금액이 수십 배로 튐 (수량 재확인 테스트용)
 //  F :4106 화면엔 가격이 없고, 수량을 고른 뒤 "견적서 다운로드"를 누르면 가견적서 PDF가 내려옴 (PDF 받기·분석 테스트용)
 //  G :4107 가격 없이 카카오톡 채널·문자 상담으로만 견적 (문자·카톡 문의 초안 테스트용). /reply.pdf = 업체가 보낸 셈 치는 견적서
+//  H :4108 "견적서 출력" → 신청자명만 묻는 모달 → "다음" → 인쇄용 HTML 견적서 (신청자명 양식 테스트용)
+//          /popup = 같은 양식을 팝업 창(window.open)으로, /contact = 연락처·이메일·동의까지 묻는 양식 (넣지 않아야 함)
 //  C :4103 첫 방문은 HTTP 418 "보안 확인" 화면 → 사용자가 "확인" 누르면 정상 페이지 (차단 감지·handoff 테스트용)
 import http from 'node:http';
 
@@ -173,6 +175,74 @@ function gReply() {
   ]);
 }
 
+// H: 상품 페이지엔 가격이 없고 "견적서 출력"을 누르면 신청자명만 묻는 창이 뜬다. 이름을 넣고 "다음"을 누르면 인쇄용 견적서
+const H_SUPPLY = { 1000: 24000, 3000: 58000, 5000: 88000 };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const H_QTY = `<label for="qty">수량</label>
+  <select id="qty" name="qty"><option value="1000">1000매</option><option value="3000">3000매</option><option value="5000">5000매</option></select>
+  <button type="button" id="est">견적서 출력</button>`;
+const H_FOOT = `<footer>판촉스티커몰 · 대표 한상호 · 사업자등록번호 678-90-12345 · 대구 달서구 · 053-333-0404</footer>`;
+const H_STYLE = `<style>.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center}.modal.open{display:flex}.modal .box{background:#fff;padding:20px 24px;border-radius:8px;min-width:360px}</style>`;
+/** 모달 안 견적서 출력 양식. fields = 신청자명 밖에 더 묻는 칸 (/contact) */
+const hModal = (fields = '') => `<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="box">
+  <h2 id="mt">견적서 출력</h2>
+  <form method="post" action="/estimate">
+    <input type="hidden" name="qty" id="fqty" value="">
+    <table><tbody><tr><th>신청자명</th><td><input type="text" name="es_name" required></td></tr>${fields}</tbody></table>
+    <p style="text-align:center"><input type="submit" value="다음"> <button type="button" onclick="document.getElementById('modal').classList.remove('open')">닫기</button></p>
+  </form></div></div>`;
+const H_OPEN_MODAL = `<script>document.getElementById('est').addEventListener('click', () => { document.getElementById('fqty').value = document.getElementById('qty').value; document.getElementById('modal').classList.add('open'); });</script>`;
+const hProduct = (extra) =>
+  page(
+    '판촉스티커몰 - 원형 방수 스티커',
+    `${H_STYLE}<h1>원형 방수 스티커 50mm (유광)</h1>
+  <p>금액은 견적서로 안내합니다. 수량을 고른 뒤 <b>견적서 출력</b>을 눌러 주세요.</p>
+  ${H_QTY}${extra}${H_FOOT}`
+  );
+const H = hProduct(hModal() + H_OPEN_MODAL);
+const H_CONTACT = hProduct(
+  hModal(`<tr><th>연락처</th><td><input type="text" name="es_hp" required></td></tr><tr><th>이메일</th><td><input type="text" name="es_email" required></td></tr>
+    <tr><td colspan="2"><label><input type="checkbox" name="agree" required> 개인정보 수집·이용에 동의합니다</label></td></tr>`) + H_OPEN_MODAL
+);
+// 대구판촉물 같은 방식: 견적서 출력 → window.open으로 양식 창 → 다음 → 같은 창에 견적서
+const H_POPUP = hProduct(`<script>document.getElementById('est').addEventListener('click', () => window.open('/estimateform?qty=' + document.getElementById('qty').value, 'win_itemestimate', 'width=600,height=580'));</script>`);
+const hForm = (qty) =>
+  page(
+    '견적서 출력',
+    `<form method="post" action="/estimate"><input type="hidden" name="qty" value="${esc(qty)}">
+  <h2>견적서 출력</h2>
+  <table><tbody><tr><th>신청자명</th><td><input type="text" name="es_name" required></td></tr></tbody></table>
+  <p><input type="submit" value="다음"> <a href="javascript:window.close()">닫기</a></p></form>`
+  );
+function hQuote(qty, name) {
+  const q = H_SUPPLY[qty] ? qty : 3000;
+  const supply = H_SUPPLY[q];
+  const won = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
+  const today = new Date().toISOString().slice(0, 10);
+  return page(
+    '견적서',
+    `<h1 style="text-align:center;letter-spacing:8px">견 적 서</h1>
+  <p>견적일: ${today} · 견적번호: PS-${today.replace(/-/g, '')}-${q}</p>
+  <p><b>${esc(name)}</b> 귀하 · 아래와 같이 견적합니다.</p>
+  <table><thead><tr><th>품목</th><th>규격</th><th>수량</th><th>단가</th><th>금액</th></tr></thead>
+  <tbody><tr><td>원형 방수 스티커</td><td>지름 50mm · 유광 코팅</td><td>${q.toLocaleString('ko-KR')}매</td><td>${(supply / q).toFixed(1)}원</td><td>${won(supply)}</td></tr></tbody></table>
+  <table style="margin-top:12px"><tbody>
+    <tr><th>공급가액</th><td>${won(supply)}</td></tr><tr><th>부가세</th><td>${won(supply / 10)}</td></tr><tr><th>합계</th><td class="price">${won(supply * 1.1)}</td></tr>
+    <tr><th>배송비</th><td>3,000원 (택배, 별도)</td></tr><tr><th>납기</th><td>시안 확정 후 5영업일 출고</td></tr>
+    <tr><th>유효기간</th><td>견적일로부터 14일</td></tr><tr><th>결제 조건</th><td>계좌이체 (제작 전 입금)</td></tr>
+  </tbody></table>
+  <p>공급자: 판촉스티커몰 · 대표 한상호 · 사업자등록번호 678-90-12345 · 대구 달서구 · 053-333-0404</p>
+  <p><button onclick="window.print()">인쇄</button></p>
+  <script>window.addEventListener('load', () => window.print());</script>`
+  );
+}
+const readForm = (req) =>
+  new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => (body = (body + c).slice(0, 10000)));
+    req.on('end', () => resolve(new URLSearchParams(body)));
+  });
+
 const send = (res, status, html, headers = {}) => {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(html);
@@ -202,6 +272,21 @@ http
   })
   .listen(4107);
 http
+  .createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/estimate') {
+      const form = req.method === 'POST' ? await readForm(req) : url.searchParams;
+      const name = (form.get('es_name') || '').trim();
+      if (!name) return send(res, 400, page('견적서 출력', '<p>신청자명을 입력해 주세요.</p>'));
+      return send(res, 200, hQuote(Number(form.get('qty')) || 3000, name.slice(0, 40)));
+    }
+    if (url.pathname === '/estimateform') return send(res, 200, hForm(url.searchParams.get('qty') || '3000'));
+    if (url.pathname === '/popup') return send(res, 200, H_POPUP);
+    if (url.pathname === '/contact') return send(res, 200, H_CONTACT);
+    send(res, 200, H);
+  })
+  .listen(4108);
+http
   .createServer((req, res) => {
     // /always 는 확인해도 계속 막힌다 (건너뛰기 테스트용)
     if (req.url.startsWith('/always')) return send(res, 418, C_BLOCK.replace('/verify', '/always'));
@@ -210,4 +295,4 @@ http
     send(res, 200, C);
   })
   .listen(4103);
-console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105  F(가견적서 PDF) http://localhost:4106  G(카톡·문자 상담만, 회신 PDF /reply.pdf) http://localhost:4107');
+console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105  F(가견적서 PDF) http://localhost:4106  G(카톡·문자 상담만, 회신 PDF /reply.pdf) http://localhost:4107  H(견적서 출력 → 신청자명 양식, /popup·/contact) http://localhost:4108');

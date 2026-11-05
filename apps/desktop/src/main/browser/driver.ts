@@ -26,6 +26,10 @@ export interface BrowserDriver {
   downloadPdf(target: { ref?: string; url?: string }): Promise<import('./pdf').PdfFile>;
   /** 지금 화면(인쇄용 견적서 페이지)을 PDF로 저장 */
   printPdf(): Promise<import('./pdf').PdfFile>;
+  /** 견적서 출력 창이 신청자명만 물으면 설정한 이름을 넣고 다음·확인을 눌러 나온 견적서를 받는다 (ref: 그 버튼) */
+  submitQuoteForm(target: { ref?: string }): Promise<import('./pdf').PdfFile>;
+  /** 지금 화면이 견적서 출력 양식이거나 아직 견적서가 안 뜬 견적서 출력 화면인지 (원본으로 남기지 않기) */
+  quoteFormScreen?(): Promise<boolean>;
   /** 다른 출처 iframe(옵션·가격 계산기 등)의 보이는 글자. 지원하지 않으면 없음 */
   frameTexts?(): Promise<{ host: string; text: string }[]>;
 }

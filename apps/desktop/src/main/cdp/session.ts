@@ -12,6 +12,8 @@ export class CdpSession {
   /** handoff 이후 click/fill 금지 */
   locked = false;
   cursor = { x: 40, y: 40 };
+  /** 마지막으로 누른 요소 글자 (견적서 출력 창을 연 버튼인지 볼 때) */
+  lastClick: { text: string; at: number } | null = null;
   private attached = false;
 
   constructor(
@@ -93,6 +95,7 @@ export class CdpSession {
 
   reset() {
     this.locked = false;
+    this.lastClick = null;
     this.refs.clear();
     this.refFrame.clear();
   }

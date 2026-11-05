@@ -70,6 +70,11 @@ export const TOOL_DEFS = {
     ['sizes', 'done']
   ),
   save_page_pdf: T('save_page_pdf', '지금 화면이 인쇄용 견적서 페이지이거나, 클릭으로 견적서 팝업(새 창)이 열렸을 때 그 화면을 PDF로 저장하고 읽어 견적에 반영한다. 팝업이 열려 있으면 팝업을 저장한다.'),
+  quote_name_form: T(
+    'quote_name_form',
+    '"견적서 출력" 창(모달·팝업·화면)이 신청자명(이름·회사명·상호)만 묻고 "다음/확인/출력" 버튼을 눌러야 견적서를 보여 줄 때 쓴다. 설정한 신청자명을 넣고 그 버튼을 눌러 나온 견적서(PDF·인쇄용 화면)를 받아 읽는다. 연락처·이메일·주소·약관 동의 등 다른 개인정보를 묻는 양식은 거부된다.',
+    { ref: { type: 'string', description: '양식의 다음·확인 버튼 ref (비우면 화면에서 찾는다)' } }
+  ),
   expand_all: T('expand_all', '접힌 섹션(<details>, 아코디언)을 펼친다. 숨은 비용(설치비·배송비·옵션) 확인용.'),
   claim_vendor: T('claim_vendor', '이 브라우저가 견적을 받을 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체면 거부된다.', vendorItem.properties, ['name', 'url', 'reason']),
   select_vendors: T('select_vendors', '견적을 받을 업체를 확정한다.', { vendors: { type: 'array', minItems: 1, maxItems: 3, items: vendorItem } }, ['vendors']),
@@ -190,7 +195,7 @@ export function freeShippingDoubt(fields: any): string | null {
 const isUrl = (u: unknown) => /^https?:\/\//.test(String(u ?? ''));
 
 /** 페이지가 바뀌는 도구 뒤에는 차단 화면(418·CAPTCHA·로그인 리다이렉트)인지 확인하고, 그렇다면 바로 멈춘다 */
-const PAGE_CHANGING = new Set(['search_web', 'navigate', 'click', 'select_option', 'download_quote_pdf']);
+const PAGE_CHANGING = new Set(['search_web', 'navigate', 'click', 'select_option', 'download_quote_pdf', 'quote_name_form']);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runTool(ctx: ToolContext, name: string, input: any): Promise<ToolResult> {
@@ -242,9 +247,12 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
       case 'expand_all':
         return { text: await pageTools.expandAll(d) };
       case 'download_quote_pdf':
-      case 'save_page_pdf': {
+      case 'save_page_pdf':
+      case 'quote_name_form': {
         if (!ctx.onPdf) return { text: '이 단계에서는 PDF를 받을 수 없습니다.', isError: true };
-        const file = name === 'save_page_pdf' ? await d.printPdf() : await d.downloadPdf({ ref: input.ref ? String(input.ref) : undefined, url: input.url ? String(input.url) : undefined });
+        const ref = input.ref ? String(input.ref) : undefined;
+        const file =
+          name === 'save_page_pdf' ? await d.printPdf() : name === 'quote_name_form' ? await d.submitQuoteForm({ ref }) : await d.downloadPdf({ ref, url: input.url ? String(input.url) : undefined });
         const added = await ctx.onPdf(file);
         ctx.pdfGot = true;
         return {

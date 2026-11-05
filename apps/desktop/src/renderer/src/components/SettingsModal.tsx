@@ -58,6 +58,9 @@ export default function SettingsModal() {
             <Section title="브라우저">
               <BrowserTab />
             </Section>
+            <Section title="견적서">
+              <QuoteTab config={config} />
+            </Section>
             <Section title="메일" ref={mailRef}>
               <MailTab config={config} />
             </Section>
@@ -193,6 +196,22 @@ function BrowserTab() {
           </Button>
         </div>
       </Row>
+    </div>
+  );
+}
+
+/** 견적서 출력 창이 신청자명만 물을 때 에이전트가 넣는 이름 */
+function QuoteTab({ config }: { config: AppConfig }) {
+  const [name, setName] = useState(config.quoteRequesterName);
+  const { state, error, save } = useSave();
+  return (
+    <div className="flex flex-col gap-5">
+      <Row label="견적서 신청자명" hint="업체 사이트의 견적서 출력 창이 신청자명(이름·회사명)만 물으면 이 이름을 넣고 견적서를 받아요. 비워 두면 '돌다리 사용자'로 넣어요. 연락처·이메일 같은 다른 개인정보를 묻는 창에는 넣지 않아요.">
+        <Box filled={name !== ''}>
+          <BareInput placeholder="돌다리 사용자" maxLength={40} value={name} onChange={setName} />
+        </Box>
+      </Row>
+      <SaveBar dirty={name.trim() !== config.quoteRequesterName} state={state} error={error} onSave={() => save({ QUOTE_REQUESTER_NAME: name.trim() })} />
     </div>
   );
 }

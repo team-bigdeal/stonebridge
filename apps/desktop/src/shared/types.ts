@@ -255,6 +255,8 @@ export interface AppConfig {
   demoMailTo: string;
   /** Google OAuth 클라이언트 ID가 설정돼 있어 "Google 계정으로 연결"을 쓸 수 있는지 */
   googleClient: boolean;
+  /** 견적서 출력 창에 넣을 신청자명 (비어 있으면 "돌다리 사용자") */
+  quoteRequesterName: string;
 }
 
 /** 에이전트 도구 호출 한 단계 (UI의 Tool step) */
@@ -363,7 +365,7 @@ export interface RankStep {
 }
 
 export type SettingsInput = Partial<
-  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'DEMO_MAIL_TO', string>
+  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'DEMO_MAIL_TO' | 'QUOTE_REQUESTER_NAME', string>
 >;
 
 /** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */
