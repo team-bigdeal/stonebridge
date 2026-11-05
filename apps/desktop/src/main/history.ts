@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
 import type { HistoryRecord, HistorySummary, Quote, QuoteOriginal, Requirements, VendorId, VendorInfo } from '@shared/types';
 import { confirmedSum, recommend } from '@shared/quote';
+import { emit } from './events';
 
 const MAX_ORIGINALS = 4;
 const dir = () => path.join(app.getPath('userData'), 'history');
@@ -50,6 +51,7 @@ export function saveRecord(requirements: Requirements, vendors: VendorInfo[], qu
     const file = path.join(dir(), `${record.id}.json`);
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(record));
     fs.renameSync(`${file}.tmp`, file);
+    emit('history', { payload: record.id });
   } catch (e) {
     console.error('견적 히스토리 저장 실패', e);
   }
@@ -99,6 +101,7 @@ export function deleteRecord(id: string) {
   try {
     fs.unlinkSync(path.join(dir(), `${id}.json`));
     if (current?.id === id) current = null;
+    emit('history', { payload: id });
     return true;
   } catch {
     return false;

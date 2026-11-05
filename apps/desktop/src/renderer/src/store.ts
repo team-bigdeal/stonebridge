@@ -24,7 +24,12 @@ interface State {
   mails: MailRecord[];
   notices: Notice[];
   settingsOpen: boolean;
-  historyOpen: boolean;
+  /** 왼쪽 히스토리 사이드 탭 */
+  sidebarOpen: boolean;
+  /** 히스토리가 바뀔 때마다 올라간다 (사이드 탭이 목록을 다시 읽음) */
+  historyRev: number;
+  /** 히스토리에서 연 견적 한 건 (상세 창) */
+  historyRecord: HistoryRecord | null;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   backend: 'aside' | 'electron' | null;
@@ -37,6 +42,21 @@ interface State {
 }
 
 let noticeId = 0;
+/** 사이드 탭 열림 상태는 이 컴퓨터에 기억 (저장소를 못 쓰면 열린 상태) */
+function readSidebar() {
+  try {
+    return localStorage.getItem('doldari.sidebar') !== 'closed';
+  } catch {
+    return true;
+  }
+}
+export function saveSidebar(open: boolean) {
+  try {
+    localStorage.setItem('doldari.sidebar', open ? 'open' : 'closed');
+  } catch {
+    /* 무시 */
+  }
+}
 const initial = () => ({
   stage: 'interview' as Stage,
   requirements: null,
@@ -61,7 +81,9 @@ const initial = () => ({
 export const useStore = create<State>((set, get) => ({
   config: null,
   settingsOpen: false,
-  historyOpen: false,
+  sidebarOpen: readSidebar(),
+  historyRev: 0,
+  historyRecord: null,
   backend: null,
   ...initial(),
   set: (p) => set(p),
@@ -122,6 +144,9 @@ export const useStore = create<State>((set, get) => ({
         set({ originals: { ...s.originals, [o.vendorId]: [...list, o].slice(-4) } });
         break;
       }
+      case 'history':
+        set({ historyRev: s.historyRev + 1 });
+        break;
       case 'backend':
         set((st) => ({ backend: ev.payload as 'aside' | 'electron' | null, config: st.config ? { ...st.config, browser: ev.payload as 'aside' | 'electron' | null } : st.config }));
         break;

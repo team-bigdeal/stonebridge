@@ -243,6 +243,7 @@ export type AgentEventType =
   | 'notice'
   | 'original'
   | 'backend'
+  | 'history'
   | 'busy';
 
 export interface AgentEvent {
