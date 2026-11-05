@@ -69,7 +69,6 @@ function registerIpc() {
   ipcMain.handle('mail:pasteReply', (_e, vendorId: VendorId, kind: MailKind, text: string) => flow.onPasteReply(vendorId, kind, text));
   ipcMain.handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
   ipcMain.handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
-  ipcMain.handle('draft:bigdeal', (_e, id: VendorId) => flow.onDraftBigdeal(id));
   ipcMain.handle('agent:retry', (_e, id: VendorId) => flow.retry(id));
   ipcMain.handle('agent:replace', (_e, id: VendorId) => flow.replace(id));
   ipcMain.handle('agent:skip', (_e, id: VendorId) => flow.skip(id));

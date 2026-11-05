@@ -16,7 +16,7 @@ import { ENGINE_ORDER, type Engine } from './browser/page';
 import { runAgent } from './agent/loop';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
-import { bigdealDraft, formMessage, orderDraft, questionDraft, requestDraft } from './drafts';
+import { formMessage, orderDraft, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
 import { watchReply, type IncomingReply } from './channels/mail-poll';
 import { extractQuote } from './channels/extract';
@@ -502,8 +502,7 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
     });
     const added = applyFields(slot, quoteStore.hasField(slot, 'leadTimeDays') ? fields : fillLeadTimeFromText(fields, r.text), meta, 'mail', r.messageId, kind !== 'request');
     setVendorStatus(slot, 'done');
-    if (kind === 'bigdeal') say(added.length ? `빅딜 결과: ${vendorName(slot)}가 조건을 조정했어요 (${added.join(', ')}).` : `${vendorName(slot)}는 조건 조정이 어렵다고 답했어요.`);
-    else say(added.length ? `${vendorName(slot)} 회신에서 ${added.join(', ')}를 확인했어요.` : `${vendorName(slot)} 회신에서 새 견적 값을 찾지 못했어요.`);
+    say(added.length ? `${vendorName(slot)} 회신에서 ${added.join(', ')}를 확인했어요.` : `${vendorName(slot)} 회신에서 새 견적 값을 찾지 못했어요.`);
   } catch (e) {
     setVendorStatus(slot, 'waiting_reply');
     notice(`${vendorName(slot)} 회신 분석 실패: ${errMsg(e)}`, slot);
@@ -536,7 +535,7 @@ export async function onSavePdf(win: BrowserWindow, html: string, fileName: stri
   return savePdf(win, html, fileName);
 }
 
-// ─── 작성: 주문 문의(폼 handoff 또는 메일) / 확인 질문 / 빅딜 ─
+// ─── 작성: 주문 문의(폼 handoff 또는 메일) / 확인 질문 ─
 
 export async function onDraftOrder(slot: VendorId) {
   const v = getVendor(slot);
@@ -584,21 +583,6 @@ export function onDraftQuestion(slot: VendorId) {
     return;
   }
   openDraft(draft);
-}
-
-export async function onDraftBigdeal(slot: VendorId) {
-  if (!requirements) return;
-  setStage('draft');
-  setBusy(true);
-  try {
-    const draft = await bigdealDraft(slot, quoteStore.quotes, requirements);
-    if (draft) {
-      say(`다른 업체 견적을 근거로 ${vendorName(slot)}에 보낼 협상 메일을 썼어요.`);
-      openDraft(draft);
-    }
-  } finally {
-    setBusy(false);
-  }
 }
 
 function openDraft(draft: MailDraft) {

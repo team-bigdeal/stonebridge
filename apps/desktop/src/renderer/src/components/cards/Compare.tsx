@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Handshake, ShoppingCart } from 'lucide-react';
+import { FileText, ShoppingCart } from 'lucide-react';
 import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, type Check } from '@shared/quote';
 import { Badge } from '@/components/ui/badge';
@@ -130,9 +130,6 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
             </Button>
             {canAct && (
               <>
-                <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => window.doldari.draftBigdeal(q.vendorId)}>
-                  <Handshake className="size-3.5" /> 빅딜
-                </Button>
                 <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => window.doldari.draftOrder(q.vendorId)}>
                   <ShoppingCart className="size-3.5" /> 주문
                 </Button>
@@ -166,7 +163,6 @@ export function Recommend() {
           {rec.tentative && pick && <Badge variant="outline" className="border-amber-500/50 text-amber-400">확인 필요</Badge>}
           {pick && (
             <div className="ml-auto flex gap-1.5">
-              <Button size="sm" variant="outline" onClick={() => window.doldari.draftBigdeal(pick.vendorId)}><Handshake className="size-4" /> 빅딜 걸기</Button>
               <Button size="sm" onClick={() => window.doldari.draftOrder(pick.vendorId)}>주문 문의 작성</Button>
             </div>
           )}
