@@ -19,7 +19,7 @@ import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
 import { SizesCard } from './cards/Sizes';
-import { HistoryCard, MailCard, MessageCard, RequirementsCard, UploadCard } from './cards/Basics';
+import { HistoryCard, MailCard, MessageCard, ReplyFileCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
 import { api } from '@/lib/api';
 import { exitReplay, resumeReplay } from '@/replay';
@@ -289,6 +289,8 @@ function ItemBody({ item }: { item: TimelineItem }) {
       return <Narrow><MailCard draft={item.draft} /></Narrow>;
     case 'upload':
       return <Narrow>{item.message ? <MessageCard draft={item.message} /> : <UploadCard vendorId={item.vendorId} />}</Narrow>;
+    case 'reply_file':
+      return <Medium><ReplyFileCard vendorId={item.vendorId} originalId={item.originalId} /></Medium>;
     case 'compare':
       return <Wide><CompareCard /></Wide>;
     case 'docs':

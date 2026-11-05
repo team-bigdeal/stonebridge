@@ -66,7 +66,7 @@ export const setFrameIO = (io: typeof frameIO) => {
 };
 
 /** 대화 안 이전 검색 카드가 해당하는 타임라인 종류 */
-const RUN_KINDS = new Set<TimelineItem['kind']>(['requirements', 'search', 'vendors', 'browser', 'mail', 'upload', 'compare', 'docs', 'report']);
+const RUN_KINDS = new Set<TimelineItem['kind']>(['requirements', 'search', 'vendors', 'browser', 'mail', 'upload', 'reply_file', 'compare', 'docs', 'report']);
 /** 사이드 탭 열림 상태는 이 컴퓨터에 기억 (저장소를 못 쓰면 열린 상태) */
 function readSidebar() {
   try {

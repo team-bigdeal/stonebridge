@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, FlaskConical, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, FileText, FlaskConical, History, Loader2, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
 import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
 import { isDemoAddress } from '@shared/mail';
-import { won } from '@shared/quote';
+import { productAmount, rankQuotes, won } from '@shared/quote';
 import { maskEmail, maskPhone, maskText } from '@shared/privacy';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { clock, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill } from './Section';
+import { PdfFrame } from '@/components/QuoteViewer';
 import { useRunStore, useApi } from '@/runScope';
 
 type EditKey = 'item' | 'quantity' | 'budgetMax' | 'deadline' | 'minWarrantyMonths' | 'region';
@@ -512,5 +513,66 @@ export function UploadCard({ vendorId }: { vendorId: VendorId }) {
         <span className="truncate">{name || '파일 고르기'}</span>
       </span>
     </label>
+  );
+}
+
+/** 메일 회신에 붙어 온 견적서: 읽는 동안 안내, 다 읽으면 뽑은 값 요약과 순위, 아래에 PDF 미리보기 */
+export function ReplyFileCard({ vendorId, originalId }: { vendorId: VendorId; originalId: string }) {
+  const { vendors, vendorStatus, originals, quotes, requirements, set } = useRunStore();
+  const vendor = vendors.find((v) => v.id === vendorId);
+  const file = originals[vendorId]?.find((o) => o.id === originalId)?.attachments?.[0];
+  const q = quotes[vendorId];
+  const req = requirements as Requirements | null;
+  const reading = vendorStatus[vendorId] === 'parsing';
+  const priced = rankQuotes(quotes, req).filter((id) => quotes[id]?.listedPrice.value != null);
+  const rank = priced.indexOf(vendorId) + 1;
+  const product = q ? productAmount(q, req) : null;
+  const rows: [string, string][] = q && product !== null
+    ? [
+        ['제품가', won(product)],
+        ...(q.meta?.extras ?? []).filter((e) => e.required).map((e): [string, string] => [e.name, won(e.amount)]),
+        ...(q.shippingFee.value !== null ? [['배송비', q.shippingFee.value ? won(q.shippingFee.value) : '무료'] as [string, string]] : []),
+        ...(q.leadTimeDays.value !== null ? [['납기', `${q.leadTimeDays.value}일`] as [string, string]] : [])
+      ]
+    : [];
+  return (
+    <div className="flex w-full flex-col gap-3 rounded-lg bg-card p-5">
+      <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
+        <div className="flex min-w-0 flex-col gap-1.5 leading-normal">
+          <p className="flex items-center gap-2 text-[19px] font-semibold text-ink">
+            <FileText className="size-5 shrink-0 text-muted-foreground" />
+            <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[vendorId])} />
+            <span className="truncate">{vendor?.name ?? `${vendorId} 업체`} 회신 첨부 견적서</span>
+          </p>
+          {file && <p className="truncate text-[14px] font-medium text-muted-foreground">메일 첨부 · {file.name}</p>}
+        </div>
+        <Button variant="outline" className="h-auto shrink-0 px-4 py-2 text-[14px]" onClick={() => set({ viewer: { kind: 'vendor', id: vendorId } })}>
+          견적서 보기
+        </Button>
+      </div>
+      {reading ? (
+        <p className="flex items-center gap-2 px-2 text-[15px] font-medium text-primary">
+          <Loader2 className="size-4 shrink-0 animate-spin" /> 회신 첨부 견적서를 읽고 있어요
+        </p>
+      ) : rows.length ? (
+        <div className="flex flex-col gap-2 px-2">
+          <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[14px] font-medium">
+            {rows.map(([k, v], i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="tabular-nums text-ink">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-[16px] font-semibold text-ink">
+            {q?.totalPrice != null ? `총액 ${won(q.totalPrice)}` : '총액 확인 중'}
+            {rank > 0 && priced.length > 1 && <span className="ml-2 text-primary">{priced.length}곳 중 {rank}위</span>}
+          </p>
+        </div>
+      ) : (
+        <p className="px-2 text-[14px] font-medium text-muted-foreground">첨부 견적서에서 견적 값을 찾지 못했어요. "견적서 보기"에서 원본을 확인해 주세요.</p>
+      )}
+      {file && (file.mime === 'application/pdf' ? <PdfFrame title={file.name} dataUrl={file.data} className="h-[460px]" /> : <img src={file.data} alt={file.name} className="max-h-[460px] w-full rounded border object-contain" />)}
+    </div>
   );
 }
