@@ -93,7 +93,7 @@ export function Chat() {
                 void send();
               }
             }}
-            placeholder={stage === 'interview' ? '어떤 견적이 필요한지 적어 주세요' : ['compare', 'questions', 'draft'].includes(stage) ? '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요' : '업체 사이트 주소를 붙여 넣으면 그 업체도 비교에 넣어요'}
+            placeholder={stage === 'interview' ? '어떤 견적이 필요한지 적어 주세요' : '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요'}
             className="max-h-40 min-h-[40px] flex-1 resize-none border-0 bg-transparent px-0 py-2 text-[14px] shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           <Button type="submit" size="icon" disabled={!text.trim()} aria-label="보내기" className="size-9 rounded-lg">
