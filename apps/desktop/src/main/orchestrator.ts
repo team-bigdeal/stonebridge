@@ -7,7 +7,7 @@ import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
 import { requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
-import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
+import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
@@ -551,7 +551,9 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
                 const text = await driver.evaluate<string>('document.body ? document.body.innerText : ""').catch(() => '');
                 fields = fillLeadTimeFromText(fields, text);
               }
-              return applyFields(slot, fields, meta, 'web', url);
+              // 가격을 본 상품·주문 화면을 주문 페이지로 기억한다 (FAQ·배송 안내 같은 안내 페이지는 제외)
+          if (fields.listedPrice && !INFO_PAGE.test(url)) meta = { ...meta, productUrl: url };
+          return applyFields(slot, fields, meta, 'web', url);
             })()
           ),
         onAfter: () => void refreshState(slot),
@@ -565,7 +567,12 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return own && hostKey(own.url) === hostKey(url) ? null : note;
         },
         board: () => boardFor(slot),
-        onPdf: (file) => onQuotePdf(slot, file),
+        // 견적서를 받은 화면(옵션을 맞춘 상품·주문 화면)을 주문 페이지로 기억한다
+        onPdf: async (file) => {
+          const page = await driver.url().catch(() => '');
+          if (/^https?:/.test(page) && !INFO_PAGE.test(page)) quoteStore.mergeMeta(slot, { productUrl: page });
+          return onQuotePdf(slot, file);
+        },
         engine: () => engines.get(slot) ?? 'naver',
         missingOnDone: () => {
           if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
@@ -1255,9 +1262,7 @@ export async function onSavePdf(win: BrowserWindow, html: string, fileName: stri
 export async function openOrderPage(slot: VendorId): Promise<{ ok: boolean; url?: string; message: string }> {
   const v = getVendor(slot);
   if (!v) return { ok: false, message: '업체 정보가 없어요.' };
-  const q = quoteStore.get(slot);
-  const src = q?.listedPrice.source;
-  const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : v.url;
+  const url = orderUrl(quoteStore.get(slot), v.url) ?? v.url;
   try {
     const d = getDriver(slot);
     const now = await d.url().catch(() => '');

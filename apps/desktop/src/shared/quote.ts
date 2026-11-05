@@ -329,3 +329,14 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     complete: missingCost.length === 0
   };
 }
+
+/** 상품·주문 화면이 아닌 안내 페이지 주소 (FAQ·공지·배송 안내·고객센터·검색 등) */
+export const INFO_PAGE = /\/(faq|notice|board|bbs|customer|cs|help|guide|delivery|shipping|policy|terms|agreement|about|company|search|cart|login|member|mypage|event|qna)([\/._?#-]|$)|[?&](bo_table|board)=/i;
+
+/** 주문 페이지 열기·내 브라우저로 열기에 쓸 주소: 기록한 상품 페이지 → 가격을 본 페이지(안내 페이지가 아니면) → 업체 주소 */
+export function orderUrl(q: Quote | undefined, vendorUrl?: string): string | undefined {
+  const web = (u?: string) => (u && /^https?:\/\//.test(u) ? u : undefined);
+  const src = q?.listedPrice.source;
+  const priceUrl = src?.channel === 'web' ? web(src.ref) : undefined;
+  return web(q?.meta?.productUrl) ?? (priceUrl && !INFO_PAGE.test(priceUrl) ? priceUrl : undefined) ?? web(vendorUrl) ?? priceUrl;
+}
