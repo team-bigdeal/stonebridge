@@ -102,14 +102,22 @@ export class ElectronDriver implements BrowserDriver {
       this.frameTimer = null;
       return;
     }
+    const prev = this.bounds;
+    const raise = !prev || prev.width !== rect.width || prev.height !== rect.height;
     this.bounds = rect;
     this.view.setBounds(rect);
     this.applyZoom();
     this.view.setVisible(true);
-    // 위로 올려 앱 화면보다 앞에 보이게 (커서 뷰는 그 위)
-    const win = getWindow();
-    win?.contentView.addChildView(this.view);
-    win?.contentView.addChildView(this.cursorView);
+    // 위로 올려 앱 화면보다 앞에 보이게 (커서 뷰는 그 위).
+    // 뷰를 다시 붙이면 키보드 포커스를 가져가 채팅 입력이 끊기므로, 스크롤로 위치만 바뀔 때는 하지 않고
+    // 다시 보이거나 크기가 바뀔 때(크게 보기)만 하되 그 전에 앱 화면에 있던 포커스는 돌려준다
+    if (raise) {
+      const win = getWindow();
+      const keepFocus = win?.webContents.isFocused();
+      win?.contentView.addChildView(this.view);
+      win?.contentView.addChildView(this.cursorView);
+      if (keepFocus) win?.webContents.focus();
+    }
     this.frameTimer ??= setInterval(() => void this.captureFrame(), 2000);
   }
 
