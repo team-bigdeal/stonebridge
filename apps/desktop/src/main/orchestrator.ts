@@ -118,9 +118,11 @@ export async function onChat(text: string) {
     if (interview && requirements && ['compare', 'questions', 'draft'].includes(getStage())) {
       interview.apply(requirements);
       interview.reopen();
-      const before = JSON.stringify(interview.result());
+      // 메모(notes)는 일반 질문에도 채워질 수 있어 조건 변경 판단에서 뺀다
+      const snapshot = () => JSON.stringify({ ...interview!.result(), notes: undefined });
+      const before = snapshot();
       const { question } = await interview.next(text);
-      if (JSON.stringify(interview.result()) !== before) {
+      if (snapshot() !== before) {
         await revise(true);
         say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
         return;
