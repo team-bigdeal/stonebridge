@@ -12,7 +12,8 @@ import { emit } from './events';
 
 const dir = () => path.join(app.getPath('userData'), 'history');
 
-let current: { id: string; createdAt: string } | null = null;
+/** settled: 비교까지 끝난 기록 (중단 저장으로 덮어쓰지 않는다) */
+let current: { id: string; createdAt: string; settled: boolean } | null = null;
 const originals: Partial<Record<VendorId, QuoteOriginal[]>> = {};
 
 /** 지금 견적의 기록 id (아직 저장 전이면 null) */
@@ -28,7 +29,7 @@ export function startRecord() {
 export function resumeRecord(id: string): HistoryRecord | null {
   const r = readRecord(id);
   if (!r) return null;
-  current = { id: r.id, createdAt: r.createdAt };
+  current = { id: r.id, createdAt: r.createdAt, settled: !r.incomplete };
   for (const k of Object.keys(originals)) delete originals[k as VendorId];
   for (const [vid, list] of Object.entries(r.originals ?? {})) originals[vid as VendorId] = [...(list ?? [])].slice(-MAX_ORIGINALS);
   return r;
@@ -44,9 +45,13 @@ export function clearOriginals(vendorId: VendorId) {
   delete originals[vendorId];
 }
 
-export function saveRecord(requirements: Requirements, vendors: VendorInfo[], quotes: Partial<Record<VendorId, Quote>>) {
+/** incomplete: 비교까지 가지 못한 검색(시작 직후·취소)을 남길 때. 이미 비교가 끝난 기록은 덮어쓰지 않는다
+ *  (조건을 바꾼 새 검색을 견적 전에 취소해도 이전 비교가 남게) */
+export function saveRecord(requirements: Requirements, vendors: VendorInfo[], quotes: Partial<Record<VendorId, Quote>>, opts: { incomplete?: boolean } = {}) {
+  if (opts.incomplete && current?.settled) return;
   const now = new Date().toISOString();
-  current ??= { id: `${now.slice(0, 10)}-${randomUUID().slice(0, 8)}`, createdAt: now };
+  current ??= { id: `${now.slice(0, 10)}-${randomUUID().slice(0, 8)}`, createdAt: now, settled: false };
+  if (!opts.incomplete) current.settled = true;
   const ids = new Set(vendors.map((v) => v.id));
   const rec = recommend(quotes, requirements);
   const record: HistoryRecord = {
@@ -57,6 +62,7 @@ export function saveRecord(requirements: Requirements, vendors: VendorInfo[], qu
     vendors,
     quotes: Object.fromEntries(Object.entries(quotes).filter(([id]) => ids.has(id as VendorId))),
     originals: Object.fromEntries(Object.entries(originals).filter(([id]) => ids.has(id as VendorId))),
+    incomplete: opts.incomplete || undefined,
     recommendation: rec.vendorId
       ? { vendorId: rec.vendorId, vendorName: quotes[rec.vendorId]?.vendorName ?? rec.vendorId, total: confirmedSum(quotes[rec.vendorId]!, requirements), reasons: rec.reasons, tentative: rec.tentative }
       : { reasons: rec.reasons, tentative: rec.tentative }
@@ -104,6 +110,7 @@ export function listRecords(): HistorySummary[] {
       quantity: r.requirements.quantity,
       vendorCount: r.vendors.length,
       pricedCount: priced,
+      incomplete: r.incomplete,
       best: r.recommendation?.vendorName && r.recommendation.total !== undefined ? { name: r.recommendation.vendorName, total: r.recommendation.total } : undefined
     });
   }

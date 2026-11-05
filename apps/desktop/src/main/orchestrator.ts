@@ -301,6 +301,8 @@ export async function startSearch(patch: Partial<Requirements>) {
   }
   // 기다리는 사이 새 견적을 눌렀으면 시작하지 않는다
   if (!requirements || getStage() !== 'interview') return;
+  // 시작하자마자 히스토리에 넣어 둔다 (견적이 오기 전에 새 견적으로 취소해도 남게). 비교가 끝나면 같은 기록을 덮어쓴다
+  saveRecord(requirements, [], {}, { incomplete: true });
   if (givenUrls.length) {
     void startWithUrls(requirements, givenUrls);
     return;
@@ -1427,6 +1429,8 @@ export async function resumeHistory(id: string): Promise<{ ok: boolean; message?
 }
 
 export async function reset() {
+  // 비교까지 가지 못한 검색도 그때까지의 업체·견적으로 남긴다 (비교가 끝난 기록은 그대로)
+  if (requirements) saveRecord(requirements, listVendors(), quoteStore.quotes, { incomplete: true });
   // 새 견적 = 새 히스토리 기록. 조건 바꾸기는 같은 대화라 같은 기록에 이어서 쌓는다
   startRecord();
   interview = null;
@@ -1460,6 +1464,8 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
+  // 비교 전에 조건을 바꾼 검색도 그때까지의 업체·견적으로 남긴다 (비교가 끝난 기록은 그대로)
+  saveRecord(req, listVendors(), quoteStore.quotes, { incomplete: true });
   // renderer가 이 시점 화면(단계·업체·견적)을 이전 검색으로 얼려 두므로, 상태를 비우기 전에 먼저 알린다
   emit('revised', { payload: summary });
   // 탐색 중인 브라우저 정리는 시간이 걸리므로 기다리지 않는다 (시작 버튼이 startSearch에서 잠깐 기다림)

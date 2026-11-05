@@ -363,6 +363,8 @@ export interface HistoryRecord {
   vendors: VendorInfo[];
   quotes: Partial<Record<VendorId, Quote>>;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
+  /** 비교까지 가지 못하고 멈춘 검색 (견적이 오기 전에 새 견적으로 취소 등) */
+  incomplete?: boolean;
   recommendation?: { vendorId?: VendorId; vendorName?: string; total?: number; reasons: string[]; tentative: boolean };
 }
 
@@ -374,6 +376,7 @@ export interface HistorySummary {
   quantity: number;
   vendorCount: number;
   pricedCount: number;
+  incomplete?: boolean;
   best?: { name: string; total: number };
 }
 
