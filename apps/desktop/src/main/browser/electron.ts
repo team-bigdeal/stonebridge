@@ -203,7 +203,8 @@ export class ElectronDriver implements BrowserDriver {
   async userInput() {}
   async reset() {
     this.cdp.reset();
-    if (!this.view.webContents.isDestroyed()) await this.view.webContents.loadURL('about:blank');
+    // 멈춘 에이전트의 페이지 이동과 겹치면 ERR_ABORTED로 실패하는데, 정리 목적이라 무시해도 된다
+    if (!this.view.webContents.isDestroyed()) await this.view.webContents.loadURL('about:blank').catch(() => undefined);
   }
   async close() {
     this.offCursor();
