@@ -7,8 +7,9 @@ on:
   push:
     branches: [main]
 
+# PR 본문만 고친(edited) 실행이 코드 검사(synchronize) 실행을 취소하지 않도록 그룹을 나눈다
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' && 'edited' || 'code' }}
   cancel-in-progress: true
 
 jobs:

@@ -34,7 +34,8 @@ function pick(slot: Slot) {
 
 function tick() {
   const st = useStore.getState();
-  const dialog = Boolean(st.viewer || st.settingsOpen || st.historyRecord);
+  // 지난 견적을 보는 중이면 실제 브라우저 뷰는 숨기고 저장된 화면만 보여 준다
+  const dialog = Boolean(st.viewer || st.settingsOpen || st.replay);
   for (const slot of new Set<Slot>([...mounts.keys(), ...sent.keys()])) {
     const m = pick(slot);
     let rect: { x: number; y: number; width: number; height: number } | null = null;

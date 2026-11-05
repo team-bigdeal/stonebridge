@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { clock, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill, SectionHead } from './Section';
+import { api } from '@/lib/api';
 
 type EditKey = 'item' | 'quantity' | 'budgetMax' | 'deadline' | 'minWarrantyMonths' | 'region';
 const NUM_KEYS: EditKey[] = ['quantity', 'budgetMax', 'minWarrantyMonths'];
@@ -77,7 +78,7 @@ function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; read
     if (install !== undefined) patch.needInstall = install;
     setStarting(true);
     try {
-      await window.doldari.startSearch(patch);
+      await api.startSearch(patch);
     } finally {
       setStarting(false);
     }
@@ -236,11 +237,11 @@ export function MailCard({ draft }: { draft: MailDraft }) {
         {state !== 'sent' ? (
           <div className="flex flex-wrap items-center gap-2">
             {config?.smtpConfigured && (
-              <Button size="sm" disabled={state === 'sending'} onClick={async () => { setState('sending'); setError(''); done(await window.doldari.sendMail(edit)); }}>
+              <Button size="sm" disabled={state === 'sending'} onClick={async () => { setState('sending'); setError(''); done(await api.sendMail(edit)); }}>
                 <Send className="size-3.5" /> {state === 'sending' ? '보내는 중…' : '보내기'}
               </Button>
             )}
-            <Button size="sm" variant={config?.smtpConfigured ? 'outline' : 'default'} disabled={state === 'sending'} onClick={async () => done(await window.doldari.openMailApp(edit))}>
+            <Button size="sm" variant={config?.smtpConfigured ? 'outline' : 'default'} disabled={state === 'sending'} onClick={async () => done(await api.openMailApp(edit))}>
               메일 앱으로 열기
             </Button>
             {config?.smtpConfigured ? (
@@ -258,7 +259,7 @@ export function MailCard({ draft }: { draft: MailDraft }) {
               {imap ? '회신이 오면 자동으로 가져와 견적서에 반영해요. 다른 경로로 받았다면 여기에 붙여 넣어도 돼요.' : '업체에서 회신을 받으면 여기에 붙여 넣어 주세요.'}
             </p>
             <Textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="받은 회신 내용" className="h-24 text-[13px]" />
-            <Button size="sm" disabled={!reply.trim()} onClick={async () => { setReplied(true); await window.doldari.pasteReply(draft.vendorId, draft.kind, reply); }}>
+            <Button size="sm" disabled={!reply.trim()} onClick={async () => { setReplied(true); await api.pasteReply(draft.vendorId, draft.kind, reply); }}>
               견적에 반영
             </Button>
           </div>
@@ -287,7 +288,7 @@ export function UploadCard({ vendorId }: { vendorId: VendorId }) {
   const status = vendorStatus[vendorId];
   const upload = async (f: File) => {
     setName(f.name);
-    await window.doldari.uploadFile(vendorId, { name: f.name, mime: f.type, data: new Uint8Array(await f.arrayBuffer()) });
+    await api.uploadFile(vendorId, { name: f.name, mime: f.type, data: new Uint8Array(await f.arrayBuffer()) });
   };
   const doneUp = status === 'done' && name;
   return (

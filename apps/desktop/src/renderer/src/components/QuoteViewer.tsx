@@ -13,12 +13,8 @@ import { saveDocPdf } from '@/doc/print';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
 export function QuoteViewer() {
-  const live = useStore();
-  const { viewer, set } = live;
+  const { viewer, set, quotes, requirements, vendors, originals } = useStore();
   const [saved, setSaved] = useState('');
-  // 히스토리에서 연 견적이면 보관된 값으로 그린다
-  const src = viewer?.record ?? live;
-  const { quotes, requirements, vendors, originals } = src;
   if (!viewer || !requirements?.deadline) return null;
   const req = requirements as Requirements;
   const urls = Object.fromEntries(vendors.map((v) => [v.id, v.url])) as Partial<Record<VendorId, string>>;

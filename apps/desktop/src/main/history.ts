@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
-import type { HistoryRecord, HistorySummary, Quote, QuoteOriginal, Requirements, VendorId, VendorInfo } from '@shared/types';
+import type { HistoryEventPayload, HistoryRecord, HistorySummary, Quote, QuoteOriginal, Requirements, SessionSnapshot, VendorId, VendorInfo } from '@shared/types';
 import { confirmedSum, recommend } from '@shared/quote';
 import { emit } from './events';
 
@@ -51,7 +51,7 @@ export function saveRecord(requirements: Requirements, vendors: VendorInfo[], qu
     const file = path.join(dir(), `${record.id}.json`);
     fs.writeFileSync(`${file}.tmp`, JSON.stringify(record));
     fs.renameSync(`${file}.tmp`, file);
-    emit('history', { payload: record.id });
+    emit('history', { payload: { id: record.id, kind: 'saved' } satisfies HistoryEventPayload });
   } catch (e) {
     console.error('견적 히스토리 저장 실패', e);
   }
@@ -71,7 +71,7 @@ function readRecord(id: string): HistoryRecord | null {
 export function listRecords(): HistorySummary[] {
   let files: string[] = [];
   try {
-    files = fs.readdirSync(dir()).filter((f) => f.endsWith('.json'));
+    files = fs.readdirSync(dir()).filter((f) => f.endsWith('.json') && !f.endsWith('.session.json'));
   } catch {
     return [];
   }
@@ -100,10 +100,34 @@ export function deleteRecord(id: string) {
   if (!safeId(id)) return false;
   try {
     fs.unlinkSync(path.join(dir(), `${id}.json`));
+    fs.rmSync(path.join(dir(), `${id}.session.json`), { force: true });
     if (current?.id === id) current = null;
-    emit('history', { payload: id });
+    emit('history', { payload: { id, kind: 'deleted' } satisfies HistoryEventPayload });
     return true;
   } catch {
     return false;
+  }
+}
+
+/** renderer가 보낸 세션 화면을 기록 옆에 저장 (<id>.session.json). 기록이 있는 견적만 */
+export function saveSession(id: string, snap: SessionSnapshot) {
+  if (!safeId(id) || !fs.existsSync(path.join(dir(), `${id}.json`))) return false;
+  try {
+    const file = path.join(dir(), `${id}.session.json`);
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(snap));
+    fs.renameSync(`${file}.tmp`, file);
+    return true;
+  } catch (e) {
+    console.error('세션 저장 실패', e);
+    return false;
+  }
+}
+
+export function getSession(id: string): SessionSnapshot | null {
+  if (!safeId(id)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir(), `${id}.session.json`), 'utf8')) as SessionSnapshot;
+  } catch {
+    return null;
   }
 }

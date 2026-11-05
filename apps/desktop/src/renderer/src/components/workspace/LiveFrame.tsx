@@ -4,6 +4,7 @@ import type { Slot } from '@shared/types';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/store';
 import { registerView, useShownViews } from './viewManager';
+import { api } from '@/lib/api';
 
 /** 프레임·커서는 자주 바뀌므로 메인 상태와 분리 */
 export const useFrames = create<{ frames: Partial<Record<Slot, string>> }>(() => ({ frames: {} }));
@@ -27,7 +28,8 @@ export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; class
   const backend = useStore((s) => s.backend);
   const frame = useFrames((s) => s.frames[slot]);
   const ref = useRef<HTMLDivElement>(null);
-  const embedded = backend === 'electron';
+  const replay = useStore((s) => Boolean(s.replay));
+  const embedded = backend === 'electron' && !replay;
   const shown = useShownViews((s) => Boolean(s.shown[slot]));
 
   useEffect(() => {
@@ -35,6 +37,14 @@ export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; class
     return registerView(slot, ref.current, priority);
   }, [embedded, slot, priority]);
 
+  if (replay) {
+    // 지난 견적: 저장된 마지막 화면만
+    return (
+      <div className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
+        {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : <div className="flex h-full items-center justify-center text-xs text-muted-foreground">저장된 화면이 없어요</div>}
+      </div>
+    );
+  }
   if (embedded) {
     return (
       <div ref={ref} className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
@@ -77,17 +87,17 @@ function ImageFrame({ slot, className, frame }: { slot: Slot; className?: string
       tabIndex={0}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      onClick={(e) => void window.doldari.browserInput({ slot, type: 'click', ...pos(e) })}
-      onWheel={(e) => void window.doldari.browserInput({ slot, type: 'wheel', ...pos(e), deltaY: e.deltaY })}
+      onClick={(e) => void api.browserInput({ slot, type: 'click', ...pos(e) })}
+      onWheel={(e) => void api.browserInput({ slot, type: 'wheel', ...pos(e), deltaY: e.deltaY })}
       onKeyDown={(e) => {
         if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
-        if (e.key.length === 1) void window.doldari.browserInput({ slot, type: 'text', text: e.key });
-        else void window.doldari.browserInput({ slot, type: 'key', key: e.key });
+        if (e.key.length === 1) void api.browserInput({ slot, type: 'text', text: e.key });
+        else void api.browserInput({ slot, type: 'key', key: e.key });
       }}
       onPaste={(e) => {
         const text = e.clipboardData.getData('text');
-        if (text) void window.doldari.browserInput({ slot, type: 'text', text });
+        if (text) void api.browserInput({ slot, type: 'text', text });
       }}
       className={cn('relative aspect-[16/10] w-full cursor-pointer overflow-hidden rounded-lg bg-muted/40 outline-none ring-1 transition', focused ? 'ring-primary' : 'ring-border', className)}
     >

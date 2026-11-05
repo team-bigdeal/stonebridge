@@ -2,6 +2,7 @@ import { Check, PanelLeft, RotateCcw, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
+import { dropReplay } from '@/replay';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
@@ -13,6 +14,7 @@ export function TopBar() {
 
   async function restart() {
     if (started && !window.confirm('지금까지 모은 견적이 사라져요. 새 견적을 시작할까요?')) return;
+    dropReplay();
     await window.doldari.reset();
     resetAll();
   }

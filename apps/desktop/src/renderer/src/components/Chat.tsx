@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowLeft, ArrowUp, History } from 'lucide-react';
 import type { TimelineItem } from '@shared/types';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Message, MessageContent } from '@/components/ai-elements/message';
@@ -9,6 +9,8 @@ import { useStore } from '@/store';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
 import { HistoryCard, MailCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
+import { api } from '@/lib/api';
+import { exitReplay } from '@/replay';
 
 const EXAMPLES = [
   '회의실에 롤스크린 블라인드 3개 설치하고 싶어요',
@@ -18,17 +20,17 @@ const EXAMPLES = [
 
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation) */
 export function Chat() {
-  const { timeline, busy, stage, push } = useStore();
+  const { timeline, busy, stage, push, replay } = useStore();
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fresh = timeline.length === 1 && stage === 'interview';
+  const fresh = timeline.length === 1 && stage === 'interview' && !replay;
 
   async function send() {
     const t = text.trim();
     if (!t) return;
     setText('');
     push({ id: crypto.randomUUID(), kind: 'user', text: t });
-    await window.doldari.sendChat(t);
+    await api.sendChat(t);
   }
 
   return (
@@ -59,6 +61,17 @@ export function Chat() {
         <ConversationScrollButton />
       </Conversation>
 
+      {replay ? (
+        <div className="border-t bg-background px-8 py-4">
+          <div className="mx-auto flex max-w-[760px] items-center gap-3 rounded-xl border bg-card px-4 py-3 text-[13px]">
+            <History className="size-4 shrink-0 text-muted-foreground" />
+            <span className="text-muted-foreground">지난 견적을 보는 중이에요. 견적서와 원본은 볼 수 있지만 이어서 진행할 수는 없어요.</span>
+            <Button size="sm" className="ml-auto shrink-0" onClick={exitReplay}>
+              <ArrowLeft className="size-3.5" /> 현재 견적으로
+            </Button>
+          </div>
+        </div>
+      ) : (
       <div className="border-t bg-background px-8 pb-4 pt-3">
         <form
           className="mx-auto flex max-w-[760px] items-end gap-2 rounded-xl border bg-card p-1.5 pl-3 transition-colors focus-within:border-primary/60"
@@ -88,6 +101,7 @@ export function Chat() {
         </form>
         <p className="mx-auto mt-1.5 max-w-[760px] px-1 text-[11px] text-muted-foreground/70">Enter 보내기 · Shift+Enter 줄바꿈</p>
       </div>
+      )}
     </div>
   );
 }

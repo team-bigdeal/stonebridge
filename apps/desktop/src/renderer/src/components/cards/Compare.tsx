@@ -9,6 +9,7 @@ import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
 import { cn } from '@/lib/utils';
 import CountUp from '../CountUp';
 import { Pill, SectionHead } from './Section';
+import { api } from '@/lib/api';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 
@@ -143,7 +144,7 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
               <FileText className="size-3.5" /> 견적서
             </Button>
             {canAct && (
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" onClick={() => window.doldari.draftOrder(q.vendorId)}>
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-[12px]" onClick={() => api.draftOrder(q.vendorId)}>
                 <ShoppingCart className="size-3.5" /> 주문 문의
               </Button>
             )}
@@ -177,7 +178,7 @@ export function Recommend() {
           <span className="text-[15px] font-semibold">{pick ? pick.vendorName : '조건을 모두 만족하는 업체가 없어요'}</span>
           {rec.tentative && pick && <Pill tone="warn">확인 후 확정</Pill>}
           {pick && (
-            <Button size="sm" className="ml-auto" onClick={() => window.doldari.draftOrder(pick.vendorId)}>
+            <Button size="sm" className="ml-auto" onClick={() => api.draftOrder(pick.vendorId)}>
               주문 문의 작성 <ChevronRight className="size-3.5" />
             </Button>
           )}
@@ -197,7 +198,7 @@ export function Recommend() {
                 <div key={q.vendorId} className="flex items-center gap-2 py-2 text-[13px]">
                   <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[q.vendorId])} />
                   <span className="min-w-0 flex-1">{q.lines.join(' ')}</span>
-                  <Button size="sm" variant="outline" className="h-7 shrink-0 text-[12px]" disabled={waiting} onClick={() => window.doldari.draftQuestion(q.vendorId)}>
+                  <Button size="sm" variant="outline" className="h-7 shrink-0 text-[12px]" disabled={waiting} onClick={() => api.draftQuestion(q.vendorId)}>
                     {waiting ? '회신 기다리는 중' : '질문 메일 쓰기'}
                   </Button>
                 </div>
@@ -275,7 +276,7 @@ export function ReportCard() {
         <div className="text-[14px] font-semibold">통합 견적서가 준비됐어요</div>
         <div className="mt-0.5 text-[12px] text-muted-foreground">업체 {count}곳의 공급가액·부가세·합계·조건과 추천 이유를 한 장에 정리했어요. PDF로 저장할 수 있어요.</div>
       </div>
-      <Button variant="ghost" disabled={busy} onClick={() => void window.doldari.revise()}>
+      <Button variant="ghost" disabled={busy} onClick={() => void api.revise()}>
         <SlidersHorizontal className="size-4" /> 조건 바꾸기
       </Button>
       <Button onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>

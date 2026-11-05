@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Pill } from '../cards/Section';
 import { LiveFrame } from './LiveFrame';
 import { Steps } from './Steps';
+import { api } from '@/lib/api';
 
 const STATUS_TONE: Record<VendorStatus, 'ok' | 'warn' | 'bad' | 'muted' | 'primary'> = {
   idle: 'muted',
@@ -52,7 +53,7 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
 
       {/* 주소줄 */}
       <div className="mx-3 flex items-center gap-1 rounded-md bg-muted/60 px-1 py-0.5 text-[12px] text-muted-foreground">
-        <Button size="icon" variant="ghost" className="size-6" onClick={() => window.doldari.browserBack(slot)} title="뒤로" aria-label="뒤로">
+        <Button size="icon" variant="ghost" className="size-6" onClick={() => api.browserBack(slot)} title="뒤로" aria-label="뒤로">
           <ArrowLeft className="size-3.5" />
         </Button>
         <span className="min-w-0 flex-1 truncate" title={b?.url}>{host || '페이지 준비 중'}</span>
@@ -78,10 +79,10 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
           </div>
           {vid && status === 'needs_user' && (
             <div className="mt-2.5 flex gap-1.5">
-              <Button size="sm" className="h-7 flex-1" onClick={() => window.doldari.resume(slot)}>
+              <Button size="sm" className="h-7 flex-1" onClick={() => api.resume(slot)}>
                 <Play className="size-3.5" /> 해결했어요, 계속
               </Button>
-              <Button size="sm" variant="outline" className="h-7 flex-1" onClick={() => window.doldari.skip(vid)}>
+              <Button size="sm" variant="outline" className="h-7 flex-1" onClick={() => api.skip(vid)}>
                 <SkipForward className="size-3.5" /> 건너뛰기
               </Button>
             </div>
@@ -104,10 +105,10 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
             )}
             {status === 'failed' && (
               <>
-                <Button size="sm" variant="secondary" className="flex-1" onClick={() => window.doldari.retry(vid)}>
+                <Button size="sm" variant="secondary" className="flex-1" onClick={() => api.retry(vid)}>
                   <RefreshCw className="size-3.5" /> 다시 시도
                 </Button>
-                <Button size="sm" variant="outline" className="flex-1" onClick={() => window.doldari.replace(vid)}>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => api.replace(vid)}>
                   <Replace className="size-3.5" /> 다른 업체로
                 </Button>
               </>
