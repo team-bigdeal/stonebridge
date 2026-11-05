@@ -266,7 +266,11 @@ export class ElectronDriver implements BrowserDriver {
   }
 
   private moveCursor(nx: number, ny: number, click: boolean) {
-    if (!this.bounds) return;
+    // 실제 뷰가 카드에 없으면 앱 화면이 이미지 위에 커서를 그린다. 클릭 뒤 바뀐 화면이 바로 보이게 한 번 더 찍는다
+    if (!this.bounds) {
+      if (click) setTimeout(() => void this.captureFrame(), 450);
+      return;
+    }
     // 커서 원의 중심이 뷰 안 (20, 20)에 있다
     const x = Math.round(this.bounds.x + nx * this.bounds.width - 20);
     const y = Math.round(this.bounds.y + ny * this.bounds.height - 20);
