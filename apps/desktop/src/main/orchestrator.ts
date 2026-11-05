@@ -5,7 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
-import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
+import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
@@ -849,9 +849,31 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
 
 let announced = '';
 let reportShown = false;
+/** 받은 견적서에 적힌 합계와 앱이 계산한 합계를 맞춰 본다. 다르면 빠진 항목이 있을 수 있으니 한 번 알린다
+ *  (견적서 합계가 배송비 별도인 경우도 맞는 것으로 본다) */
+function checkStatedTotals() {
+  if (!requirements) return;
+  for (const v of listVendors()) {
+    const q = quoteStore.get(v.id);
+    const stated = q?.meta?.statedTotal;
+    if (!q || !stated || q.listedPrice.value === null) continue;
+    const computed = confirmedSum(q, requirements);
+    const ship = q.shippingFee.value ?? 0;
+    const near = (a: number) => Math.abs(a - stated) <= Math.max(100, stated * 0.01);
+    if (near(computed) || near(computed - ship)) {
+      if (q.meta?.totalMismatch) quoteStore.mergeMeta(v.id, { totalMismatch: undefined });
+      continue;
+    }
+    if (q.meta?.totalMismatch?.stated === stated && q.meta.totalMismatch.computed === computed) continue;
+    quoteStore.mergeMeta(v.id, { totalMismatch: { stated, computed } });
+    say(`${v.name} 견적서에 적힌 합계는 ${won(stated)}인데, 돌다리가 항목을 더한 합계는 ${won(computed)}이에요 (차이 ${won(Math.abs(stated - computed))}). 빠진 항목이 없는지 "견적서 보기"의 원본과 비교해 주세요.`);
+  }
+}
+
 function onQuotesSettled() {
   if (!requirements) return;
   checkPriceOutliers();
+  checkStatedTotals();
   // 먼저 끝난 업체만으로 추천·통합 견적서를 띄우지 않고 세 곳(가격 재확인 포함)이 다 끝날 때까지 기다린다
   if (!allSettled()) return;
   const priced = listVendors().filter((v) => quoteStore.get(v.id)?.listedPrice.value !== null);

@@ -95,6 +95,8 @@ class QuoteStore {
     }
     const next: QuoteMeta = {
       priceQty: meta.priceQty ?? prev.priceQty,
+      statedTotal: meta.statedTotal ?? prev.statedTotal,
+      totalMismatch: 'totalMismatch' in meta ? meta.totalMismatch : prev.totalMismatch,
       // 값을 다시 받으면(재확인·재보고) 의심 표시는 새 값 기준으로: 명시적으로 넘긴 경우만 바꾼다
       priceDoubt: 'priceDoubt' in meta ? meta.priceDoubt : prev.priceDoubt,
       productName: meta.productName || prev.productName,

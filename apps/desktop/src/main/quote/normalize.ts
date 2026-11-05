@@ -52,6 +52,7 @@ export function toMeta(raw: any, src: { channel: Source['channel']; ref: string 
   return {
     // 1도 그대로 둔다: 재확인에서 "1개 가격이 맞다"로 바로잡을 수 있게
     priceQty: Number.isFinite(pq) && pq >= 1 ? Math.round(pq) : undefined,
+    statedTotal: Number(raw.stated_total) > 0 ? Math.round(Number(raw.stated_total)) : undefined,
     productName: raw.product?.name || undefined,
     spec: raw.product?.spec || undefined,
     supplier: clean(raw.supplier),
