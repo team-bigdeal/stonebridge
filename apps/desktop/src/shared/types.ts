@@ -123,6 +123,8 @@ export interface QuoteOriginal {
   title: string;
   url?: string;
   image?: string; // data URL
+  /** 화면에서 골라 낸 상품 사진 (data URL, 견적 비교 카드용) */
+  productImage?: string;
   text?: string;
   fileName?: string;
   fileData?: string; // data URL

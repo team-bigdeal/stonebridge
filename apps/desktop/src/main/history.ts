@@ -25,7 +25,8 @@ export function startRecord() {
 }
 
 export function addOriginal(vendorId: VendorId, o: QuoteOriginal) {
-  originals[vendorId] = [...(originals[vendorId] ?? []), o].slice(-MAX_ORIGINALS);
+  // 같은 원본을 다시 보내면(제품 사진을 나중에 붙인 경우) 바꿔 끼운다
+  originals[vendorId] = [...(originals[vendorId] ?? []).filter((x) => x.id !== o.id), o].slice(-MAX_ORIGINALS);
 }
 
 /** 다른 업체로 바뀐 자리의 원본은 버린다 */
