@@ -27,6 +27,8 @@ export interface FieldDef {
 }
 
 export type TemplateResult = { ok: true; template: TemplateInfo } | { ok: false; error: string };
+/** 채운 양식 미리보기: docx·pdf는 파일 바이트, xlsx·hwpx는 HTML (칸은 id값 마커) */
+export type TemplatePreviewResult = { ok: true; kind: TemplateKind; bytes?: Uint8Array; html?: string } | { ok: false; error: string };
 export type TemplateFillResult = { ok: boolean; path?: string; error?: string; skipped?: string[] };
 
 /** 라벨 글자로 항목을 짐작 (AI를 못 쓸 때의 기본 매핑). 앞쪽 규칙이 우선 */

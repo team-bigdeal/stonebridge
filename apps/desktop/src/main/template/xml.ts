@@ -126,13 +126,15 @@ function setLines(doc: Document, p: El, text: string, n: XmlNames) {
   }
 }
 
-export function fillEntry(doc: Document, entry: XmlEntry, value: string, n: XmlNames) {
+/** inline=true면 여러 줄도 문단 하나에 줄바꿈 글자로 둔다 (미리보기에서 칸을 한 덩어리로 고치기 위해) */
+export function fillEntry(doc: Document, entry: XmlEntry, value: string, n: XmlNames, inline = false) {
   const clean = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  const put = (p: Element, text: string) => (inline ? setParaText(doc, p, text, n) : setLines(doc, p, text, n));
   if (entry.kind === 'para') {
     const current = textOf(entry.el, n);
-    setLines(doc, entry.el, current.replace(PLACEHOLDER, () => clean), n);
+    put(entry.el, current.replace(PLACEHOLDER, () => clean));
     return;
   }
   const p = descendants(entry.el, n.para)[0];
-  if (p) setLines(doc, p, clean, n);
+  if (p) put(p, clean);
 }

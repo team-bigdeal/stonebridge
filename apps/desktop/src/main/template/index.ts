@@ -4,12 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, dialog, type BrowserWindow } from 'electron';
 import JSZip from 'jszip';
-import type { FieldDef, TemplateFillResult, TemplateInfo, TemplateKind, TemplateResult, TemplateSlot } from '@shared/template';
+import type { FieldDef, TemplateFillResult, TemplatePreviewResult, TemplateInfo, TemplateKind, TemplateResult, TemplateSlot } from '@shared/template';
 import { DOCX_NAMES, HWPX_NAMES, PLACEHOLDER, fillEntry, parseXml, scanXml, serializeXml, type XmlEntry, type XmlNames } from './xml';
 import { fillCell, scanSheet, sharedStrings, type SheetEntry } from './xlsx';
 import { fillPdf, scanPdf } from './pdf';
 import { mapSlots } from './map';
+import { hwpxToHtml, xlsxToHtml } from './html';
 
+/** 미리보기에서 칸의 시작·끝을 표시하는 글자 (문서 본문에 나올 수 없는 사설 영역 문자) */
+const MK_START = '';
+const MK_MID = '';
+const MK_END = '';
 const MAX_BYTES = 20 * 1024 * 1024;
 const dir = () => path.join(app.getPath('userData'), 'approval-template');
 const binPath = () => path.join(dir(), 'current.bin');
@@ -25,7 +30,7 @@ interface Meta {
 /** 찾은 자리 + 값을 채워 파일 바이트를 돌려주는 함수 */
 interface Scanned {
   slots: TemplateSlot[];
-  apply: (values: Record<string, string>) => Promise<Uint8Array>;
+  apply: (values: Record<string, string>, opts?: { marker?: boolean }) => Promise<Uint8Array>;
 }
 
 const withIds = (list: Omit<TemplateSlot, 'id'>[]): TemplateSlot[] => list.map((s, i) => ({ id: `s${i + 1}`, ...s }));
@@ -50,14 +55,16 @@ async function scanZip(bytes: Uint8Array, kind: Exclude<TemplateKind, 'pdf'>): P
 
   return {
     slots,
-    apply: async (values) => {
+    apply: async (values, opts) => {
       flat.forEach((x, i) => {
-        const v = values[slots[i].id];
+        let v = values[slots[i].id];
+        // 미리보기: 모든 칸(빈 칸 포함)을 표시용 마커로 감싼다
+        if (opts?.marker) v = `${MK_START}${slots[i].id}${MK_MID}${v ?? ''}${MK_END}`;
         if (v === undefined) return;
         if (kind === 'xlsx') {
           const se = x.e as SheetEntry;
           fillCell(x.p.doc, se.ref, se.placeholderOf ? se.placeholderOf.replace(PLACEHOLDER, () => v) : v);
-        } else fillEntry(x.p.doc, x.e as XmlEntry, v, names);
+        } else fillEntry(x.p.doc, x.e as XmlEntry, v, names, opts?.marker === true);
       });
       for (const p of scanned) zip.file(p.name, serializeXml(p.doc));
       // hwpx는 mimetype을 압축하지 않고 맨 앞에 둬야 한다
@@ -173,5 +180,24 @@ export async function fillTemplate(win: BrowserWindow, values: Record<string, st
     return { ok: true, path: pick.filePath, skipped };
   } catch (e) {
     return { ok: false, error: `양식을 채우지 못했어요: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** 양식에 값을 채운 미리보기. 칸은 마커로 감싸 화면에서 제자리 편집을 할 수 있게 한다 */
+export async function previewTemplate(values: Record<string, string>): Promise<TemplatePreviewResult> {
+  const meta = readMeta();
+  if (!meta || !fs.existsSync(binPath())) return { ok: false, error: '저장된 양식이 없어요.' };
+  try {
+    const scanned = await scanFile(new Uint8Array(fs.readFileSync(binPath())), meta.kind);
+    if (meta.kind === 'pdf') {
+      const filled: Record<string, string> = {};
+      for (const [k, v] of Object.entries(values)) if (v.trim() !== '') filled[k] = v;
+      return { ok: true, kind: 'pdf', bytes: await scanned.apply(filled) };
+    }
+    const bytes = await scanned.apply(values, { marker: true });
+    if (meta.kind === 'docx') return { ok: true, kind: 'docx', bytes };
+    return { ok: true, kind: meta.kind, html: meta.kind === 'xlsx' ? await xlsxToHtml(bytes) : await hwpxToHtml(bytes) };
+  } catch (e) {
+    return { ok: false, error: `미리보기를 만들지 못했어요: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

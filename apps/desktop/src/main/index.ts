@@ -8,7 +8,7 @@ import { bindWindow } from './events';
 import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
 import { emit, getStage } from './events';
 import * as flow from './orchestrator';
-import { analyzeTemplate, clearTemplate, fillTemplate, loadTemplate, saveMapping } from './template';
+import { analyzeTemplate, clearTemplate, fillTemplate, loadTemplate, previewTemplate, saveMapping } from './template';
 import type { FieldDef } from '@shared/template';
 import { deleteRecord, getRecord, getSession, listRecords, saveSession } from './history';
 
@@ -92,6 +92,7 @@ function registerIpc() {
   ipcMain.handle('template:analyze', (_e, file: { name: string; data: Uint8Array }, fields: FieldDef[]) => analyzeTemplate(file, fields));
   ipcMain.handle('template:mapping', (_e, mapping: Record<string, string | null>) => saveMapping(mapping));
   ipcMain.handle('template:clear', () => clearTemplate());
+  ipcMain.handle('template:preview', (_e, values: Record<string, string>) => previewTemplate(values));
   ipcMain.handle('template:fill', (_e, values: Record<string, string>) => (mainWindow ? fillTemplate(mainWindow, values) : { ok: false, error: '창이 없어요.' }));
   ipcMain.handle('browser:input', (_e, input: BrowserInput) => userInput(input));
   ipcMain.handle('browser:back', (_e, slot: Slot) => goBack(slot));

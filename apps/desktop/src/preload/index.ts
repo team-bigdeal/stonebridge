@@ -2,7 +2,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
 
-import type { FieldDef, TemplateFillResult, TemplateInfo, TemplateResult } from '../shared/template';
+import type { FieldDef, TemplateFillResult, TemplateInfo, TemplatePreviewResult, TemplateResult } from '../shared/template';
 
 type MailResult = { ok: boolean; error?: string; imap?: boolean };
 
@@ -47,6 +47,7 @@ const api = {
   templateAnalyze: (file: { name: string; data: Uint8Array }, fields: FieldDef[]): Promise<TemplateResult> => ipcRenderer.invoke('template:analyze', file, fields),
   templateSetMapping: (mapping: Record<string, string | null>): Promise<boolean> => ipcRenderer.invoke('template:mapping', mapping),
   templateClear: (): Promise<boolean> => ipcRenderer.invoke('template:clear'),
+  templatePreview: (values: Record<string, string>): Promise<TemplatePreviewResult> => ipcRenderer.invoke('template:preview', values),
   templateFill: (values: Record<string, string>): Promise<TemplateFillResult> => ipcRenderer.invoke('template:fill', values),
   browserInput: (input: BrowserInput) => ipcRenderer.invoke('browser:input', input),
   browserBack: (slot: Slot) => ipcRenderer.invoke('browser:back', slot),
