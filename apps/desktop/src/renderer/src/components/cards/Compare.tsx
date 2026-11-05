@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Table2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
@@ -15,6 +15,7 @@ import cartIcon from '@/assets/figma/cart.svg';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
 import { CompareChart } from './CompareChart';
+import { hasRankChange, stepView, useLiveRankFx, type StepView } from './rankFx';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 const TOTAL_HINT = '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.';
@@ -59,13 +60,27 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
 }
 
 export function CompareCard() {
-  const { quotes, requirements, stage } = useRunStore();
+  const { quotes: liveQuotes, requirements, stage, rankLog } = useRunStore();
   const [pop, setPop] = useState<SourceEntry | null>(null);
   const [view, setView] = useState<View>(readView);
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
+  // 순위 변동 다시 보기: i번째 기록 단계를 그린다 (at = 그 단계를 띄운 시각, 바뀐 칸 깜빡임용)
+  const [rp, setRp] = useState<{ i: number; playing: boolean; at: number } | null>(null);
+  const canReplay = useMemo(() => hasRankChange(rankLog, req), [rankLog, req]);
+  const live = useLiveRankFx(rankLog, req);
+  const sv: StepView | null = rp ? stepView(rankLog, Math.min(rp.i, rankLog.length - 1), req) : live;
+  useEffect(() => {
+    if (!rp?.playing) return;
+    const t = setTimeout(() => setRp((p) => (p ? (p.i < rankLog.length - 1 ? { i: p.i + 1, playing: true, at: Date.now() } : { ...p, playing: false }) : p)), 1600);
+    return () => clearTimeout(t);
+  }, [rp, rankLog.length]);
+  const quotes = rp && sv ? sv.quotes : liveQuotes;
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
   const hide = hiddenItems(quotes, order, req);
+  const shown: View = rp && view === 'chart' ? 'cards' : view;
+  const fx = (id: VendorId): Fx | undefined =>
+    sv ? { delta: sv.deltas[id], key: rp ? rp.i : rankLog.length, flash: rp && sv.changed.vendorId === id && sv.changed.field ? { vendorId: id, field: sv.changed.field, at: rp.at } : undefined } : undefined;
   // 해당 없는 항목(설치 불필요, A/S 불필요, 모든 업체 추가 비용 없음)은 열을 뺀다
   const heads: [string, string][] = [
     ['', ''], ['업체', ''], ['제품가', 'text-right'],
@@ -89,14 +104,39 @@ export function CompareCard() {
             </span>
           }
           hint={view === 'chart' ? '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.' : undefined}
-          right={<ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />}
+          right={
+            <div className="flex items-center gap-2">
+              {canReplay && !rp && (
+                <Button variant="outline" className="gap-1.5 rounded-lg px-3 py-2 text-[14px]" onClick={() => { setPop(null); setRp({ i: 0, playing: true, at: Date.now() }); }}>
+                  <Play className="size-3.5" /> 순위 변동 다시 보기
+                </Button>
+              )}
+              <ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />
+            </div>
+          }
         />
-        {view === 'chart' ? (
+        {rp && <ReplayBar i={Math.min(rp.i, rankLog.length - 1)} n={rankLog.length} playing={rp.playing} onChange={(i, playing) => setRp({ i, playing, at: Date.now() })} onClose={() => setRp(null)} />}
+        <AnimatePresence mode="wait">
+          {sv && (
+            <motion.div
+              key={rp ? `rp-${rp.i}` : `live-${rankLog.length}`}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className={cn('rounded-lg px-4 py-3 text-[16px] font-semibold leading-snug', Object.keys(sv.deltas).length ? 'bg-amber-300 text-amber-950 shadow-sm' : 'bg-muted text-ink')}
+            >
+              {!rp && <span className="mr-2 text-[13px] font-medium text-muted-foreground">방금</span>}
+              {sv.caption}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {shown === 'chart' ? (
           <CompareChart order={order} />
-        ) : view === 'cards' ? (
+        ) : shown === 'cards' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" onClick={() => setPop(null)}>
             {order.map((id, i) => (
-              <VendorCard key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} onSource={setPop} canAct={['compare', 'questions', 'draft'].includes(stage)} />
+              <VendorCard key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} onSource={setPop} canAct={!rp && ['compare', 'questions', 'draft'].includes(stage)} fx={fx(id)} />
             ))}
           </div>
         ) : (
@@ -111,16 +151,61 @@ export function CompareCard() {
             </thead>
             <tbody>
               {order.map((id, i) => (
-                <Row key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} leader={leader === id} onSource={setPop} canAct={['compare', 'questions', 'draft'].includes(stage)} />
+                <Row key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} leader={leader === id} onSource={setPop} canAct={!rp && ['compare', 'questions', 'draft'].includes(stage)} fx={fx(id)} />
               ))}
             </tbody>
           </table>
         </div>
         )}
         {pop && <SourcePop pop={pop} onClose={() => setPop(null)} />}
-        {['questions', 'draft'].includes(stage) && <Recommend />}
+        {!rp && ['questions', 'draft'].includes(stage) && <Recommend />}
       </CardContent>
     </Card>
+  );
+}
+
+/** 순위 변동 강조: 이동 폭, 깜빡일 칸 (다시 보기 중엔 그 단계 값). key가 바뀌면 강조 애니메이션을 다시 시작 */
+type Fx = { delta?: number; key: number; flash?: { vendorId: VendorId; field: FieldKey; at: number } };
+
+function RankDelta({ d }: { d?: number }) {
+  if (!d) return null;
+  return (
+    <motion.span
+      initial={{ scale: 0.4, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 18 }}
+      className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-white shadow-sm', d > 0 ? 'bg-emerald-600' : 'bg-rose-600')}
+      aria-label={d > 0 ? `${d}계단 상승` : `${-d}계단 하락`}
+    >
+      {d > 0 ? '▲' : '▼'}{Math.abs(d)}
+    </motion.span>
+  );
+}
+
+/** 다시 보기 조작: 처음부터·이전·재생/멈춤·다음, 단계 막대, 닫기 */
+function ReplayBar({ i, n, playing, onChange, onClose }: { i: number; n: number; playing: boolean; onChange: (i: number, playing: boolean) => void; onClose: () => void }) {
+  const btn = 'flex size-8 items-center justify-center rounded-md text-ink hover:bg-card disabled:opacity-40';
+  const end = i >= n - 1;
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+      <button type="button" className={btn} aria-label="처음부터" onClick={() => onChange(0, true)}><RotateCcw className="size-4" /></button>
+      <button type="button" className={btn} aria-label="이전 단계" disabled={i <= 0} onClick={() => onChange(i - 1, false)}><SkipBack className="size-4" /></button>
+      <button type="button" className={btn} aria-label={playing ? '멈춤' : '재생'} onClick={() => onChange(end && !playing ? 0 : i, !playing)}>
+        {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+      </button>
+      <button type="button" className={btn} aria-label="다음 단계" disabled={end} onClick={() => onChange(i + 1, false)}><SkipForward className="size-4" /></button>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, n - 1)}
+        value={i}
+        aria-label="단계"
+        onChange={(e) => onChange(Number(e.target.value), false)}
+        className="mx-2 h-1.5 flex-1 cursor-pointer accent-primary"
+      />
+      <span className="w-20 text-right text-[13px] font-medium tabular-nums text-muted-foreground">{i + 1} / {n}단계</span>
+      <button type="button" className={btn} aria-label="다시 보기 닫기" onClick={onClose}><X className="size-4" /></button>
+    </div>
   );
 }
 
@@ -144,9 +229,10 @@ function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) 
   );
 }
 
-function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
+function Row({ q, rank, req, hide, leader, onSource, canAct, fx }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean; fx?: Fx }) {
   const api = useApi();
-  const { flash, vendorStatus, set, scoped } = useRunStore();
+  const { flash: liveFlash, vendorStatus, set, scoped } = useRunStore();
+  const flash = fx?.flash ?? liveFlash;
   const [opening, setOpening] = useState(false);
   const status = vendorStatus[q.vendorId] ?? 'idle';
   // 주문 페이지를 내장 브라우저로 열고 크게 띄움 (OrderActions의 주문 페이지 열기와 같음)
@@ -183,8 +269,10 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
   const ex = extraSum(q);
   return (
     <motion.tr layout transition={{ type: 'spring', stiffness: 260, damping: 28 }} className={cn('[&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg', top ? '[&>td]:bg-row' : '[&>td]:bg-row-alt')}>
-      <td className={cn('w-8 py-2 pl-4 text-center text-[14px] font-semibold tabular-nums', top ? 'text-primary' : 'text-muted-foreground')}>{has ? rank : '–'}</td>
-      <td className="px-2 py-2">
+      <td key={'rank-' + (fx?.key ?? 0)} className={cn('w-8 py-2 pl-4 text-center text-[14px] font-semibold tabular-nums', top ? 'text-primary' : 'text-muted-foreground', fx?.delta && (fx.delta > 0 ? 'rank-up' : 'rank-down'))}>
+        <span className="flex flex-col items-center gap-1">{has ? rank : '–'}<RankDelta d={fx?.delta} /></span>
+      </td>
+      <td key={'name-' + (fx?.key ?? 0)} className={cn('px-2 py-2', fx?.delta && (fx.delta > 0 ? 'rank-up' : 'rank-down'))}>
         <div className="flex items-center gap-2">
           <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[q.vendorId])} />
           <span className="max-w-[200px] truncate text-[14px] font-semibold" title={q.vendorName}>{q.vendorName}</span>
@@ -264,9 +352,10 @@ function useProductPhoto(id: VendorId): string | null {
 const fmtWarranty = (m: number) => (m % 12 === 0 && m >= 12 ? `${m / 12}년` : `${m}개월`);
 
 /** 카드형 비교: 제품 사진 + 업체 이름 + 합계 + 항목 목록 + 버튼만 (군더더기 글씨 없이) */
-function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; onSource: (s: SourceEntry) => void; canAct: boolean }) {
+function VendorCard({ q, rank, req, hide, onSource, canAct, fx }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; onSource: (s: SourceEntry) => void; canAct: boolean; fx?: Fx }) {
   const api = useApi();
-  const { flash, vendorStatus, set, scoped } = useRunStore();
+  const { flash: liveFlash, vendorStatus, set, scoped } = useRunStore();
+  const flash = fx?.flash ?? liveFlash;
   const photo = useProductPhoto(q.vendorId);
   const [opening, setOpening] = useState(false);
   const status = vendorStatus[q.vendorId] ?? 'idle';
@@ -316,8 +405,10 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
     <motion.div
       layout
       transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      className={cn('flex min-w-0 flex-col overflow-hidden rounded-lg', top ? 'bg-row ring-2 ring-primary/40' : 'bg-row-alt')}
+      className={cn('relative flex min-w-0 flex-col overflow-hidden rounded-lg', top ? 'bg-row ring-2 ring-primary/40' : 'bg-row-alt')}
     >
+      {/* 순위가 바뀐 카드는 테두리가 초록(상승)·빨강(하락)으로 번쩍인다 */}
+      {fx?.delta ? <span key={'fx-' + fx.key} aria-hidden className={cn('pointer-events-none absolute inset-0 z-10 rounded-lg', fx.delta > 0 ? 'rank-up' : 'rank-down')} /> : null}
       {/* 제품 사진 + 순위 + 조건 */}
       <div className="relative aspect-[16/10] overflow-hidden bg-white">
         {photo ? (
@@ -330,6 +421,7 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
         <span className={cn('absolute left-3 top-3 rounded-lg px-2.5 py-1 text-[13px] font-semibold tabular-nums shadow-sm', top ? 'bg-primary text-white' : 'bg-card/95 text-ink')}>
           {has ? `${rank}위` : '–'}
         </span>
+        {fx?.delta ? <span key={'d-' + fx.key} className="absolute left-3 top-11"><RankDelta d={fx.delta} /></span> : null}
         {cond && (
           <span className="absolute right-3 top-3 rounded-lg bg-card shadow-sm">
             <CheckPill c={cond.overall} title={cond.violations.join(', ')} />

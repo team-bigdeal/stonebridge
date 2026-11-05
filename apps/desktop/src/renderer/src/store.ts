@@ -2,8 +2,9 @@
 import { create } from 'zustand';
 import type {
   AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
-  Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus, SizesEventPayload } from '@shared/types';
+  RankStep, Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus, SizesEventPayload } from '@shared/types';
 import { addOriginal } from '@shared/originals';
+import { confirmedSum } from '@shared/quote';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
 export interface Notice { id: number; message: string; vendorId?: VendorId }
@@ -48,6 +49,8 @@ interface State {
   runOf: Record<string, string>;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
+  /** 값이 하나씩 확정될 때마다의 견적 (순위 변동 다시 보기) */
+  rankLog: RankStep[];
   /** scope가 있으면 이전 검색 카드에서 연 것 (그 검색의 값으로 보여 줌) */
   viewer: { kind: 'vendor'; id: VendorId; scope?: RunSnapshot } | { kind: 'integrated'; scope?: RunSnapshot } | { kind: 'approval'; scope?: RunSnapshot } | null;
   set: (p: Partial<State>) => void;
@@ -119,6 +122,7 @@ const initial = () => ({
   notices: [],
   expanded: null,
   originals: {},
+  rankLog: [] as RankStep[],
   viewer: null,
   replay: null as { id: string } | null,
   liveId: null as string | null,
@@ -170,7 +174,17 @@ export const useStore = create<State>((set, get) => ({
       }
       case 'quote_update': {
         const { quote, field } = ev.payload as QuoteUpdatePayload;
-        set({ quotes: { ...s.quotes, [quote.vendorId]: quote }, flash: field ? { vendorId: quote.vendorId, field, at: Date.now() } : s.flash });
+        const quotes = { ...s.quotes, [quote.vendorId]: quote };
+        const at = Date.now();
+        // 값이 확정되거나(field) 추가 비용 등으로 합계가 바뀌면 순위 변동 기록에 남긴다
+        const req = (s.requirements?.deadline ? s.requirements : null) as Requirements | null;
+        const prev = s.quotes[quote.vendorId];
+        const sumChanged = Boolean(prev && prev.listedPrice.value !== null && confirmedSum(prev, req) !== confirmedSum(quote, req));
+        set({
+          quotes,
+          flash: field ? { vendorId: quote.vendorId, field, at } : s.flash,
+          rankLog: field || sumChanged ? [...s.rankLog, { at, vendorId: quote.vendorId, field, quotes }] : s.rankLog
+        });
         break;
       }
       case 'source':
@@ -198,6 +212,7 @@ export const useStore = create<State>((set, get) => ({
           browsers: s.browsers,
           sources: s.sources,
           originals: s.originals,
+          rankLog: s.rankLog,
           frames: frameIO.get()
         };
         const runOf = { ...s.runOf };
@@ -214,6 +229,7 @@ export const useStore = create<State>((set, get) => ({
           browsers: {},
           sources: [],
           originals: {},
+          rankLog: [],
           expanded: null,
           viewer: null
         });

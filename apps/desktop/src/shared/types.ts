@@ -354,6 +354,14 @@ export interface QuoteUpdatePayload {
   field?: FieldKey;
 }
 
+/** 값 하나가 확정되거나 합계가 바뀐 순간의 견적 전체 (순위 변동 다시 보기용). field가 없으면 추가 비용 등 합계만 바뀐 것 */
+export interface RankStep {
+  at: number;
+  vendorId: VendorId;
+  field?: FieldKey;
+  quotes: Partial<Record<VendorId, Quote>>;
+}
+
 export type SettingsInput = Partial<
   Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'DEMO_MAIL_TO', string>
 >;
@@ -404,6 +412,8 @@ export interface SessionSnapshot {
   runs?: Record<string, RunSnapshot>;
   /** 타임라인 항목 id → 그 항목이 속한 이전 검색 id */
   runOf?: Record<string, string>;
+  /** 순위 변동 다시 보기 (예전 세션 파일엔 없음) */
+  rankLog?: RankStep[];
 }
 
 /** 조건을 바꾸기 전 검색 한 번의 화면 상태 (카드는 대화에 그대로 남고 이 값으로 그린다) */
@@ -418,6 +428,7 @@ export interface RunSnapshot {
   sources: (Source & { vendorId: VendorId; field: FieldKey })[];
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   frames: Partial<Record<Slot, string>>;
+  rankLog?: RankStep[];
 }
 
 /** history 이벤트: 기록이 저장(saved)되거나 삭제(deleted)됨 */
