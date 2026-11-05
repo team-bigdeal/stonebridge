@@ -38,5 +38,13 @@ export const DOC_CSS = `
 .dl-bad{color:#dc2626;font-weight:600}
 .dl-ok{color:#047857;font-weight:600}
 .dl-h3{font-size:13px;font-weight:800;margin:16px 0 4px;border-left:4px solid #2563eb;padding-left:8px}
+.dl-sign{width:auto;margin:8px 0}
+.dl-sign th{min-width:64px;text-align:center}
+.dl-sign td.box{height:54px}
+.dl-sent{margin:4px 0;padding-left:18px}
+.dl-sent li{margin:2px 0}
+.dl-ref{color:#2563eb;font-size:9px;margin-left:1px}
+.dl-ev td,.dl-ev th{font-size:10px}
+.dl-ev td.c{text-align:center}
 @media print{.dl-paper{width:auto;min-height:0;padding:28px 32px}}
 `;
