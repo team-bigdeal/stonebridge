@@ -16,6 +16,7 @@ import { IntegratedDocument } from '@/doc/IntegratedDocument';
 import { DOC_CSS } from '@/doc/styles';
 import { saveDocPdf, saveHtmlPdf, saveXlsx } from '@/doc/print';
 import { EditablePaper } from '@/doc/EditablePaper';
+import { localIsoDate } from '@shared/parse';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
 export function QuoteViewer() {
@@ -150,7 +151,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
   const [saved, setSaved] = useState('');
   const [page, setPage] = useState<0 | 1>(0);
   const [dragging, setDragging] = useState(false);
-  const baseDoc = useMemo(() => buildApproval(quotes, req, urls, { date: new Date().toISOString().slice(0, 10) }), [quotes, req, urls]);
+  const baseDoc = useMemo(() => buildApproval(quotes, req, urls, { date: localIsoDate() }), [quotes, req, urls]);
   const polishInput = useMemo(() => buildPolishInput(baseDoc), [baseDoc]);
   const polishKey = useMemo(() => JSON.stringify(polishInput), [polishInput]);
   // AI가 다듬은 문장 (사실이 바뀌면 버리고 템플릿 문장으로 돌아간다)
