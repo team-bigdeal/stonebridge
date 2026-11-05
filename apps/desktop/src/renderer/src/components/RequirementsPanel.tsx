@@ -127,7 +127,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
   }
 
   return (
-    <div className="flex flex-col gap-5 px-5 pb-6">
+    <div className="flex flex-1 flex-col gap-5 px-5 pb-6">
       <div className="flex items-center gap-3">
         <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(filled / Math.max(1, fields)) * 100}%` }} />
@@ -206,7 +206,8 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
         </Field>
       ))}
 
-      <div className="flex flex-col gap-2 pt-1">
+      {/* 시작 버튼은 패널 아래에 붙여 띄운다: 조건이 길어 스크롤해도 늘 보이고, 맨 아래까지 내리면 제자리라 내용을 가리지 않는다 */}
+      <div className="sticky bottom-0 z-10 -mx-5 -mb-6 mt-auto flex flex-col gap-2 border-t border-line bg-card/95 px-5 pb-5 pt-3 shadow-[0_-8px_16px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
         <Button className="h-auto w-full py-3 text-[14px]" disabled={!canStart} onClick={() => void start()}>
           <Search className="size-4" /> {starting ? '시작하는 중…' : asking ? '지금 바로 시작' : '이 조건으로 찾기 시작'}
         </Button>
