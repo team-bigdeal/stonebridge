@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Requirements, ReqSpec } from '@shared/types';
-import { deadlineIssue, parseAmountInput, valueIssue } from '@shared/limits';
+import { deadlineIssue, itemIssue, parseAmountInput, valueIssue } from '@shared/limits';
 import { localIsoDate } from '@shared/parse';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -154,6 +154,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
             }
           }}
         />
+        {itemIssue(v.item ?? '') && <Hint text={itemIssue(v.item ?? '')!} />}
       </Field>
 
       <Field label="수량">

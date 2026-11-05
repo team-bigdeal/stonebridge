@@ -92,7 +92,7 @@ export function HistorySidebar() {
         {list === null ? (
           <div className="px-2 py-3 text-[13px] text-muted-foreground">불러오는 중…</div>
         ) : list.length === 0 ? (
-          <div className="px-2 py-3 text-[13px] leading-relaxed text-muted-foreground">아직 저장된 견적이 없어요. 견적 비교가 끝나면 여기에 자동으로 쌓여요.</div>
+          <div className="px-2 py-3 text-[13px] leading-relaxed text-muted-foreground">아직 저장된 견적이 없어요. 검색을 시작하면 여기에 자동으로 쌓여요.</div>
         ) : (
           <ul className="space-y-1">
             {list.map((h) => (
@@ -107,6 +107,7 @@ export function HistorySidebar() {
                   <div className="flex items-baseline gap-2 pr-6">
                     <span className={cn('min-w-0 flex-1 truncate text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-ink')}>
                       {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
+                      {h.id !== liveId && h.incomplete && <Pill tone="muted" className="mr-1.5" title="견적 비교 전에 멈춘 검색">미완료</Pill>}
                       {h.item}
                     </span>
                     {h.best && <span className="shrink-0 text-[12px] font-semibold tabular-nums text-ink">{won(h.best.total)}</span>}

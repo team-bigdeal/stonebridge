@@ -7,6 +7,15 @@ export const LIMITS = {
   budgetMax: { min: 1_000, max: 10_000_000_000 }
 } as const;
 
+/** 품목 이름 최대 글자 수 (넘는 부분은 잘라서 쓴다) */
+export const ITEM_MAX = 200;
+
+/** 품목이 너무 길 때 안내 문구. 괜찮으면 null */
+export function itemIssue(item: string): string | null {
+  const n = item.trim().length;
+  return n > ITEM_MAX ? `품목은 ${ITEM_MAX}자까지만 써요 (지금 ${n.toLocaleString('ko-KR')}자). 넘는 부분은 잘리니 자세한 조건은 채팅으로 알려 주세요.` : null;
+}
+
 /** 수량·예산 값이 쓸 수 있는지. 문제가 있으면 안내 문구 */
 export function valueIssue(kind: 'quantity' | 'budgetMax', n: number): string | null {
   const { min, max } = LIMITS[kind];

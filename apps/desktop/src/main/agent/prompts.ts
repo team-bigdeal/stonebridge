@@ -29,7 +29,7 @@ export const ANGLES: Record<VendorId, string> = {
 
 const COLLECT_RULES = (req: Requirements) => `## 찾아야 하는 견적 정보
 - 금액 필드: 표시가(listedPrice: 제품 1개 가격), 설치비(installFee), 배송비(shippingFee), 기본 A/S 기간(warrantyMonths), A/S ${req.minWarrantyMonths}개월을 맞추는 추가비(warrantyExtraFee), 납기(leadTimeDays)
-- 견적서에 들어갈 정보: product(상품명·모델/규격), supplier(사업자등록번호·대표자·전화·메일·주소 — 보통 페이지 맨 아래 사업자 정보), terms(유효기간·납기 원문·결제 조건·인도 장소), extras(출장비·철거비·추가 자재 같은 그 밖의 비용, 필수 여부), notes(특기사항)
+- 견적서에 들어갈 정보: product(상품명·모델/규격), supplier(사업자등록번호·대표자·전화·메일·주소 — 보통 페이지 맨 아래 사업자 정보), terms(유효기간·납기 원문·결제 조건·인도 장소. 납기에는 기간·날짜만 넣고 택배·선불 같은 배송 방법은 넣지 않는다. 외국어 사이트면 한국어로 옮겨 적는다), extras(출장비·철거비·추가 자재 같은 그 밖의 비용, 필수 여부), notes(특기사항)
 
 ## 가격 읽는 법 (중요)
 - 인쇄물·판촉물·주문제작 사이트는 옵션(수량·규격·용지 등)을 고르면 주문 금액 박스(인쇄비·부가세·합계 등)에 가격이 계산되어 나온다. read_text의 "화면의 금액"과 "현재 선택된 옵션"을 먼저 본다.

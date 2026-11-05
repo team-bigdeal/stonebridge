@@ -36,13 +36,18 @@ function fromRecord(r: HistoryRecord): SessionSnapshot {
   const timeline: TimelineItem[] = [
     { id: id('user'), kind: 'user', text: `${r.requirements.item} ${r.requirements.quantity.toLocaleString('ko-KR')}개 견적` },
     { id: id('req'), kind: 'requirements' },
-    { id: id('compare'), kind: 'compare' },
-    { id: id('docs'), kind: 'docs' },
-    { id: id('report'), kind: 'report' }
+    // 비교 전에 멈춘 검색은 비교·견적서 카드를 만들지 않는다
+    ...(r.incomplete
+      ? []
+      : ([
+          { id: id('compare'), kind: 'compare' },
+          { id: id('docs'), kind: 'docs' },
+          { id: id('report'), kind: 'report' }
+        ] as TimelineItem[]))
   ];
   return {
     version: 1,
-    stage: 'questions',
+    stage: r.incomplete ? 'search' : 'questions',
     requirements: r.requirements,
     timeline,
     quotes: r.quotes,

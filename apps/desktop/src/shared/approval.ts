@@ -228,7 +228,8 @@ export function buildApproval(quotes: Partial<Record<VendorId, Quote>>, req: Req
     terms.push({
       label: '납기',
       value: delivery,
-      evidenceIds: delivery === null ? [] : t?.delivery || t?.leadTimeText ? [own('delivery', '납기', delivery)] : ids(fieldEv(pick, 'leadTimeDays'))
+      // 원문을 그대로 쓴 경우만 원문 근거, "주문 후 N일"로 적었으면 납기 값의 근거
+      evidenceIds: delivery === null ? [] : delivery === t?.delivery || delivery === t?.leadTimeText ? [own('delivery', '납기', delivery)] : ids(fieldEv(pick, 'leadTimeDays'))
     });
     const payment = doc.terms.payment ?? null;
     terms.push({ label: '결제조건', value: payment, evidenceIds: payment === null ? [] : [own('payment', '결제조건', payment)] });

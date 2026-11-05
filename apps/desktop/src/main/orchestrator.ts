@@ -5,7 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
-import { requirementIssue, valueIssue } from '@shared/limits';
+import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
@@ -231,8 +231,9 @@ const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && 
 /** 요구 조건 패널에서 품목을 바꿨을 때: 새 품목에 맞게 세부 조건을 다시 정해 패널에 보낸다 */
 export async function onItemChange(item: unknown) {
   if (!interview || getStage() !== 'interview' || typeof item !== 'string') return;
-  const next = item.trim().slice(0, 200);
+  const next = item.trim().slice(0, ITEM_MAX);
   if (!next || next === interview.req.item) return;
+  if (item.trim().length > ITEM_MAX) say(ITEM_CUT);
   try {
     await interview.changeItem(next);
   } catch (e) {
@@ -243,6 +244,8 @@ export async function onItemChange(item: unknown) {
   emit('requirements', { payload: interview.req });
 }
 
+const ITEM_CUT = `품목이 ${ITEM_MAX}자를 넘어서 앞 ${ITEM_MAX}자만 품목으로 썼어요. 자세한 조건은 채팅으로 알려 주세요.`;
+
 /** 시작 버튼을 연달아 눌러도 검색이 한 번만 시작되게 (정리를 기다리는 동안에도 단계는 아직 interview) */
 let starting = false;
 
@@ -250,7 +253,7 @@ let starting = false;
 function cleanPatch(patch: Partial<Requirements>, int: Interview): Partial<Requirements> {
   const clean: Partial<Requirements> = {};
   if (!patch || typeof patch !== 'object') return clean;
-  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
+  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, ITEM_MAX);
   if (posInt(patch.quantity) && !valueIssue('quantity', patch.quantity!)) clean.quantity = patch.quantity;
   if (posInt(patch.budgetMax) && !valueIssue('budgetMax', patch.budgetMax!)) clean.budgetMax = patch.budgetMax;
   // 지난 날짜도 받아 두고 시작할 때 막는다 (패널에 보이는 값과 main 값이 어긋나지 않게)
@@ -276,7 +279,10 @@ export function editRequirements(patch: Partial<Requirements>) {
 
 export async function startSearch(patch: Partial<Requirements>) {
   if (!interview || getStage() !== 'interview' || starting) return;
-  interview.apply(cleanPatch(patch, interview));
+  const clean = cleanPatch(patch, interview);
+  // 패널에서 고친 긴 품목을 바로 시작하면 여기서 잘린다 (품목 칸을 벗어날 때 이미 알렸으면 다시 말하지 않음)
+  if (clean.item && clean.item !== interview.req.item && typeof patch?.item === 'string' && patch.item.trim().length > ITEM_MAX) say(ITEM_CUT);
+  interview.apply(clean);
   if (!interview.req.item) {
     say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
     return;
@@ -301,6 +307,8 @@ export async function startSearch(patch: Partial<Requirements>) {
   }
   // 기다리는 사이 새 견적을 눌렀으면 시작하지 않는다
   if (!requirements || getStage() !== 'interview') return;
+  // 시작하자마자 히스토리에 넣어 둔다 (견적이 오기 전에 새 견적으로 취소해도 남게). 비교가 끝나면 같은 기록을 덮어쓴다
+  saveRecord(requirements, [], {}, { incomplete: true });
   if (givenUrls.length) {
     void startWithUrls(requirements, givenUrls);
     return;
@@ -574,6 +582,11 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return onQuotePdf(slot, file);
         },
         engine: () => engines.get(slot) ?? 'naver',
+        // 정한 업체 사이트에 연결이 안 되면 바로 끝낸다 (후보를 고르는 중이면 다른 후보로 넘어가게 둔다)
+        stopOnNavFail: (u) => {
+          const own = getVendor(slot);
+          return mode === 'collect' && Boolean(own) && hostKey(u) === hostKey(own!.url);
+        },
         missingOnDone: () => {
           if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
           const want: [FieldKey, string][] = [['shippingFee', '배송비'], ['leadTimeDays', '납기']];
@@ -588,6 +601,10 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
     const hasPrice = v ? quoteStore.hasListedPrice(slot) : false;
     if (v && hasPrice) {
       setVendorStatus(slot, 'done');
+    } else if (v && outcome.kind === 'unreachable') {
+      // 접속이 안 되는 주소: 빈 화면을 "내용 없음"으로 보지 않고, 다른 사이트를 찾으러 가지도 않고 알린다 (다시 시도·다른 업체로 버튼)
+      setVendorStatus(slot, 'failed');
+      say(`${v.name}: 사이트에 연결하지 못했어요 (주소를 확인해 주세요). 주소를 고쳐 다시 알려 주시거나 카드의 "다시 시도"·"다른 업체로"를 눌러 주세요.`);
     } else {
       // 웹 견적 실패: 대안으로 기록해 두고, 시도 횟수가 남았으면 다른 사이트부터
       const fb: Fallback | null =
@@ -865,6 +882,7 @@ async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
       title: `사이트 가견적서 · ${file.name}`,
       url: file.url,
       fileName: file.name,
+      ref: file.name,
       mime: 'application/pdf',
       fileData: `data:application/pdf;base64,${file.data.toString('base64')}`,
       capturedAt: new Date().toISOString()
@@ -900,6 +918,7 @@ export async function onFileUpload(slot: VendorId, input: { name: string; mime: 
         channel: 'file',
         title: file.name,
         fileName: file.name,
+        ref: file.name,
         mime: file.mime,
         fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
         text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
@@ -934,7 +953,7 @@ export async function onPasteMessage(slot: VendorId, text: string) {
   setVendorStatus(slot, 'parsing');
   emit('original', {
     vendorId: slot,
-    payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: ref, text: body, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+    payload: { id: randomUUID(), vendorId: slot, channel: 'file', title: ref, ref, text: body, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
   });
   try {
     const { fields, meta } = await extractQuote({ vendorId: slot, requirements, hint: ref, ref, channel: 'file', content: [{ type: 'text', text: body }] });
@@ -1071,17 +1090,31 @@ export async function onPasteReply(slot: VendorId, kind: MailKind, text: string)
 async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
   if (!requirements) return;
   recordMail({ id: r.messageId, direction: 'in', vendorId: slot, kind, from: r.from, subject: r.subject, body: r.text, at: new Date().toISOString() });
+  // 첨부 중 견적서로 볼 PDF·사진만 (명함 vcf 같은 글 첨부는 뺀다). 원본에도 그대로 붙여 메일 모양으로 보여 준다
+  const docs = r.attachments.flatMap((a) => {
+    const block = quoteFileBlock({ name: a.filename, mime: a.contentType, data: a.content });
+    if (!block || block.type === 'text') return [];
+    const mime = block.type === 'document' ? 'application/pdf' : block.type === 'image' && block.source.type === 'base64' ? block.source.media_type : a.contentType;
+    return [{ block, name: a.filename || '첨부 파일', mime, data: `data:${mime};base64,${a.content.toString('base64')}` }];
+  });
   emit('original', {
     vendorId: slot,
-    payload: { id: randomUUID(), vendorId: slot, channel: 'mail', title: r.subject, text: r.text, capturedAt: new Date().toISOString() } satisfies QuoteOriginal
+    payload: {
+      id: randomUUID(),
+      vendorId: slot,
+      channel: 'mail',
+      title: r.subject,
+      ref: r.messageId,
+      from: r.from || undefined,
+      text: r.text,
+      attachments: docs.length ? docs.map(({ name, mime, data }) => ({ name, mime, data })) : undefined,
+      capturedAt: new Date().toISOString()
+    } satisfies QuoteOriginal
   });
   setVendorStatus(slot, 'parsing');
   say(`${vendorName(slot)}에서 회신이 왔어요. 견적서 양식으로 정리할게요.`);
   try {
-    // 첨부 중 견적서로 볼 PDF·사진만 (명함 vcf 같은 글 첨부는 뺀다)
-    const files = r.attachments
-      .map((a) => quoteFileBlock({ name: a.filename, mime: a.contentType, data: a.content }))
-      .filter((b) => b !== null && b.type !== 'text');
+    const files = docs.map((d) => d.block);
     const { fields, meta } = await extractQuote({
       vendorId: slot,
       requirements,
@@ -1411,6 +1444,8 @@ export async function resumeHistory(id: string): Promise<{ ok: boolean; message?
 }
 
 export async function reset() {
+  // 비교까지 가지 못한 검색도 그때까지의 업체·견적으로 남긴다 (비교가 끝난 기록은 그대로)
+  if (requirements) saveRecord(requirements, listVendors(), quoteStore.quotes, { incomplete: true });
   // 새 견적 = 새 히스토리 기록. 조건 바꾸기는 같은 대화라 같은 기록에 이어서 쌓는다
   startRecord();
   interview = null;
@@ -1444,6 +1479,8 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
+  // 비교 전에 조건을 바꾼 검색도 그때까지의 업체·견적으로 남긴다 (비교가 끝난 기록은 그대로)
+  saveRecord(req, listVendors(), quoteStore.quotes, { incomplete: true });
   // renderer가 이 시점 화면(단계·업체·견적)을 이전 검색으로 얼려 두므로, 상태를 비우기 전에 먼저 알린다
   emit('revised', { payload: summary });
   // 탐색 중인 브라우저 정리는 시간이 걸리므로 기다리지 않는다 (시작 버튼이 startSearch에서 잠깐 기다림)
