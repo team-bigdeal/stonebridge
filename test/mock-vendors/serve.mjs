@@ -4,6 +4,7 @@
 //  D :4104 가격은 보이지만 배송비·제작 기간은 닫힌 "배송/교환" 탭 안에만 있음 (숨은 정보 탐색 테스트용)
 //  E :4105 시트 단위 가격 (1시트 = 24개) — 1개 가격으로 잘못 읽으면 금액이 수십 배로 튐 (수량 재확인 테스트용)
 //  F :4106 화면엔 가격이 없고, 수량을 고른 뒤 "견적서 다운로드"를 누르면 가견적서 PDF가 내려옴 (PDF 받기·분석 테스트용)
+//  G :4107 가격 없이 카카오톡 채널·문자 상담으로만 견적 (문자·카톡 문의 초안 테스트용). /reply.pdf = 업체가 보낸 셈 치는 견적서
 //  C :4103 첫 방문은 HTTP 418 "보안 확인" 화면 → 사용자가 "확인" 누르면 정상 페이지 (차단 감지·handoff 테스트용)
 import http from 'node:http';
 
@@ -146,6 +147,32 @@ function fQuote(qty) {
   ]);
 }
 
+// G: 가격·견적서 다운로드가 없고 카카오톡 채널·문자 상담으로만 견적을 준다 (문자·카톡 문의 초안 테스트용).
+// /reply.pdf 는 업체가 카톡으로 보내 준 셈 치는 견적서 (페이지에는 링크를 두지 않아 에이전트가 직접 받지 않게)
+const G = page(
+  '도장공방 스티커 - 카톡 상담',
+  `<h1>도장공방 스티커</h1>
+  <p>모든 스티커는 디자인과 수량에 따라 가격이 달라서, <b>카카오톡 채널 상담</b>으로 견적서를 PDF로 보내 드립니다.</p>
+  <h3>견적 상담</h3>
+  <p>카카오톡 채널: <b>https://pf.kakao.com/_mockdojang</b><br>문자 상담: <b>010-0000-4107</b> (평일 9시~18시)</p>
+  <footer>도장공방 · 대표 이도장 · 사업자등록번호 333-44-55555 · 대구 북구</footer>`
+);
+function gReply() {
+  return makePdf([
+    'QUOTATION  No. DJ-20261105-01',
+    'Supplier: Dojang Gongbang  Biz No. 333-44-55555  Tel 010-0000-4107',
+    'Item: Round waterproof sticker, 50mm, glossy',
+    'Quantity: 3000 pcs',
+    'Supply amount: ' + won(54000),
+    'VAT (10%): ' + won(5400),
+    'Total (VAT incl.): ' + won(59400),
+    'Shipping: ' + won(3000) + ' (parcel)',
+    'Production: 3 business days, delivery 1 day',
+    'Warranty: reprint free within 7 days if defective',
+    'Valid until: 2026-11-30'
+  ]);
+}
+
 const send = (res, status, html, headers = {}) => {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(html);
@@ -167,6 +194,15 @@ http
   .listen(4106);
 http
   .createServer((req, res) => {
+    if (req.url.startsWith('/reply.pdf')) {
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="dojang-quote.pdf"', 'cache-control': 'no-store' });
+      return res.end(gReply());
+    }
+    send(res, 200, G);
+  })
+  .listen(4107);
+http
+  .createServer((req, res) => {
     // /always 는 확인해도 계속 막힌다 (건너뛰기 테스트용)
     if (req.url.startsWith('/always')) return send(res, 418, C_BLOCK.replace('/verify', '/always'));
     if (req.url.startsWith('/verify')) return send(res, 302, '', { location: '/', 'set-cookie': 'passed=1; Path=/' });
@@ -174,4 +210,4 @@ http
     send(res, 200, C);
   })
   .listen(4103);
-console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105  F(가견적서 PDF) http://localhost:4106');
+console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105  F(가견적서 PDF) http://localhost:4106  G(카톡·문자 상담만, 회신 PDF /reply.pdf) http://localhost:4107');
