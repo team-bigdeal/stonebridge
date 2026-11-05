@@ -251,6 +251,8 @@ export interface AppConfig {
   mailUser: string;
   /** 연결된 Google 계정 주소 */
   googleUser: string | null;
+  /** 시연 모드: 업체 메일 초안의 받는 사람을 모두 이 시연용 주소(.test)로 바꾼다. 빈 문자열이면 끔 */
+  demoMailTo: string;
   /** Google OAuth 클라이언트 ID가 설정돼 있어 "Google 계정으로 연결"을 쓸 수 있는지 */
   googleClient: boolean;
 }
@@ -353,7 +355,7 @@ export interface QuoteUpdatePayload {
 }
 
 export type SettingsInput = Partial<
-  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
+  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET' | 'DEMO_MAIL_TO', string>
 >;
 
 /** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */

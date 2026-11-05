@@ -208,6 +208,10 @@ function MailTab({ config }: { config: AppConfig }) {
   const [smtpPass, setSmtpPass] = useState('');
   const client = useSave();
   const password = useSave();
+  const demo = useSave();
+  const [demoTo, setDemoTo] = useState(config.demoMailTo);
+  // 저장된 값이 나중에 들어오거나 바뀌면 입력칸도 맞춘다
+  useEffect(() => setDemoTo(config.demoMailTo), [config.demoMailTo]);
 
   /** 시스템 브라우저에서 로그인·동의를 마칠 때까지 기다린다 */
   async function connectGoogle() {
@@ -278,6 +282,13 @@ function MailTab({ config }: { config: AppConfig }) {
         {googleError && <p className="rounded-lg bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">{googleError}</p>}
         {!config.googleClient && !config.googleUser && <p className="text-[13px] text-muted-foreground">먼저 아래 고급 설정에 OAuth 클라이언트를 저장해 주세요.</p>}
       </Row>
+
+      <Row label="시연용 받는 사람" hint="시연할 때 쓰세요. 넣어 두면 업체에 보낼 메일 초안의 받는 사람이 모두 이 주소로 바뀌고, 보내면 잠시 뒤 시연용 회신이 견적서 PDF를 붙여 와요. 실제 업체에 가지 않도록 .test로 끝나는 주소만 받아요. 비우고 저장하면 꺼져요.">
+        <Box filled={demoTo !== ''}>
+          <BareInput type="email" placeholder="quote@hanaprint.test" spellCheck={false} value={demoTo} onChange={setDemoTo} />
+        </Box>
+      </Row>
+      <SaveBar dirty={demoTo.trim() !== config.demoMailTo} state={demo.state} error={demo.error} onSave={() => demo.save({ DEMO_MAIL_TO: demoTo.trim() })} />
 
       <button type="button" onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced} className="flex w-fit items-center gap-1 text-[14px] font-medium text-muted-foreground hover:text-ink">
         고급 설정

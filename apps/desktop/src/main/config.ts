@@ -4,6 +4,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import dotenv from 'dotenv';
 import type { AppConfig, SettingsInput, ThemeMode } from '@shared/types';
+import { isDemoAddress } from '@shared/mail';
 import { googleAccount, googleClientConfigured } from './channels/google-auth';
 
 // 빌드한 앱(이름 "돌다리")도 개발 때와 같은 데이터 폴더를 써서 견적 히스토리·설정을 같이 본다
@@ -43,8 +44,16 @@ function fromEnv() {
 export const config = fromEnv();
 
 const SETTING_KEYS = [
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'DEMO_MAIL_TO'
 ] as const;
+/** 빈 문자열로 저장하면 "끔"이 되는 키 (나머지는 빈 값이면 변경 안 함) */
+const CLEARABLE = new Set<string>(['DEMO_MAIL_TO']);
+
+/** 시연 모드 받는 사람. 실제 업체에 잘못 가지 않도록 시연용 주소(.test)만 쓴다 */
+export function demoMailTo(): string {
+  const v = env.DEMO_MAIL_TO?.trim() ?? '';
+  return isDemoAddress(v) ? v : '';
+}
 
 /** 화면 테마 설정. 값이 이상하면 system */
 export function themeMode(): ThemeMode {
@@ -64,6 +73,8 @@ const quote = (v: string) => {
 
 /** 줄바꿈·제어 문자는 .env 줄을 깨거나 다른 키를 만들 수 있어 받지 않는다 */
 function settingsError(patch: SettingsInput): string | null {
+  const demo = patch.DEMO_MAIL_TO?.trim();
+  if (demo && !isDemoAddress(demo)) return '시연용 받는 사람은 .test로 끝나는 주소만 쓸 수 있어요 (예: quote@hanaprint.test).';
   for (const key of SETTING_KEYS) {
     const value = patch[key]?.trim();
     if (!value) continue;
@@ -87,12 +98,12 @@ export function saveSettings(patch: SettingsInput): string | null {
   writeEnv((lines) => {
     for (const key of SETTING_KEYS) {
       const value = patch[key]?.trim();
-      if (!value) continue;
-      const line = `${key}=${quote(value)}`;
+      if (!value && !(CLEARABLE.has(key) && patch[key] !== undefined)) continue;
+      const line = `${key}=${value ? quote(value) : ''}`;
       const idx = lines.findIndex((l) => new RegExp(`^\\s*${key}\\s*=`).test(l));
       if (idx >= 0) lines[idx] = line;
       else lines.push(line);
-      env[key] = value;
+      env[key] = value ?? '';
     }
     return lines;
   });
@@ -125,7 +136,8 @@ export function publicConfig(): AppConfig {
     mailAuth: mailAuth(),
     mailUser: mailUser(),
     googleUser: googleAccount(),
-    googleClient: googleClientConfigured()
+    googleClient: googleClientConfigured(),
+    demoMailTo: demoMailTo()
   };
 }
 

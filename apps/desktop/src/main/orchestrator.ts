@@ -8,7 +8,7 @@ import { josa } from '@shared/josa';
 import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
-import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
+import { demoMailTo, hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
@@ -1417,6 +1417,9 @@ export function onDraftQuestion(slot: VendorId) {
 }
 
 function openDraft(draft: MailDraft) {
+  // 시연 모드: 받는 사람을 시연용 주소로 바꿔 둔다 (카드에서 직접 고칠 수 있음)
+  const demoTo = demoMailTo();
+  if (demoTo) draft = { ...draft, to: demoTo };
   drafts.set(draft.id, draft);
   timeline({ kind: 'mail', draft });
 }
