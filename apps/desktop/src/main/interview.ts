@@ -38,9 +38,11 @@ export class Interview {
   req: Partial<Requirements> = {};
   private history: { role: 'user' | 'assistant'; text: string }[] = [];
   private asked = 0;
+  /** 코드가 직접 물어본 항목 (같은 걸 두 번 묻지 않게) */
+  private askedKeys = new Set<keyof Requirements>();
 
-  /** 사용자 입력 → 다음 질문 (null이면 인터뷰 종료) + 지금 조건으로 검색을 시작할 수 있는지 */
-  async next(text: string): Promise<{ question: string | null; ready: boolean; askingSize?: boolean }> {
+  /** 사용자 입력 → 다음 질문 (null이면 인터뷰 종료) + 지금 조건으로 검색을 시작할 수 있는지 + 기본값으로 채운 항목 */
+  async next(text: string): Promise<{ question: string | null; ready: boolean; askingSize?: boolean; defaulted?: string[] }> {
     this.history.push({ role: 'user', text });
     const out = await structured<StepOut>({
       system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 오늘은 ${new Date().toISOString().slice(0, 10)}이다.
@@ -53,7 +55,8 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
 질문은 꼭 필요한 것만, 짧게 (보통 1~3개, 최대 5개). 키워드 하나만 줘도 바로 찾을 수 있게 나머지는 합리적인 기본값으로 둔다. 충분하면 nextQuestion=null.
 사이즈·규격이 가격을 크게 바꾸는 품목(명함·스티커·라벨·전단·포스터·현수막·배너·봉투·쇼핑백·박스·액자·책자 등)인데 사용자가 사이즈를 말하지 않았으면, 다른 것보다 사이즈를 먼저 묻고 askingSize=true로 한다. 이때 질문 끝에 "업체 사이트에서 많이 쓰는 사이즈를 모아 실제 크기로 보여 드릴게요. 보고 고르셔도 돼요."를 덧붙인다. 사이즈를 묻는 질문이 아니면 askingSize=false.
 사용자가 사이즈를 골랐으면(예: "90×50mm로 할게요") item에 사이즈를 넣는다 (예: "명함 90×50mm").
-남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.`,
+남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.
+ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuestion을 비우지 않는다. 예산·납기를 아직 모르면 nextQuestion으로 묻는다.`,
       content: JSON.stringify({ current: this.req, conversation: this.history, questionsAsked: this.asked }),
       schema: {
         type: 'object',
@@ -91,10 +94,39 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
     if (out.notes) this.req.notes = out.notes;
     if (out.vendors?.length) this.req.vendors = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].slice(0, 3);
     if (out.onlyVendors !== null) this.req.onlyVendors = out.onlyVendors;
-    if (!out.nextQuestion || this.asked >= 5) return { question: null, ready: Boolean(this.req.item) };
+    // AI가 질문 없이 끝내도 비교에 꼭 필요한 값(예산·납기, 배송·설치가 있으면 지역)이 비었으면 한 번씩만 직접 묻는다
+    const fallback = out.nextQuestion ? null : this.req.item && this.asked < 5 ? this.missingQuestion() : null;
+    const question = out.nextQuestion ?? fallback?.q ?? null;
+    if (!question || this.asked >= 5) return { question: null, ready: Boolean(this.req.item), defaulted: this.fillDefaults() };
+    if (fallback) this.askedKeys.add(fallback.key);
     this.asked++;
-    this.history.push({ role: 'assistant', text: out.nextQuestion });
-    return { question: out.nextQuestion, ready: Boolean(this.req.item) && out.ready, askingSize: out.askingSize };
+    this.history.push({ role: 'assistant', text: question });
+    return { question, ready: Boolean(this.req.item) && (out.ready || Boolean(fallback)), askingSize: !fallback && out.askingSize };
+  }
+
+  /** 아직 비어 있고, 묻지 않은 필수 항목의 질문 */
+  private missingQuestion() {
+    const r = this.req;
+    const asks: { key: keyof Requirements; q: string; need: boolean }[] = [
+      { key: 'budgetMax', q: '예산은 최대 얼마까지 생각하세요? 정해진 게 없으면 "상관없어"라고 해 주세요.', need: r.budgetMax === undefined },
+      { key: 'deadline', q: '언제까지 받아야 하나요? 오늘부터 며칠 안인지 알려 주세요.', need: r.deadline === undefined },
+      { key: 'region', q: '어느 지역으로 받으실 건가요? 배송비·설치비를 맞게 계산하려고요.', need: !r.region && (r.needInstall === true || r.needDelivery !== false) }
+    ];
+    return asks.find((a) => a.need && !this.askedKeys.has(a.key)) ?? null;
+  }
+
+  /** 인터뷰를 마칠 때 예산·납기가 끝내 비었으면 기본값을 카드에도 보이게 채우고, 채운 항목 이름을 돌려준다 */
+  private fillDefaults() {
+    const filled: string[] = [];
+    if (this.req.budgetMax === undefined) {
+      this.req.budgetMax = DEFAULTS.budgetMax;
+      filled.push('예산');
+    }
+    if (this.req.deadline === undefined) {
+      this.req.deadline = DEFAULTS.deadline;
+      filled.push('납기');
+    }
+    return filled;
   }
 
   /** 사용자가 카드에서 직접 고친 값 반영 */
@@ -105,6 +137,7 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
   /** 조건 변경: 다시 대화로 고칠 수 있게 질문 횟수를 되돌린다 */
   reopen() {
     this.asked = 0;
+    this.askedKeys.clear();
   }
 
   result(): Requirements {
