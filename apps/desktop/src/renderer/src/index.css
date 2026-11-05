@@ -76,9 +76,10 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
-  --color-va: oklch(0.72 0.12 255);
-  --color-vb: oklch(0.72 0.12 300);
-  --color-vc: oklch(0.78 0.1 195);
+  /* 업체 A·B·C 구분색: 색각 이상에서도 구분되게 검증한 3색 (파랑·주황·청록) */
+  --color-va: #3987e5;
+  --color-vb: #d95926;
+  --color-vc: #199e70;
   --font-sans: "Pretendard", -apple-system, "Apple SD Gothic Neo", sans-serif;
 }
 
