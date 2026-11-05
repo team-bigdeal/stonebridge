@@ -4,6 +4,7 @@ import { FileUp, X } from 'lucide-react';
 import type { ApprovalField } from '@shared/approval';
 import type { TemplateInfo, TemplateSlot } from '@shared/template';
 import { Button } from '@/components/ui/button';
+import { PdfPaper } from '@/components/PdfPaper';
 
 const ACCEPT = /\.(docx|xlsx|hwpx|pdf)$/i;
 
@@ -209,7 +210,7 @@ function SlotList({ t, fields, withValue }: { t: ApprovalTemplate; fields: Appro
 /** 올린 양식 파일을 실제 모양으로 띄우고, 채워진 칸(노란 표시)을 그 자리에서 고친다 */
 export function TemplatePreview({ t, fields }: { t: ApprovalTemplate; fields: ApprovalField[] }) {
   const host = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<{ loading: boolean; error: string; pdfUrl: string }>({ loading: false, error: '', pdfUrl: '' });
+  const [state, setState] = useState<{ loading: boolean; error: string; pdf: Uint8Array | null }>({ loading: false, error: '', pdf: null });
   const [showMap, setShowMap] = useState(false);
   const latest = useRef(t);
   latest.current = t;
@@ -240,22 +241,19 @@ export function TemplatePreview({ t, fields }: { t: ApprovalTemplate; fields: Ap
         const res = await window.doldari.templatePreview(values);
         if (dead || !host.current) return;
         if (!res.ok) {
-          setState({ loading: false, error: res.error, pdfUrl: '' });
+          setState({ loading: false, error: res.error, pdf: null });
           return;
         }
         host.current.innerHTML = '';
-        let pdfUrl = '';
+        let pdf: Uint8Array | null = null;
         if (res.kind === 'docx' && res.bytes) await renderAsync(new Blob([new Uint8Array(res.bytes)]), host.current, undefined, { className: 'docx', inWrapper: true, breakPages: true });
         else if (res.html) host.current.innerHTML = res.html;
-        else if (res.kind === 'pdf' && res.bytes) pdfUrl = URL.createObjectURL(new Blob([new Uint8Array(res.bytes)], { type: 'application/pdf' }));
+        else if (res.kind === 'pdf' && res.bytes) pdf = new Uint8Array(res.bytes);
         if (dead || !host.current) return;
         decorate(host.current);
-        setState((s) => {
-          if (s.pdfUrl) URL.revokeObjectURL(s.pdfUrl);
-          return { loading: false, error: '', pdfUrl };
-        });
+        setState({ loading: false, error: '', pdf });
       } catch (e) {
-        if (!dead) setState({ loading: false, error: `미리보기를 그리지 못했어요: ${e instanceof Error ? e.message : String(e)}`, pdfUrl: '' });
+        if (!dead) setState({ loading: false, error: `미리보기를 그리지 못했어요: ${e instanceof Error ? e.message : String(e)}`, pdf: null });
       }
     })();
     return () => {
@@ -280,7 +278,7 @@ export function TemplatePreview({ t, fields }: { t: ApprovalTemplate; fields: Ap
       {state.loading && <div className="rounded-md bg-white/80 p-3 text-center text-[12px] text-neutral-600">양식을 그리는 중…</div>}
       {state.error && <div className="rounded-md bg-white p-3 text-[12px] text-red-600">{state.error}</div>}
       {showMap && <SlotList t={t} fields={fields} withValue={kind === 'pdf'} />}
-      {kind === 'pdf' && state.pdfUrl && <iframe title="채워진 PDF" src={state.pdfUrl} className="h-[60vh] w-full rounded-md border bg-white" />}
+      {kind === 'pdf' && state.pdf && <PdfPaper data={state.pdf} title="채워진 PDF" className="max-h-[60vh]" />}
       <div ref={host} className="overflow-x-auto" />
       {kind === 'pdf' && !showMap && <SlotList t={t} fields={fields} withValue />}
     </div>
