@@ -92,12 +92,24 @@ export async function onChat(text: string) {
   }
   try {
     setBusy(true);
+    // "멈춰" 같은 말은 어느 단계에서든 진행 중인 탐색을 멈춘다 (조건 변경으로 해석하지 않게 먼저 본다)
+    if (STOP_WORDS.test(text.trim())) {
+      stop();
+      return;
+    }
+    // 멈춘 뒤 "다시 시작"·"계속해" 같은 말은 멈춘 브라우저를 이어서 진행
+    if (getStage() !== 'interview' && START_WORDS.test(text.trim()) && resumeStopped()) return;
     if (getStage() === 'interview') {
       if (!interview) {
         interview = new Interview();
         timeline({ kind: 'requirements' });
       }
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
+      // "시작" 같은 말은 카드의 시작 버튼과 같게 처리한다 (인터뷰로 넘기면 같은 안내만 반복됨)
+      if (START_WORDS.test(text.trim()) && interview.req.item) {
+        await startSearch({});
+        return;
+      }
       const { question, ready } = await interview.next(text);
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
@@ -145,6 +157,19 @@ export async function onChat(text: string) {
 }
 
 // ─── 요구 조건 확인 → 검색 시작 ──────────────────────────────
+
+/** 채팅으로 검색을 시작(멈춘 뒤면 이어서)하라는 짧은 말 ("시작", "검색해줘", "이대로 해줘", "다시 시작", "계속해" 등).
+ *  "네·응·좋아"는 인터뷰 질문에 대한 대답일 수 있어 넣지 않고, 조건이 섞인 말("아이폰 케이스 찾아줘")은 맞지 않게 전체 일치로 본다 */
+const START_WORDS = new RegExp(
+  String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:다시\s*)?(?:계속\s*|이어서\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행|계속|이어서|재개)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
+  'i'
+);
+
+/** 채팅으로 진행 중인 탐색을 멈추라는 짧은 말 ("멈춰", "그만", "검색 중지", "잠깐" 등). 다른 뜻이 섞인 말은 전체 일치가 아니라 맞지 않는다 */
+const STOP_WORDS = new RegExp(
+  String.raw`^(?:(?:잠깐\s*|일단\s*|다\s*|전부\s*|검색\s*|탐색\s*|작업\s*)*(?:멈춰|멈춰\s*줘|멈춰\s*주세요|멈춰라|멈추자|멈춰봐|멈춤|그만|그만해|그만해\s*줘|그만해\s*주세요|그만하자|중지|중지해|중지해\s*줘|중단|중단해|중단해\s*줘|정지|정지해|스톱|스탑|stop)|잠깐(?:만)?)\s*[.!~ㅠㅜ]*$`,
+  'i'
+);
 
 const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
 
@@ -298,6 +323,7 @@ async function collect(slot: VendorId, gen = generation) {
 
 async function runCollector(slot: VendorId, gen: number, task: { system: string; goal: string; tools: ToolName[] }, mode: 'hunt' | 'collect') {
   if (!requirements) return;
+  const run = runOf(slot);
   const driver = getDriver(slot);
   await setHandoff(slot, undefined);
   try {
@@ -326,9 +352,9 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return want.filter(([k]) => !quoteStore.hasField(slot, k)).map(([, label]) => label);
         }
       },
-      { ...task, signal: { get aborted() { return gen !== generation; } } }
+      { ...task, signal: { get aborted() { return halted(slot, gen, run); } } }
     );
-    if (gen !== generation) return;
+    if (halted(slot, gen, run)) return;
     const v = getVendor(slot);
     const hasPrice = v ? quoteStore.hasListedPrice(slot) : false;
     if (v && hasPrice) {
@@ -373,7 +399,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
       }
     }
   } catch (e) {
-    if (gen !== generation) return;
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'failed');
     notice(`브라우저 ${slot} 오류: ${errMsg(e)}`, slot);
   }
@@ -446,6 +472,45 @@ export async function skip(slot: VendorId) {
   maybeOpenGate();
 }
 
+/** 브라우저마다 실행 번호. 멈추면 올라가서, 그 전에 시작한 에이전트는 바로 이어서 하기를 눌러도 다시 살아나지 않는다 */
+const runs = new Map<VendorId, number>();
+const runOf = (slot: VendorId) => runs.get(slot) ?? 0;
+
+/** 이 브라우저의 작업을 그만둬야 하는지: 새 견적·조건 변경(generation)이거나 사용자가 멈춤(실행 번호가 바뀜) */
+const halted = (slot: VendorId, gen: number, run: number) => gen !== generation || runOf(slot) !== run;
+
+/** 사용자가 멈춤: 탐색 중인 브라우저만 멈추고, 모은 업체·견적은 그대로 두고 그걸로 비교한다.
+ *  메일 회신 대기·파일 분석은 사용자가 이미 맡긴 일이라 그대로 둔다 */
+export function stop() {
+  const running = VENDOR_IDS.filter((id) => getVendorStatus(id) === 'browsing');
+  if (!requirements || running.length === 0) {
+    say('지금 멈출 작업이 없어요.');
+    return;
+  }
+  // 에이전트는 다음 단계에서 실행 번호가 바뀐 것을 보고 스스로 멈춘다 (halted)
+  for (const id of running) {
+    runs.set(id, runOf(id) + 1);
+    setVendorStatus(id, 'stopped');
+    void refreshState(id);
+  }
+  const priced = listVendors().filter((v) => quoteStore.hasListedPrice(v.id)).length;
+  if (priced === 0) {
+    say('멈췄어요. 아직 모은 견적이 없어요. "다시 시작"이라고 말하거나 브라우저 카드의 "이어서 하기"를 누르면 이어서 찾고, 바꿀 조건을 말하면 그 조건으로 다시 찾아요.');
+    return;
+  }
+  say(`멈췄어요. 지금까지 모은 ${priced}곳의 견적으로 비교할게요. 멈춘 브라우저는 "다시 시작"이라고 말하거나 카드의 "이어서 하기"를 누르면 이어서 해요.`);
+  maybeOpenGate();
+}
+
+/** 멈춘 브라우저를 모두 이어서 진행 (멈춘 게 없으면 false). 사용자가 멈춘 것이라 업체 찾기 시도 횟수에는 넣지 않는다 */
+function resumeStopped() {
+  const stopped = VENDOR_IDS.filter((id) => getVendorStatus(id) === 'stopped');
+  if (!requirements || stopped.length === 0) return false;
+  say(`멈췄던 브라우저 ${stopped.join('·')}를 이어서 진행할게요.`);
+  for (const id of stopped) void (getVendor(id) ? collect(id) : hunt(id, generation, false));
+  return true;
+}
+
 export function retry(slot: VendorId) {
   void (getVendor(slot) ? collect(slot) : hunt(slot));
 }
@@ -473,6 +538,8 @@ const allSettled = () => VENDOR_IDS.every((id) => !['browsing', 'parsing'].inclu
 
 function maybeOpenGate() {
   if (!allSettled()) return;
+  // 사용자가 멈췄는데 모은 견적이 없으면 빈 비교를 열지 않는다 (stop()이 안내함)
+  if (VENDOR_IDS.some((id) => getVendorStatus(id) === 'stopped') && !listVendors().some((v) => quoteStore.hasListedPrice(v.id))) return;
   quoteStore.openGate();
   // 반영 대기 중인 값이 없으면 지금 바로 가격 이상치 확인·추천 (있으면 큐가 비었을 때 onQuotesSettled에서)
   if (!quoteStore.hasPending()) onQuotesSettled();
@@ -685,6 +752,7 @@ function checkPriceOutliers() {
 async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSystemPrompt>[2], gen = generation) {
   const v = getVendor(slot);
   if (!requirements || !v) return;
+  const run = runOf(slot);
   const url = quoteStore.get(slot)?.listedPrice.source?.ref || v.url;
   say(`${v.name} 금액이 다른 업체와 약 ${info.ratio.toFixed(1)}배 차이 나요. 수량 기준을 잘못 읽었을 수 있어 다시 확인할게요.`);
   const driver = getDriver(slot);
@@ -708,13 +776,13 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
         goal: `${url} 에서 이 가격이 몇 개(매) 기준인지 다시 확인해 줘.`,
         tools: ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote'],
         maxSteps: 12,
-        signal: { get aborted() { return gen !== generation; } }
+        signal: { get aborted() { return halted(slot, gen, run); } }
       }
     );
   } catch (e) {
     notice(`${v.name} 가격 재확인 실패: ${errMsg(e)}`, slot);
   }
-  if (gen !== generation) return;
+  if (halted(slot, gen, run)) return;
   setVendorStatus(slot, 'done');
   // 큐가 반영된 뒤 값 비교
   setTimeout(() => {
