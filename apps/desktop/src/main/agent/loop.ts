@@ -61,6 +61,12 @@ export async function runAgent(ctx: ToolContext, task: AgentTask): Promise<Agent
     const results: Anthropic.ToolResultBlockParam[] = [];
     let outcome: AgentOutcome | undefined;
     for (const use of uses) {
+      // 멈춤·차단·사용자에게 넘김 뒤에는 같은 차례의 남은 도구를 실행하지 않는다 (결과는 실행 안 함으로 채움)
+      if (outcome) {
+        results.push({ type: 'tool_result', tool_use_id: use.id, content: '앞 도구에서 멈춰 실행하지 않았습니다.', is_error: true });
+        continue;
+      }
+      if (task.signal?.aborted) return { kind: 'incomplete' };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const input = use.input as any;
       const done = step(ctx.slot, TOOL_LABEL[use.name as ToolName] ?? use.name, input?.intent || use.name);
@@ -68,7 +74,7 @@ export async function runAgent(ctx: ToolContext, task: AgentTask): Promise<Agent
       done(r.isError ? 'error' : 'done', r.isError ? r.text.slice(0, 160) : undefined);
       if (r.isError) console.log(`[tool-error] ${ctx.slot} ${use.name}: ${maskText(r.text.slice(0, 300))}`);
       results.push({ type: 'tool_result', tool_use_id: use.id, content: r.text, is_error: r.isError });
-      outcome ??= r.outcome;
+      outcome = r.outcome;
     }
     messages.push({ role: 'user', content: results });
     if (outcome) return outcome;

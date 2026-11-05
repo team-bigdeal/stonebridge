@@ -18,6 +18,7 @@ import { ENGINE_ORDER, type Engine } from './browser/page';
 import { photoFromPage, productPhoto } from './browser/photo';
 import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
+import { apiErrorNotice } from './agent/claude';
 import { sizeScanStarted, startSizeScan, stopSizeScan } from './sizes';
 import { boardFor, noteVerdict, noteVisit, resetShared, siteKey } from './agent/shared';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
@@ -75,7 +76,8 @@ const verified = new Set<string>();
 /** 다른 업체 금액과 이만큼(배) 이상 차이 나면 기준 수량을 다시 확인한다 */
 const OUTLIER_RATIO = 3;
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// Claude API 오류(키·한도·크레딧·과부하 등)는 짧은 한국어 안내로
+const errMsg = (e: unknown) => apiErrorNotice(e) ?? (e instanceof Error ? e.message : String(e));
 const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
 /** 같은 업체 판단 키: 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인 (dev.·shop.·m. 하위 도메인도 같은 업체) */
 const hostKey = siteKey;
@@ -1131,8 +1133,11 @@ export async function onDraftOrder(slot: VendorId) {
   timeline({ kind: 'browser', slot, title: `${v.name} · 문의 폼 작성` });
   const driver = getDriver(slot);
   driver.locked = false;
+  // 새 견적·조건 변경·멈춤이면 다른 탐색처럼 이 에이전트도 멈춘다
+  const gen = generation;
   await setHandoff(slot, undefined);
   setVendorStatus(slot, 'browsing');
+  const run = runOf(slot);
   try {
     const outcome = await runAgent(
       { slot, driver, onAfter: () => void refreshState(slot) },
@@ -1140,9 +1145,11 @@ export async function onDraftOrder(slot: VendorId) {
         system: formSystemPrompt(v, requirements, formMessage(slot, requirements)),
         goal: `${v.url} 에서 견적·주문 문의 폼을 찾아 채우고 제출 직전에 handoff 해 줘.`,
         tools: ['navigate', 'read_text', 'snapshot', 'click', 'fill', 'handoff', 'request_user'],
-        maxSteps: 16
+        maxSteps: 16,
+        signal: { get aborted() { return halted(slot, gen, run); } }
       }
     );
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'done');
     if (outcome.kind === 'handoff') {
       await setHandoff(slot, 'AI가 여기까지 작성했습니다. 이름·연락처를 확인하고 직접 제출하세요.');
@@ -1151,6 +1158,7 @@ export async function onDraftOrder(slot: VendorId) {
     }
     say(`${v.name} 사이트에서 문의 폼을 쓸 수 없어요${outcome.kind === 'user' ? ` (${clause(outcome.reason)})` : ''}. 대신 주문 문의 메일을 써 두었어요.`);
   } catch (e) {
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'done');
     notice(`폼 작성 실패: ${errMsg(e)}`, slot);
   }
