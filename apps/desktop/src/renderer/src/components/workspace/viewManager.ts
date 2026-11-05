@@ -32,6 +32,10 @@ function pick(slot: Slot) {
   return [...list].sort((a, b) => b.prio - a.prio || b.id - a.id)[0];
 }
 
+/** 실제 뷰를 붙일 최소 너비. 페이지는 1100px로 배치해 축소해 보여 주는데 Chromium 최소 배율이 0.25라,
+ *  이보다 좁은 자리에 붙이면 사이트가 모바일 화면으로 바뀌어 에이전트가 버튼을 못 찾는다. 더 좁으면 캡처 화면만 보여 준다 */
+const MIN_VIEW_WIDTH = 1100 * 0.25;
+
 function tick() {
   const st = useStore.getState();
   // 지난 견적을 보는 중이면 실제 브라우저 뷰는 숨기고 저장된 화면만 보여 준다
@@ -43,7 +47,7 @@ function tick() {
       const r = m.el.getBoundingClientRect();
       const clipEl = m.prio > 1 ? null : m.el.closest('[role="log"]');
       const clip = clipEl ? clipEl.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
-      const fully = r.width > 40 && r.height > 40 && r.top >= clip.top - 1 && r.bottom <= clip.bottom + 1;
+      const fully = r.width >= MIN_VIEW_WIDTH && r.height > 40 && r.top >= clip.top - 1 && r.bottom <= clip.bottom + 1;
       if (fully) rect = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
     }
     // 앱 화면 배율(⌘+/⌘-)이 바뀌면 같은 CSS 좌표라도 다시 보내야 하므로 devicePixelRatio도 키에 넣는다

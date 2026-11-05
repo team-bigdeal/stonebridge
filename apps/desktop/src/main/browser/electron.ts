@@ -83,6 +83,8 @@ const CURSOR_BOX = 64;
 /** 페이지는 항상 이 너비(CSS px)로 배치한다. 카드가 작으면 축소해서 보여 줘 데스크톱 화면 비율을 유지하고,
  *  카드가 보이든 숨든 같은 배치라 에이전트가 읽는 화면도 같다 */
 const LAYOUT_WIDTH = 1100;
+/** Chromium이 허용하는 최소 확대 배율 */
+const MIN_ZOOM = 0.25;
 /** 카드가 화면 밖일 때 뷰를 두는 곳 (창 밖이라 보이지 않지만 입력·렌더링은 그대로) */
 const OFFSCREEN = { x: -20000, y: 0, width: LAYOUT_WIDTH, height: 700 };
 /** 견적서 팝업은 이 시간이 지나면 닫는다 */
@@ -155,11 +157,16 @@ export class ElectronDriver implements BrowserDriver {
 
   /** renderer가 알려 준 카드 자리. null이면 창 밖으로 옮기고(입력·캡처는 계속) 카드에는 화면 이미지를 남긴다 */
   async setBounds(rect: Rect | null) {
+    // 최소 배율(0.25)로도 1100px 배치를 지킬 수 없는 좁은 자리면 창 밖에서 일한다 (모바일 화면 방지)
+    if (rect && rect.width < LAYOUT_WIDTH * MIN_ZOOM) rect = null;
     if (!rect) {
       if (this.bounds) await this.captureFrame();
+      const last = this.bounds;
       this.bounds = null;
-      // 창 밖에서도 같은 배치(1100px)로 계속 일한다
-      this.view.setBounds(OFFSCREEN);
+      // 창 밖에서도 같은 배치(1100px)로 계속 일한다. 마지막 크기를 그대로 두고 위치만 옮긴다:
+      // 창 밖(가려진) 뷰는 Chromium이 화면 크기를 다시 계산하지 않아, 크기·배율을 바꾸면
+      // 작은 카드 크기에 배율 1이 걸려 사이트가 모바일 화면(309px)으로 바뀌었다
+      this.view.setBounds(last ? { ...OFFSCREEN, width: last.width, height: last.height } : OFFSCREEN);
       this.applyZoom();
       this.cursorView.setVisible(false);
       return;
@@ -239,12 +246,15 @@ export class ElectronDriver implements BrowserDriver {
     if (!p.win.isDestroyed()) p.win.destroy();
   }
 
-  /** 열린 견적서 팝업이 http 페이지를 다 불러왔으면 그 창 */
-  private readyPopup(since = 0): BrowserWindow | null {
+  /** 열린 견적서 팝업이 내용을 다 불러왔으면 그 창. http 페이지이거나, 빈 창에 스크립트가 내용을 써 넣은 경우 */
+  private async readyPopup(since = 0): Promise<BrowserWindow | null> {
     const p = this.popup;
     if (!p || p.at < since || p.win.isDestroyed()) return null;
     const pwc = p.win.webContents;
-    return /^https?:/.test(pwc.getURL()) && !pwc.isLoading() ? p.win : null;
+    if (pwc.isLoading()) return null;
+    if (/^https?:/.test(pwc.getURL())) return p.win;
+    const len = await pwc.executeJavaScript('(document.body && document.body.innerText || "").trim().length').catch(() => 0);
+    return Number(len) > 30 ? p.win : null;
   }
 
   /** 팝업을 PDF로 저장하고 닫는다 (팝업 스크립트가 값을 채울 시간을 잠깐 준다) */
@@ -253,7 +263,9 @@ export class ElectronDriver implements BrowserDriver {
     try {
       const pwc = win.webContents;
       const data = await pwc.printToPDF({ printBackground: true, pageSize: 'A4' });
-      return checkPdf(Buffer.from(data), pwc.getURL(), pdfName(pwc.getURL(), pwc.getTitle() || '견적서'));
+      // 빈 창에 써 넣은 견적서는 주소가 about:blank라 원래 페이지 주소를 출처로 남긴다
+      const url = /^https?:/.test(pwc.getURL()) ? pwc.getURL() : this.view.webContents.getURL();
+      return checkPdf(Buffer.from(data), url, pdfName('', pwc.getTitle() || `${new URL(url).hostname.replace(/^www\./, '')} 견적서`));
     } finally {
       if (this.popup?.win === win) this.closePopup();
     }
@@ -276,7 +288,7 @@ export class ElectronDriver implements BrowserDriver {
     const start = Date.now();
     const r = await act.click(this.cdp, Number(String(ref).replace(/\D/g, '')));
     // 클릭으로 견적서 팝업이 떴으면 알려 준다 (팝업은 보이지 않는 창이라 snapshot에는 안 나온다)
-    for (let i = 0; i < 6 && this.popup && this.popup.at >= start && !this.readyPopup(start); i++) await new Promise((res) => setTimeout(res, 500));
+    for (let i = 0; i < 6 && this.popup && this.popup.at >= start && !(await this.readyPopup(start)); i++) await new Promise((res) => setTimeout(res, 500));
     if (this.popup && this.popup.at >= start) return `${r}\n새 창(팝업)이 열렸습니다: ${this.popup.win.webContents.getURL() || '불러오는 중'}. 견적서 팝업이면 save_page_pdf로 그 창을 PDF로 저장하세요.`;
     return r;
   }
@@ -360,7 +372,7 @@ export class ElectronDriver implements BrowserDriver {
         const pdfUrl = wc.getURL() !== before ? await showingPdf(this) : null;
         if (pdfUrl) return this.fetchPdf(pdfUrl);
         // 견적서를 팝업 창(HTML)으로 띄우는 사이트: 그 창을 PDF로 저장한다
-        const popup = this.readyPopup(start);
+        const popup = await this.readyPopup(start);
         if (popup) return this.printPopup(popup);
       }
       throw new ToolError('버튼을 눌렀지만 PDF가 내려오지 않았습니다. 인쇄용 견적서 화면이 열렸다면 save_page_pdf로 그 화면을 PDF로 저장하세요.');
@@ -371,7 +383,7 @@ export class ElectronDriver implements BrowserDriver {
 
   async printPdf(): Promise<PdfFile> {
     // 견적서 팝업이 열려 있으면 그 창을 저장한다
-    const popup = this.readyPopup();
+    const popup = await this.readyPopup();
     if (popup) return this.printPopup(popup);
     const wc = this.view.webContents;
     if (wc.isDestroyed() || !/^https?:/.test(wc.getURL())) throw new ToolError('저장할 페이지가 없습니다.');
