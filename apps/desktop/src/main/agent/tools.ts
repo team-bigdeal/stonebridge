@@ -1,4 +1,4 @@
-// 브라우저 도구 정의와 실행기 (드라이버: Aside 또는 Electron)
+// 브라우저 도구 정의와 실행기 (드라이버: 앱 안 내장 브라우저)
 import type Anthropic from '@anthropic-ai/sdk';
 import type { QuoteMeta, ReportedFields, Slot } from '@shared/types';
 import type { BrowserDriver } from '../browser/driver';

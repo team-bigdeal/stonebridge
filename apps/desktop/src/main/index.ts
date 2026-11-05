@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
-import type { BrowserInput, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
+import type { MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
 import { clearApiKey, config, publicConfig, saveSettings, themeMode } from './config';
 import { verifyApiKey } from './agent/claude';
 import { bindWindow } from './events';
-import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
+import { closeAll, goBack, openLoginWindow, setViewBounds } from './browser';
 import { emit, getStage } from './events';
 import * as flow from './orchestrator';
 import { polishApproval } from './agent/approvalPolish';
@@ -97,18 +97,11 @@ function registerIpc() {
       const err = await verifyApiKey(key, input.ANTHROPIC_MODEL?.trim() || config.model);
       if (err) return { ok: false, error: err };
     }
-    const prevPref = publicConfig().browserPref;
     saveSettings(input);
     // 테마를 바꿨으면 창 배경색도 맞춰 둔다 (크기를 줄일 때 비치는 색)
     if (input.THEME) mainWindow?.setBackgroundColor(windowBackground());
     // 앱 비밀번호를 새로 넣었으면 기다리던 회신 확인을 이어 간다
     resumePolling();
-    if (publicConfig().browserPref !== prevPref) {
-      // 탐색 중이면 에이전트를 멈춘 뒤 바꾼다 (끝난 견적·대화는 그대로 둔다)
-      if (getStage() === 'search' || getStage() === 'collect') await flow.reset();
-      emit('backend', { payload: null });
-      emit('backend', { payload: await switchBackend() });
-    }
     return { ok: true, config: publicConfig() };
   });
   ipcMain.handle('settings:clearKey', () => {
@@ -171,7 +164,6 @@ function registerIpc() {
   ipcMain.handle('template:clear', () => clearTemplate());
   ipcMain.handle('template:preview', (_e, values: Record<string, string>) => previewTemplate(values));
   ipcMain.handle('template:fill', (_e, values: Record<string, string>) => (mainWindow ? fillTemplate(mainWindow, values) : { ok: false, error: '창이 없어요.' }));
-  ipcMain.handle('browser:input', (_e, input: BrowserInput) => userInput(input));
   ipcMain.handle('browser:back', (_e, slot: Slot) => goBack(slot));
   ipcMain.handle('browser:openExternal', (_e, url: string) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
@@ -184,8 +176,6 @@ if (process.env.DOLDARI_DEBUG_PORT) app.commandLine.appendSwitch('remote-debuggi
 app.whenReady().then(() => {
   registerIpc();
   createWindow();
-  // 사용자의 Aside 브라우저를 쓸 수 있으면 그것으로, 아니면 내장 브라우저로
-  void detectBackend().then((b) => emit('backend', { payload: b }));
 });
 
 app.on('window-all-closed', () => {

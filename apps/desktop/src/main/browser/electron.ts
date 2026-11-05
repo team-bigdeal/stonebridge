@@ -414,8 +414,6 @@ export class ElectronDriver implements BrowserDriver {
     return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서 화면'));
   }
 
-  /** 내장 브라우저는 사용자가 뷰를 직접 조작하므로 카드 이미지 입력은 쓰지 않는다 */
-  async userInput() {}
   async reset() {
     this.closePopup();
     this.cdp.reset();

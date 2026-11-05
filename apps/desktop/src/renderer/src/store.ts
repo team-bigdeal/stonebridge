@@ -47,7 +47,6 @@ interface State {
   runOf: Record<string, string>;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
-  backend: 'aside' | 'electron' | null;
   /** scope가 있으면 이전 검색 카드에서 연 것 (그 검색의 값으로 보여 줌) */
   viewer: { kind: 'vendor'; id: VendorId; scope?: RunSnapshot } | { kind: 'integrated'; scope?: RunSnapshot } | { kind: 'approval'; scope?: RunSnapshot } | null;
   set: (p: Partial<State>) => void;
@@ -133,7 +132,6 @@ export const useStore = create<State>((set, get) => ({
   sidebarWidth: readWidth('doldari.sidebarWidth', SIDEBAR_WIDTH),
   panelWidth: readWidth('doldari.panelWidth', PANEL_WIDTH),
   historyRev: 0,
-  backend: null,
   ...initial(),
   set: (p) => set(p),
   push: (item) => set((s) => ({ timeline: [...s.timeline, item] })),
@@ -141,7 +139,7 @@ export const useStore = create<State>((set, get) => ({
   handle: (ev) => {
     const s = get();
     // 지난 견적을 보는 동안 들어온 지금 견적의 이벤트는 모아 뒀다가 돌아올 때 반영
-    if (s.replay && ev.type !== 'history' && ev.type !== 'backend' && !(ev.type === 'notice' && !ev.vendorId && !ev.payload)) {
+    if (s.replay && ev.type !== 'history' && !(ev.type === 'notice' && !ev.vendorId && !ev.payload)) {
       pendingLive.push(ev);
       return;
     }
@@ -249,9 +247,6 @@ export const useStore = create<State>((set, get) => ({
         set({ historyRev: s.historyRev + 1, liveId: h.kind === 'saved' ? h.id : s.liveId === h.id ? null : s.liveId });
         break;
       }
-      case 'backend':
-        set((st) => ({ backend: ev.payload as 'aside' | 'electron' | null, config: st.config ? { ...st.config, browser: ev.payload as 'aside' | 'electron' | null } : st.config }));
-        break;
       case 'mail':
         set({ mails: [...s.mails, ev.payload as MailRecord] });
         break;

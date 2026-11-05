@@ -142,7 +142,7 @@ function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) 
 
 function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
   const api = useApi();
-  const { flash, vendorStatus, set, scoped, backend } = useRunStore();
+  const { flash, vendorStatus, set, scoped } = useRunStore();
   const [opening, setOpening] = useState(false);
   const status = vendorStatus[q.vendorId] ?? 'idle';
   // 주문 페이지를 내장 브라우저로 열고 크게 띄움 (OrderActions의 주문 페이지 열기와 같음)
@@ -150,7 +150,7 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
     setOpening(true);
     try {
       const r = await api.openOrder(q.vendorId);
-      if (r?.ok && backend === 'electron') set({ expanded: q.vendorId });
+      if (r?.ok) set({ expanded: q.vendorId });
     } finally {
       setOpening(false);
     }
@@ -262,7 +262,7 @@ const fmtWarranty = (m: number) => (m % 12 === 0 && m >= 12 ? `${m / 12}년` : `
 /** 카드형 비교: 제품 사진 + 업체 이름 + 합계 + 항목 목록 + 버튼만 (군더더기 글씨 없이) */
 function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; onSource: (s: SourceEntry) => void; canAct: boolean }) {
   const api = useApi();
-  const { flash, vendorStatus, set, scoped, backend } = useRunStore();
+  const { flash, vendorStatus, set, scoped } = useRunStore();
   const photo = useProductPhoto(q.vendorId);
   const [opening, setOpening] = useState(false);
   const status = vendorStatus[q.vendorId] ?? 'idle';
@@ -271,7 +271,7 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
     setOpening(true);
     try {
       const r = await api.openOrder(q.vendorId);
-      if (r?.ok && backend === 'electron') set({ expanded: q.vendorId });
+      if (r?.ok) set({ expanded: q.vendorId });
     } finally {
       setOpening(false);
     }
@@ -597,7 +597,7 @@ const MAIL_ORDER_NOTE = '견적 내용으로 주문 메일을 써 둘게요. 확
  *  주문·결제 버튼은 사용자가 직접 누르고, 메일도 사용자가 확인하고 보낸다 */
 export function OrderActions({ vendorId }: { vendorId: VendorId }) {
   const api = useApi();
-  const { quotes, vendors, backend, set, scoped } = useRunStore();
+  const { quotes, vendors, set, scoped } = useRunStore();
   const [opening, setOpening] = useState(false);
   const [msg, setMsg] = useState('');
   const q = quotes[vendorId];
@@ -612,7 +612,7 @@ export function OrderActions({ vendorId }: { vendorId: VendorId }) {
       if (r) {
         setMsg(r.message);
         // 내장 브라우저면 크게 띄워 바로 확인하고 주문할 수 있게
-        if (r.ok && backend === 'electron') set({ expanded: vendorId });
+        if (r.ok) set({ expanded: vendorId });
       }
     } finally {
       setOpening(false);

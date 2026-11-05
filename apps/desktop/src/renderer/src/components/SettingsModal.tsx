@@ -56,7 +56,7 @@ export default function SettingsModal() {
               <AiTab config={config} />
             </Section>
             <Section title="브라우저">
-              <BrowserTab config={config} />
+              <BrowserTab />
             </Section>
             <Section title="메일" ref={mailRef}>
               <MailTab config={config} />
@@ -179,31 +179,11 @@ function AiTab({ config }: { config: AppConfig }) {
   );
 }
 
-function BrowserTab({ config }: { config: AppConfig }) {
-  const [pref, setPref] = useState(config.browserPref);
+function BrowserTab() {
   const [loginUrl, setLoginUrl] = useState('https://www.naver.com');
-  const { state, error, save } = useSave();
-  const dirty = pref !== config.browserPref;
-  const now = config.browser === 'aside' ? 'Aside 브라우저' : config.browser === 'electron' ? '내장 브라우저' : '확인 중';
-
   return (
     <div className="flex flex-col gap-5">
-      <Row
-        label="쓸 브라우저"
-        hint={dirty ? '저장하면 바로 바뀌어요. 탐색 중이었다면 진행 중인 탐색은 멈춰요.' : `지금은 ${now}로 탐색해요. Aside 우선은 Aside가 설치돼 있으면 내 Aside 탭을 써요.`}
-      >
-        <Segmented
-          value={pref}
-          options={[
-            { value: 'auto', label: 'Aside 우선' },
-            { value: 'electron', label: '내장 브라우저' }
-          ]}
-          onChange={(v) => setPref(v as AppConfig['browserPref'])}
-        />
-      </Row>
-      <SaveBar dirty={dirty} state={state} error={error} onSave={() => save({ BROWSER_BACKEND: pref })} />
-
-      <Row label="미리 로그인" hint="내장 브라우저에서 쓸 사이트에 직접 로그인해 두세요. 돌다리는 비밀번호를 보지 않아요.">
+      <Row label="미리 로그인" hint="에이전트가 쓰는 앱 안 브라우저에서 쓸 사이트에 직접 로그인해 두세요. 돌다리는 비밀번호를 보지 않아요.">
         <div className="flex items-center gap-3">
           <Box filled={loginUrl !== ''} className="flex-1">
             <BareInput value={loginUrl} onChange={setLoginUrl} placeholder="https://www.naver.com" />

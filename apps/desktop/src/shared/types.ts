@@ -231,9 +231,6 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export interface AppConfig {
   /** 앱 화면 테마 (견적서 문서와 내장 브라우저 화면에는 적용하지 않음) */
   theme: ThemeMode;
-  browser: 'aside' | 'electron' | null;
-  /** 설정값: auto(Aside 우선) | electron(내장 브라우저) */
-  browserPref: 'auto' | 'electron';
   hasApiKey: boolean;
   model: string;
   smtpConfigured: boolean;
@@ -328,7 +325,6 @@ export type AgentEventType =
   | 'browser'
   | 'notice'
   | 'original'
-  | 'backend'
   | 'history'
   | 'sizes'
   | 'busy';
@@ -346,18 +342,8 @@ export interface QuoteUpdatePayload {
   field?: FieldKey;
 }
 
-export interface BrowserInput {
-  slot: Slot;
-  type: 'click' | 'wheel' | 'text' | 'key';
-  x?: number; // 0~1 정규화 좌표
-  y?: number;
-  deltaY?: number;
-  text?: string;
-  key?: string;
-}
-
 export type SettingsInput = Partial<
-  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
+  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'THEME' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
 >;
 
 /** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */
