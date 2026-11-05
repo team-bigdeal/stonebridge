@@ -100,7 +100,7 @@ export async function onChat(text: string) {
         say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 아래 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
         return;
       }
-      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이대로 검색 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
+      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
       return;
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
@@ -126,8 +126,8 @@ export async function onChat(text: string) {
         const wasSearching = ['search', 'collect'].includes(getStage());
         await revise(true);
         if (question) emit('requirements_ready', { payload: { ready: true, asking: true } });
-        if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 이전 검색 요약으로 남겨 두었어요.');
-        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
+        if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 위에 그대로 남겨 두었어요.');
+        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이 조건으로 찾기 시작"을 눌러 주세요.');
         return;
       }
     }
@@ -834,5 +834,5 @@ export async function revise(fromChat = false) {
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: { ready: true, asking: false } });
-  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
+  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이 조건으로 찾기 시작"을 눌러 주세요.');
 }
