@@ -67,8 +67,9 @@ const nstr = { type: 'string', description: '문서에 없으면 빈 문자열 "
 export const extractionSchema = {
   type: 'object',
   additionalProperties: false,
-  required: [...FIELD_KEYS, 'price_qty', 'product', 'supplier', 'terms', 'extras', 'notes'],
+  required: [...FIELD_KEYS, 'price_qty', 'stated_total', 'product', 'supplier', 'terms', 'extras', 'notes'],
   properties: {
+    stated_total: { type: 'number', description: '견적서에 적힌 최종 합계 금액(총 합계·합계금액·총 결제금액). 부가세·배송비가 들어간 그대로. 문서에 합계가 없으면 0' },
     price_qty: { ...nullable({ type: 'number' }), description: 'listedPrice가 몇 개(매) 기준 가격인지. 1개 가격이면 1' },
     ...Object.fromEntries(
       FIELD_KEYS.map((k) => [
