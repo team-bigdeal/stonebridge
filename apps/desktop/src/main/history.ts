@@ -14,6 +14,9 @@ const dir = () => path.join(app.getPath('userData'), 'history');
 let current: { id: string; createdAt: string } | null = null;
 const originals: Partial<Record<VendorId, QuoteOriginal[]>> = {};
 
+/** 지금 견적의 기록 id (아직 저장 전이면 null) */
+export const currentRecordId = () => current?.id ?? null;
+
 /** 새 견적을 시작할 때 (다음 저장부터 새 기록) */
 export function startRecord() {
   current = null;

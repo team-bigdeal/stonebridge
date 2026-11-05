@@ -230,6 +230,8 @@ export interface RunSummary {
   recommended: VendorId | null;
   reasons: string[];
   at: string;
+  /** 이 검색의 히스토리 기록 id (있으면 "이전 검색 다시 보기"로 그 세션을 연다) */
+  recordId?: string;
 }
 
 export interface BrowserState {

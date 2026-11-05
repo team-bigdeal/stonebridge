@@ -48,6 +48,11 @@ interface State {
 let noticeId = 0;
 /** replay 중에 쌓인 지금 견적의 이벤트 */
 export const pendingLive: AgentEvent[] = [];
+/** 조건 바꾸기로 화면을 비우기 직전에 부르는 훅 (replay.ts가 이전 검색 화면을 기록에 바로 저장) */
+let beforeRevised: (() => void) | null = null;
+export const setBeforeRevised = (fn: (() => void) | null) => {
+  beforeRevised = fn;
+};
 /** 사이드 탭 열림 상태는 이 컴퓨터에 기억 (저장소를 못 쓰면 열린 상태) */
 function readSidebar() {
   try {
@@ -137,6 +142,9 @@ export const useStore = create<State>((set, get) => ({
         set({ reqReady: Boolean(ev.payload) });
         break;
       case 'revised': {
+        // 비우기 전에 이전 검색 화면을 그 기록에 저장하고, 이후 화면은 새 기록으로 (이전 기록을 덮어쓰지 않게)
+        beforeRevised?.();
+        set({ liveId: null });
         // 이전 검색 화면(브라우저·비교·메일 카드)은 지우고 대화와 요약 기록만 남긴다
         const keep = s.timeline.filter((t) => t.kind === 'user' || t.kind === 'assistant' || t.kind === 'history');
         set({
