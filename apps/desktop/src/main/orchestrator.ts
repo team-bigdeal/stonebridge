@@ -93,6 +93,8 @@ export async function onChat(text: string) {
       stop();
       return;
     }
+    // 멈춘 뒤 "다시 시작"·"계속해" 같은 말은 멈춘 브라우저를 이어서 진행
+    if (getStage() !== 'interview' && START_WORDS.test(text.trim()) && resumeStopped()) return;
     if (getStage() === 'interview') {
       if (!interview) {
         interview = new Interview();
@@ -152,10 +154,10 @@ export async function onChat(text: string) {
 
 // ─── 요구 조건 확인 → 검색 시작 ──────────────────────────────
 
-/** 채팅으로 검색을 시작하라는 짧은 말 ("시작", "검색해줘", "이대로 해줘", "지금 바로 시작" 등).
+/** 채팅으로 검색을 시작(멈춘 뒤면 이어서)하라는 짧은 말 ("시작", "검색해줘", "이대로 해줘", "다시 시작", "계속해" 등).
  *  "네·응·좋아"는 인터뷰 질문에 대한 대답일 수 있어 넣지 않고, 조건이 섞인 말("아이폰 케이스 찾아줘")은 맞지 않게 전체 일치로 본다 */
 const START_WORDS = new RegExp(
-  String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
+  String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:다시\s*)?(?:계속\s*|이어서\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행|계속|이어서|재개)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
   'i'
 );
 
@@ -483,11 +485,20 @@ export function stop() {
   }
   const priced = listVendors().filter((v) => quoteStore.hasListedPrice(v.id)).length;
   if (priced === 0) {
-    say('멈췄어요. 아직 모은 견적이 없어요. 브라우저 카드의 "다시 시도"로 이어서 하거나 바꿀 조건을 말해 주세요.');
+    say('멈췄어요. 아직 모은 견적이 없어요. "다시 시작"이라고 말하거나 브라우저 카드의 "이어서 하기"를 누르면 이어서 찾고, 바꿀 조건을 말하면 그 조건으로 다시 찾아요.');
     return;
   }
-  say(`멈췄어요. 지금까지 모은 ${priced}곳의 견적으로 비교할게요. 멈춘 브라우저는 카드의 "다시 시도"로 이어서 할 수 있어요.`);
+  say(`멈췄어요. 지금까지 모은 ${priced}곳의 견적으로 비교할게요. 멈춘 브라우저는 "다시 시작"이라고 말하거나 카드의 "이어서 하기"를 누르면 이어서 해요.`);
   maybeOpenGate();
+}
+
+/** 멈춘 브라우저를 모두 이어서 진행 (멈춘 게 없으면 false). 사용자가 멈춘 것이라 업체 찾기 시도 횟수에는 넣지 않는다 */
+function resumeStopped() {
+  const stopped = VENDOR_IDS.filter((id) => getVendorStatus(id) === 'stopped');
+  if (!requirements || stopped.length === 0) return false;
+  say(`멈췄던 브라우저 ${stopped.join('·')}를 이어서 진행할게요.`);
+  for (const id of stopped) void (getVendor(id) ? collect(id) : hunt(id, generation, false));
+  return true;
 }
 
 export function retry(slot: VendorId) {
