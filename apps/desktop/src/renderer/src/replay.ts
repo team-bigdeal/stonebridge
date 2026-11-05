@@ -47,7 +47,7 @@ function fromRecord(r: HistoryRecord): SessionSnapshot {
   ];
   return {
     version: 1,
-    stage: 'questions',
+    stage: r.incomplete ? 'search' : 'questions',
     requirements: r.requirements,
     timeline,
     quotes: r.quotes,
