@@ -12,6 +12,7 @@ import { takeSnapshot } from '../cdp/snapshot';
 import { getWindow, send } from '../events';
 import { quoteRequesterName, sleep } from '../config';
 import { onCursor } from './cursor';
+import { guardFocus } from './focus';
 import { type BrowserDriver, ToolError } from './driver';
 import { looksLikeQuote, QUOTE_FORM_CHECK, QUOTE_ISSUE_RE, type QuoteFormCheck } from './guard';
 import { checkPdf, MAX_PDF_BYTES, pdfName, showingPdf, type PdfFile } from './pdf';
@@ -179,6 +180,9 @@ export class ElectronDriver implements BrowserDriver {
     win?.contentView.addChildView(this.cursorView);
 
     const wc = this.view.webContents;
+    // 뷰를 붙이거나 페이지를 불러올 때 채팅 입력창 포커스를 빼앗지 않게
+    guardFocus(wc);
+    guardFocus(this.cursorView.webContents);
     this.cdp = new CdpSession(slot, wc);
     // 새 창 링크는 같은 뷰에서 연다. mailto 등 외부 프로토콜은 열지 않는다.
     // 예외: 빈 창(window.open('', 이름))이나 POST 폼을 새 창으로 보내는 경우는 견적서·인쇄 팝업이 대부분이고
@@ -287,6 +291,7 @@ export class ElectronDriver implements BrowserDriver {
   private adoptPopup(win: BrowserWindow) {
     this.closePopup();
     const pwc = win.webContents;
+    guardFocus(pwc);
     // 팝업 안에서는 또 다른 창이나 외부 프로토콜을 열지 않는다
     pwc.setWindowOpenHandler(() => ({ action: 'deny' }));
     pwc.on('will-navigate', (e, url) => {
