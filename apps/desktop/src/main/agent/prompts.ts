@@ -46,6 +46,8 @@ const COLLECT_RULES = (req: Requirements) => `## 찾아야 하는 견적 정보
 - installFee: 설치 포함이면 0. shippingFee: 무료면 0. warrantyExtraFee: 기본 A/S로 충족되면 0.
 - 페이지에 없는 값은 보고하지 않는다. 추측 금지.
 - 가장 싼 가격이 전부가 아니다. 설치 안내, 배송/반품, A/S, 옵션, 상세 설명 아래 텍스트에 숨은 비용이 자주 있다. expand_all과 read_text로 끝까지 확인한다.
+- 배송비·납기는 대부분 페이지 어딘가에 있다. read_text의 "배송·납기·비용 관련 문구"를 먼저 보고, 없으면 find_in_page(["배송비", "택배", "무료배송", "출고", "제작기간"])로 숨은 탭·iframe까지 찾는다. "배송 안내", "이용 안내", "주문 안내", "FAQ" 같은 탭·페이지 후보가 있으면 열어서 확인한다 (같은 사이트 안).
+- "N만원 이상 무료배송"이면 이번 주문 금액 기준으로 판단해 shippingFee를 정하고, 조건 원문은 snippet에 남긴다.
 - 가격이 공개되어 있지 않으면 오래 찾지 말고 바로 알린다: 견적용 메일 주소가 있으면 switch_channel(channel="mail", contact=메일 주소), 카톡·전화·상담 신청으로만 견적을 주면 switch_channel(channel="file"). 돌다리가 먼저 다른 사이트를 시도하고, 그래도 없을 때만 이 방법을 쓴다.
 - 다 보고했으면 report_quote(done=true)로 끝낸다.`;
 

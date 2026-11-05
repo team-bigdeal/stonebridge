@@ -49,7 +49,61 @@ export async function readText(d: BrowserDriver, maxChars = 12000) {
   const text = await d.evaluate<string>('document.body ? document.body.innerText : ""');
   const body = (text ?? '').replace(/\n{3,}/g, '\n\n');
   const prices = await priceCandidates(d).catch(() => '');
-  return `URL: ${await d.url()}${prices}\n\n## 본문\n${body.length > maxChars ? `${body.slice(0, maxChars)}\n…(이하 생략)` : body}`;
+  const hints = await findInPage(d, INFO_KEYWORDS, 10).catch(() => '');
+  // 길면 앞부분과 끝부분(사업자 정보·배송 안내가 주로 맨 아래)을 같이 준다
+  const shown =
+    body.length > maxChars
+      ? `${body.slice(0, maxChars - 3000)}\n\n…(중간 ${(body.length - maxChars).toLocaleString()}자 생략 — find_in_page로 찾을 수 있음)…\n\n${body.slice(-3000)}`
+      : body;
+  return `URL: ${await d.url()}${prices}${hints ? `\n\n## 배송·납기·비용 관련 문구 (탭·접힌 영역 포함)\n${hints}` : ''}\n\n## 본문\n${shown}`;
+}
+
+/** 견적에 자주 빠지는 정보의 키워드 */
+export const INFO_KEYWORDS = ['배송비', '택배비', '무료배송', '무료 배송', '배송', '출고', '발송', '제작기간', '제작 기간', '작업일', '납기', '설치비', '부가세', 'VAT'];
+
+/**
+ * 페이지 전체(숨은 탭·접힌 영역·같은 출처 iframe 포함)에서 키워드 주변 문장을 찾는다.
+ * innerText는 보이는 글자만 주기 때문에 "배송/교환" 탭 안 내용 같은 건 놓친다.
+ * 키워드가 들어간 링크·탭(예: "배송안내", "이용안내")도 함께 알려 준다.
+ */
+export async function findInPage(d: BrowserDriver, keywords: string[], limit = 20) {
+  const kws = keywords.map((k) => k.trim()).filter(Boolean).slice(0, 12);
+  if (!kws.length) return '';
+  const r = await d.evaluate<{ hits: string[]; links: string[] }>(`(() => {
+    const kws = ${JSON.stringify(kws)}.map((k) => k.toLowerCase());
+    const docs = [document];
+    for (const f of document.querySelectorAll('iframe')) { try { if (f.contentDocument && f.contentDocument.body) docs.push(f.contentDocument); } catch (e) {} }
+    const vis = (e) => { if (!e) return false; const s = e.ownerDocument.defaultView.getComputedStyle(e); const b = e.getBoundingClientRect(); return s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0 && b.height > 0; };
+    const seen = new Set(); const hits = []; const links = [];
+    for (const doc of docs) {
+      const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => {
+        const p = n.parentElement; if (!p || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(p.tagName)) return NodeFilter.FILTER_REJECT;
+        const t = n.nodeValue.toLowerCase(); return kws.some((k) => t.includes(k)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      } });
+      for (let n = w.nextNode(); n && hits.length < ${limit}; n = w.nextNode()) {
+        let box = n.parentElement;
+        // 문장 단위가 나오도록 너무 짧으면 한 단계 위까지
+        for (let i = 0; i < 3 && box.parentElement && (box.textContent || '').trim().length < 40; i++) box = box.parentElement;
+        const text = (box.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+        if (text.length < 4 || seen.has(text)) continue;
+        seen.add(text);
+        hits.push((vis(n.parentElement) ? '' : '[숨은 영역] ') + (doc === document ? '' : '[iframe] ') + text);
+      }
+      for (const a of doc.querySelectorAll('a, button, [role="tab"]')) {
+        const t = (a.innerText || a.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 30 || !/배송|교환|반품|이용\s*안내|주문\s*안내|제작\s*안내|FAQ|자주/i.test(t)) continue;
+        const href = a.tagName === 'A' && a.href && !a.href.startsWith('javascript') ? a.href : '';
+        const key = t + href; if (seen.has(key)) continue; seen.add(key);
+        links.push(href ? t + ' → ' + href : t + ' (탭/버튼: snapshot으로 ref 확인 후 click)');
+        if (links.length >= 10) break;
+      }
+    }
+    return { hits, links };
+  })()`);
+  const parts: string[] = [];
+  if (r?.hits?.length) parts.push(r.hits.map((h) => `- ${h}`).join('\n'));
+  if (r?.links?.length) parts.push(`안내 페이지·탭 후보:\n${r.links.map((l) => `- ${l}`).join('\n')}`);
+  return parts.join('\n');
 }
 
 /**
