@@ -6,6 +6,8 @@ import { structured } from './agent/claude';
 /** A/S가 의미 없는 품목: 인쇄물·판촉물·소모품·식품·꽃 등. 사용자가 A/S를 따로 말하지 않으면 요구하지 않는다 */
 const NO_WARRANTY_ITEM = /명함|스티커|라벨|리플릿|전단|브로슈어|카탈로그|팸플릿|포스터|현수막|배너|인쇄|출력|제본|책자|봉투|쇼핑백|판촉|굿즈|티셔츠|단체복|유니폼|머그|텀블러|에코백|키링|뱃지|배지|달력|캘린더|노트|다이어리|떡|도시락|케이터링|간식|식품|음료|꽃|화환|화분|용지|복사지|토너|잉크|소모품|포장/;
 const MENTIONS_WARRANTY = /A\/?S|에이에스|보증|수리|하자/i;
+/** 사이즈를 모르거나 추천·비교를 원하는 답 */
+const SIZE_HELP = /모르|몰라|추천|보여|비교|골라|어떤.{0,6}(사이즈|크기)|뭐가 (있|좋)|아무거나|글쎄/;
 
 const DEFAULTS: Omit<Requirements, 'item'> = {
   quantity: 1,
@@ -27,7 +29,7 @@ interface StepOut {
   notes: string | null;
   vendors: string[] | null;
   onlyVendors: boolean | null;
-  askingSize: boolean;
+  wantsSizeHelp: boolean;
   nextQuestion: string | null;
   ready: boolean;
 }
@@ -42,7 +44,7 @@ export class Interview {
   private askedKeys = new Set<keyof Requirements>();
 
   /** 사용자 입력 → 다음 질문 (null이면 인터뷰 종료) + 지금 조건으로 검색을 시작할 수 있는지 + 기본값으로 채운 항목 */
-  async next(text: string): Promise<{ question: string | null; ready: boolean; askingSize?: boolean; defaulted?: string[] }> {
+  async next(text: string): Promise<{ question: string | null; ready: boolean; wantsSizeHelp?: boolean; defaulted?: string[] }> {
     this.history.push({ role: 'user', text });
     const out = await structured<StepOut>({
       system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 오늘은 ${new Date().toISOString().slice(0, 10)}이다.
@@ -53,15 +55,17 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
 배송이 필요 없으면(방문 수령, 매장 픽업, 현장 서비스) needDelivery=false, 택배·배송·설치 장소가 있으면 true. 모르면 null. 사용자가 "상관없어", "알아서"라고 하면 합리적인 값을 채운다.
 사용자가 특정 업체·사이트 이름을 말하면(예: "와우프레스에서", "비즈하우스랑 와우프레스 비교") vendors에 그 이름을 넣는다. 그 업체에서만 받고 싶어 하면(예: "와우프레스에서 견적 받아줘", "여기 두 곳만 비교") onlyVendors=true, 다른 업체와 함께 비교하길 원하면(예: "와우프레스도 포함해서") false. 업체를 말하지 않았으면 둘 다 null. 업체 이름은 묻지 않는다.
 질문은 꼭 필요한 것만, 짧게 (보통 1~3개, 최대 5개). 키워드 하나만 줘도 바로 찾을 수 있게 나머지는 합리적인 기본값으로 둔다. 충분하면 nextQuestion=null.
-사이즈·규격이 가격을 크게 바꾸는 품목(명함·스티커·라벨·전단·포스터·현수막·배너·봉투·쇼핑백·박스·액자·책자 등)인데 사용자가 사이즈를 말하지 않았으면, 다른 것보다 사이즈를 먼저 묻고 askingSize=true로 한다. 이때 질문 끝에 "업체 사이트에서 많이 쓰는 사이즈를 모아 실제 크기로 보여 드릴게요. 보고 고르셔도 돼요."를 덧붙인다. 사이즈를 묻는 질문이 아니면 askingSize=false.
-사용자가 사이즈를 골랐으면(예: "90×50mm로 할게요") item에 사이즈를 넣는다 (예: "명함 90×50mm").
+사이즈·규격이 가격을 크게 바꾸는 품목(명함·스티커·라벨·전단·포스터·현수막·배너·봉투·쇼핑백·박스·액자·책자 등)이라도 사이즈를 첫 질문으로 묻지 않는다. 수량을 모르면 수량(필요하면 용도)부터 묻고, 그다음에 사이즈를 묻는다.
+사이즈를 물을 때는 정해 둔 사이즈가 있는지 먼저 확인한다. 예: "정해 둔 사이즈가 있으세요? 잘 모르시면 업체 사이트에서 많이 쓰는 사이즈를 모아 실제 크기로 보여 드릴게요."
+wantsSizeHelp는 사용자의 가장 최근 메시지가 사이즈를 모르겠다거나 추천·비교·보여 달라고 할 때만 true다 (예: "모르겠어", "추천해줘", "어떤 사이즈가 있어?", "보여줘", "사이즈 비교해줘"). 사이즈를 물었다는 이유만으로 true로 하지 않는다. 이때 nextQuestion은 "업체 사이트에서 사이즈를 모아 볼게요. 카드에서 실제 크기로 비교하고 골라 주세요." 같은 짧은 안내로 한다.
+사용자가 사이즈를 말하거나 골랐으면(예: "90×50mm로 할게요") item에 사이즈를 넣고(예: "명함 90×50mm") 다음으로 넘어간다.
 남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.
 ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuestion을 비우지 않는다. 예산·납기를 아직 모르면 nextQuestion으로 묻는다.`,
       content: JSON.stringify({ current: this.req, conversation: this.history, questionsAsked: this.asked }),
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'askingSize', 'nextQuestion', 'ready'],
+        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'wantsSizeHelp', 'nextQuestion', 'ready'],
         properties: {
           item: nullable('string'),
           quantity: nullable('integer'),
@@ -74,7 +78,7 @@ ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuesti
           notes: nullable('string'),
           vendors: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
           onlyVendors: nullable('boolean'),
-          askingSize: { type: 'boolean' },
+          wantsSizeHelp: { type: 'boolean' },
           nextQuestion: nullable('string'),
           ready: { type: 'boolean' }
         }
@@ -95,13 +99,18 @@ ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuesti
     if (out.vendors?.length) this.req.vendors = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].slice(0, 3);
     if (out.onlyVendors !== null) this.req.onlyVendors = out.onlyVendors;
     // AI가 질문 없이 끝내도 비교에 꼭 필요한 값(예산·납기, 배송·설치가 있으면 지역)이 비었으면 한 번씩만 직접 묻는다
+    // 사이즈 도움 요청: AI 판단 + 직전 질문이 사이즈였고 "모르겠어/추천/보여줘" 같은 답이면 안전망으로 인정
+    const lastAsk = [...this.history].reverse().find((h) => h.role === 'assistant')?.text ?? '';
+    const wantsSizeHelp = out.wantsSizeHelp || (/사이즈|크기|규격/.test(lastAsk) && SIZE_HELP.test(text));
+    // 사이즈를 모아 보여 주는 동안 인터뷰가 끝나지 않게 안내를 질문 자리에 둔다
+    if (wantsSizeHelp && !out.nextQuestion) out.nextQuestion = '업체 사이트에서 많이 쓰는 사이즈를 모아 볼게요. 카드에서 실제 크기로 비교하고 골라 주세요.';
     const fallback = out.nextQuestion ? null : this.req.item && this.asked < 5 ? this.missingQuestion() : null;
     const question = out.nextQuestion ?? fallback?.q ?? null;
-    if (!question || this.asked >= 5) return { question: null, ready: Boolean(this.req.item), defaulted: this.fillDefaults() };
+    if (!question || this.asked >= 5) return { question: null, ready: Boolean(this.req.item), wantsSizeHelp, defaulted: this.fillDefaults() };
     if (fallback) this.askedKeys.add(fallback.key);
     this.asked++;
     this.history.push({ role: 'assistant', text: question });
-    return { question, ready: Boolean(this.req.item) && (out.ready || Boolean(fallback)), askingSize: !fallback && out.askingSize };
+    return { question, ready: Boolean(this.req.item) && (out.ready || Boolean(fallback)), wantsSizeHelp };
   }
 
   /** 아직 비어 있고, 묻지 않은 필수 항목의 질문 */

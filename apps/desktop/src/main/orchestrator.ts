@@ -110,14 +110,14 @@ export async function onChat(text: string) {
         await startSearch({});
         return;
       }
-      const { question, ready, askingSize, defaulted } = await interview.next(text);
+      const { question, ready, wantsSizeHelp, defaulted } = await interview.next(text);
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
         say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 아래 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
-        // 사이즈를 물을 때는 브라우저 1개가 업체 사이트를 돌며 파는 사이즈를 모아 실제 크기로 보여 준다
+        // 사용자가 사이즈를 모르거나 추천을 원할 때만 브라우저 1개가 업체 사이트를 돌며 파는 사이즈를 모아 실제 크기로 보여 준다
         const item = interview.req.item;
-        if (askingSize && item && !sizeScanStarted() && hasApiKey()) {
+        if (wantsSizeHelp && item && !sizeScanStarted() && hasApiKey()) {
           void startSizeScan(item, (options) => {
             if (getStage() !== 'interview') return;
             say(options.length ? `업체 사이트에서 파는 "${item}" 사이즈 ${options.length}종을 모았어요. 카드에서 실제 크기로 비교하고 눌러서 골라 주세요.` : '사이즈 선택지를 찾지 못했어요. 원하는 크기를 직접 말씀해 주세요.');
