@@ -124,9 +124,11 @@ export async function onChat(text: string) {
       const { question } = await interview.next(text);
       if (snapshot() !== before) {
         const wasSearching = ['search', 'collect'].includes(getStage());
-        await revise(true);
+        // 화면은 revise가 바로 바꾸고, 브라우저 정리는 안내를 띄운 뒤 기다린다
+        const revised = revise(true);
         if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 이전 검색 요약으로 남겨 두었어요.');
         say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
+        await revised;
         return;
       }
     }
@@ -162,6 +164,8 @@ export async function startSearch(patch: Partial<Requirements>) {
   requirements = interview.result();
   emit('requirements', { payload: requirements });
   emit('requirements_ready', { payload: false });
+  // 조건 변경 직후라면 이전 검색의 브라우저 정리가 끝난 뒤 시작
+  await resetting;
   void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
 }
 
@@ -755,8 +759,12 @@ function openDraft(draft: MailDraft) {
 
 // ─── 새 견적 ──────────────────────────────────────────────────
 
-/** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함) */
-async function clearRun() {
+/** 브라우저 정리가 끝나기 전에 새 검색을 시작하지 않도록 기다릴 대상 */
+let resetting: Promise<void> = Promise.resolve();
+
+/** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함).
+ *  상태는 바로 비우고, 시간이 걸리는 브라우저 정리는 돌려주는 Promise로 기다린다 */
+function clearRun() {
   generation++;
   docsShown = false;
   compareShown = false;
@@ -775,7 +783,8 @@ async function clearRun() {
   resetStatuses();
   quoteStore.reset(null);
   setStage('interview', true);
-  await resetAll();
+  resetting = resetAll();
+  return resetting;
 }
 
 export async function reset() {
@@ -812,7 +821,8 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
-  await clearRun();
+  // 탐색 중인 브라우저를 정리하는 데 시간이 걸리므로 화면(요약·확인 카드)을 먼저 바꾼다
+  const cleared = clearRun();
   requirements = null;
   if (!fromChat) {
     // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
@@ -824,4 +834,5 @@ export async function revise(fromChat = false) {
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: true });
   if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
+  await cleared;
 }
