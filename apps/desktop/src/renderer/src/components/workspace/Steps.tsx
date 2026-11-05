@@ -13,18 +13,18 @@ export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?:
   const running = last.status === 'running';
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[13px]">
+      <div className="flex items-center gap-2 text-[14px] font-medium">
         <span
           className={cn(
             'size-1.5 shrink-0 rounded-full',
             running ? 'animate-pulse bg-primary' : last.status === 'error' ? 'bg-destructive' : 'bg-muted-foreground/50'
           )}
         />
-        <span className={cn('truncate', running ? 'text-foreground' : 'text-muted-foreground')} title={last.intent}>{last.intent}</span>
+        <span className={cn('truncate', running ? 'text-ink' : 'text-muted-foreground')} title={last.intent}>{last.intent}</span>
       </div>
       <Task defaultOpen={defaultOpen}>
         <TaskTrigger title="">
-          <button className="group flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+          <button className="group flex items-center gap-1 text-[13px] font-medium text-muted-foreground transition-colors hover:text-ink">
             진행 기록 {steps.length}개
             <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
           </button>

@@ -39,38 +39,40 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
   })();
 
   return (
-    <Card className={cn('gap-0 overflow-hidden p-0', className)}>
-      {/* 머리말: 업체 + 상태 */}
-      <div className="flex items-center gap-2.5 px-4 pb-2.5 pt-3">
+    <div className={cn('flex min-w-0 flex-col', className)}>
+      {/* 탭: 업체 이름 (디자인의 파일 이름 탭 자리) */}
+      <div className="flex max-w-full items-center gap-2 self-start rounded-t-lg bg-[#fffffd] px-4 py-2.5 text-[14px] font-medium text-muted-foreground xl:text-[16px]">
         {vid && <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[vid])} />}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-semibold" title={vendor?.name}>
-            {title ?? (vendor ? vendor.name : vid ? '업체 찾는 중' : '웹 검색')}
-          </div>
-          {vid && <div className="truncate text-[12px] text-muted-foreground">{ANGLE_LABEL[vid]}</div>}
-        </div>
-        {status && <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>}
+        <span className="truncate" title={vendor?.name}>{title ?? (vendor ? vendor.name : vid ? '업체 찾는 중' : '웹 검색')}</span>
       </div>
-
+    <Card className="gap-5 overflow-hidden rounded-tl-none px-5 py-6">
       {/* 주소줄 */}
-      <div className="mx-3 flex items-center gap-1 rounded-md bg-muted/60 px-1 py-0.5 text-[12px] text-muted-foreground">
-        <Button size="icon" variant="ghost" className="size-6" onClick={() => api.browserBack(slot)} title="뒤로" aria-label="뒤로">
-          <ArrowLeft className="size-3.5" />
+      <div className="flex items-center gap-1 rounded-full bg-muted py-1.5 pl-2 pr-2 text-[14px] font-medium text-muted-foreground">
+        <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => api.browserBack(slot)} title="뒤로" aria-label="뒤로">
+          <ArrowLeft className="size-4" />
         </Button>
-        <span className="min-w-0 flex-1 truncate" title={b?.url}>{host || '페이지 준비 중'}</span>
+        <span className="min-w-0 flex-1 truncate px-1" title={b?.url}>{host || '페이지 준비 중'}</span>
         {web && (
-          <Button size="icon" variant="ghost" className="size-6" onClick={() => window.doldari.openExternal(b!.url)} title="기본 브라우저로 열기" aria-label="기본 브라우저로 열기">
-            <ExternalLink className="size-3.5" />
+          <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => window.doldari.openExternal(b!.url)} title="기본 브라우저로 열기" aria-label="기본 브라우저로 열기">
+            <ExternalLink className="size-4" />
           </Button>
         )}
-        {!scoped && <Button size="icon" variant="ghost" className="size-6" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
-          <Maximize2 className="size-3.5" />
+        {!scoped && <Button size="icon" variant="ghost" className="size-8 rounded-full hover:bg-white" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
+          <Maximize2 className="size-4" />
         </Button>}
       </div>
 
+      {/* 업체 설명 + 상태 */}
+      {(vid || status) && (
+        <div className="-mt-1 flex items-center gap-3">
+          {vid && <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-muted-foreground">{ANGLE_LABEL[vid]}</span>}
+          {status && <Pill tone={STATUS_TONE[status]} className="text-[13px]">{STATUS_LABEL[status]}</Pill>}
+        </div>
+      )}
+
       {/* 차단·로그인 화면: 사용자에게 넘김 */}
       {b?.handoff && (
-        <div className="mx-3 mt-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2.5 text-[12px] leading-snug">
+        <div className="rounded-lg border border-warn/40 bg-warn/10 px-4 py-3 text-[13px] leading-snug">
           <div className="flex items-start gap-2">
             <ShieldAlert className="mt-px size-4 shrink-0 text-warn" />
             <div className="min-w-0">
@@ -91,40 +93,39 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
         </div>
       )}
 
-      <div className="p-3">
+      <div className="overflow-hidden rounded-lg bg-background">
         <LiveFrame slot={slot} />
       </div>
 
-      <div className="space-y-3 px-4 pb-4">
-        <Steps slot={slot} />
-        {vid && (hasDoc || status === 'failed') && (
-          <div className="flex flex-wrap gap-1.5">
-            {hasDoc && (
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => set({ viewer: { kind: 'vendor', id: vid } })}>
-                <FileText className="size-3.5" /> 견적서 보기
+      <Steps slot={slot} />
+      {vid && (hasDoc || status === 'failed') && (
+        <div className="flex flex-wrap gap-2">
+          {hasDoc && (
+            <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'vendor', id: vid } })}>
+              <FileText className="size-4" /> 견적서 보기
+            </Button>
+          )}
+          {status === 'failed' && (
+            <>
+              <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.retry(vid)}>
+                <RefreshCw className="size-4" /> 다시 시도
               </Button>
-            )}
-            {status === 'failed' && (
-              <>
-                <Button size="sm" variant="secondary" className="flex-1" onClick={() => api.retry(vid)}>
-                  <RefreshCw className="size-3.5" /> 다시 시도
-                </Button>
-                <Button size="sm" variant="outline" className="flex-1" onClick={() => api.replace(vid)}>
-                  <Replace className="size-3.5" /> 다른 업체로
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+              <Button variant="outline" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.replace(vid)}>
+                <Replace className="size-4" /> 다른 업체로
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </Card>
+    </div>
   );
 }
 
 /** 브라우저 3개를 나란히 */
 export function BrowserGrid() {
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       {(['A', 'B', 'C'] as const).map((id) => (
         <BrowserPanel key={id} slot={id} />
       ))}
