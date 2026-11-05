@@ -7,6 +7,7 @@ import { ANGLE_LABEL, STATUS_LABEL, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './LiveFrame';
 import { Steps } from './Steps';
+import { api } from '@/lib/api';
 
 export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: string; className?: string }) {
   const { browsers, vendorStatus, vendors, quotes, set } = useStore();
@@ -38,7 +39,7 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
         )}
       </div>
       <div className="flex items-center gap-1 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground">
-        <Button size="icon" variant="ghost" className="size-6" onClick={() => window.doldari.browserBack(slot)} title="뒤로">
+        <Button size="icon" variant="ghost" className="size-6" onClick={() => api.browserBack(slot)} title="뒤로">
           <ArrowLeft className="size-3.5" />
         </Button>
         <span className="truncate">{host || '—'}</span>
@@ -61,10 +62,10 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
           </div>
           {vid && status === 'needs_user' && (
             <div className="mt-2 flex gap-1.5">
-              <Button size="sm" className="h-7 flex-1 bg-amber-950 text-amber-50 hover:bg-amber-900" onClick={() => window.doldari.resume(slot)}>
+              <Button size="sm" className="h-7 flex-1 bg-amber-950 text-amber-50 hover:bg-amber-900" onClick={() => api.resume(slot)}>
                 <Play className="size-3.5" /> 해결했어요, 계속
               </Button>
-              <Button size="sm" variant="outline" className="h-7 flex-1 border-amber-950/40 bg-transparent text-amber-950 hover:bg-amber-300" onClick={() => window.doldari.skip(vid)}>
+              <Button size="sm" variant="outline" className="h-7 flex-1 border-amber-950/40 bg-transparent text-amber-950 hover:bg-amber-300" onClick={() => api.skip(vid)}>
                 <SkipForward className="size-3.5" /> 건너뛰기
               </Button>
             </div>
@@ -84,12 +85,12 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
               </Button>
             )}
             {status === 'failed' && (
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => window.doldari.retry(vid)}>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={() => api.retry(vid)}>
                 <RefreshCw className="size-4" /> 다시 시도
               </Button>
             )}
             {status === 'failed' && (
-              <Button size="sm" variant="outline" className="flex-1" onClick={() => window.doldari.replace(vid)}>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => api.replace(vid)}>
                 <Replace className="size-4" /> 다른 업체로 바꾸기
               </Button>
             )}

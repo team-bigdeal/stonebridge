@@ -1,7 +1,7 @@
 // renderer 상태 (zustand). main 이벤트를 받아 갱신한다.
 import { create } from 'zustand';
 import type {
-  AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryRecord, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
+  AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
   Requirements, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
 } from '@shared/types';
 
@@ -29,12 +29,14 @@ interface State {
   /** 히스토리가 바뀔 때마다 올라간다 (사이드 탭이 목록을 다시 읽음) */
   historyRev: number;
   /** 히스토리에서 연 견적 한 건 (상세 창) */
-  historyRecord: HistoryRecord | null;
+  /** 히스토리에서 연 지난 견적 (보기 전용). null이면 지금 견적 */
+  replay: { id: string } | null;
+  /** 지금 진행 중인 견적의 히스토리 id (첫 저장 뒤부터) */
+  liveId: string | null;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   backend: 'aside' | 'electron' | null;
-  /** record가 있으면 히스토리에 보관된 견적을 본다 */
-  viewer: { kind: 'vendor'; id: VendorId; record?: HistoryRecord } | { kind: 'integrated'; record?: HistoryRecord } | null;
+  viewer: { kind: 'vendor'; id: VendorId } | { kind: 'integrated' } | null;
   set: (p: Partial<State>) => void;
   push: (item: TimelineItem) => void;
   handle: (ev: AgentEvent) => void;
@@ -42,6 +44,8 @@ interface State {
 }
 
 let noticeId = 0;
+/** replay 중에 쌓인 지금 견적의 이벤트 */
+export const pendingLive: AgentEvent[] = [];
 /** 사이드 탭 열림 상태는 이 컴퓨터에 기억 (저장소를 못 쓰면 열린 상태) */
 function readSidebar() {
   try {
@@ -75,7 +79,9 @@ const initial = () => ({
   notices: [],
   expanded: null,
   originals: {},
-  viewer: null
+  viewer: null,
+  replay: null as { id: string } | null,
+  liveId: null as string | null
 });
 
 export const useStore = create<State>((set, get) => ({
@@ -83,7 +89,6 @@ export const useStore = create<State>((set, get) => ({
   settingsOpen: false,
   sidebarOpen: readSidebar(),
   historyRev: 0,
-  historyRecord: null,
   backend: null,
   ...initial(),
   set: (p) => set(p),
@@ -91,6 +96,11 @@ export const useStore = create<State>((set, get) => ({
   resetAll: () => set({ ...initial() }),
   handle: (ev) => {
     const s = get();
+    // 지난 견적을 보는 동안 들어온 지금 견적의 이벤트는 모아 뒀다가 돌아올 때 반영
+    if (s.replay && ev.type !== 'history' && ev.type !== 'backend' && !(ev.type === 'notice' && !ev.vendorId && !ev.payload)) {
+      pendingLive.push(ev);
+      return;
+    }
     switch (ev.type) {
       case 'stage':
         set({ stage: ev.payload as Stage });
@@ -144,9 +154,11 @@ export const useStore = create<State>((set, get) => ({
         set({ originals: { ...s.originals, [o.vendorId]: [...list, o].slice(-4) } });
         break;
       }
-      case 'history':
-        set({ historyRev: s.historyRev + 1 });
+      case 'history': {
+        const h = ev.payload as HistoryEventPayload;
+        set({ historyRev: s.historyRev + 1, liveId: h.kind === 'saved' ? h.id : s.liveId === h.id ? null : s.liveId });
         break;
+      }
       case 'backend':
         set((st) => ({ backend: ev.payload as 'aside' | 'electron' | null, config: st.config ? { ...st.config, browser: ev.payload as 'aside' | 'electron' | null } : st.config }));
         break;

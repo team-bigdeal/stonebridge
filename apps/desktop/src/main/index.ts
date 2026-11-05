@@ -1,14 +1,14 @@
 // Electron main: 창, IPC
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import type { BrowserInput, MailDraft, MailKind, SettingsInput, Slot, VendorId } from '@shared/types';
+import type { BrowserInput, MailDraft, MailKind, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
 import { clearApiKey, config, publicConfig, saveSettings } from './config';
 import { verifyApiKey } from './agent/claude';
 import { bindWindow } from './events';
 import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
 import { emit, getStage } from './events';
 import * as flow from './orchestrator';
-import { deleteRecord, getRecord, listRecords } from './history';
+import { deleteRecord, getRecord, getSession, listRecords, saveSession } from './history';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -46,6 +46,8 @@ function registerIpc() {
   ipcMain.handle('history:list', () => listRecords());
   ipcMain.handle('history:get', (_e, id: string) => getRecord(String(id)));
   ipcMain.handle('history:delete', (_e, id: string) => deleteRecord(String(id)));
+  ipcMain.handle('history:saveSession', (_e, id: string, snap: SessionSnapshot) => saveSession(String(id), snap));
+  ipcMain.handle('history:getSession', (_e, id: string) => getSession(String(id)));
   ipcMain.handle('settings:save', async (_e, input: SettingsInput) => {
     const key = input.ANTHROPIC_API_KEY?.trim();
     if (key) {
