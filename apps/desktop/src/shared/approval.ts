@@ -268,3 +268,73 @@ export function buildApproval(quotes: Partial<Record<VendorId, Quote>>, req: Req
     evidence
   };
 }
+
+// ─── 회사 양식에 채울 항목 ─────────────────────────────────────
+
+/** 기안 정보 (화면 위 입력칸) */
+export interface ApprovalHeader {
+  dept: string;
+  author: string;
+  /** 결재선 역할 (왼쪽부터) */
+  roles: string[];
+}
+
+export interface ApprovalField {
+  key: string;
+  label: string;
+  /** 양식에 그대로 들어갈 글자 (숫자·근거 번호 모두 ApprovalDoc에서 가져옴) */
+  value: string;
+}
+
+const refText = (ids: number[]) => (ids.length ? `[${[...new Set(ids)].sort((a, b) => a - b).join(',')}]` : '');
+const sentences = (list: ApprovalSentence[]) => list.map((s, i) => `${i + 1}. ${s.text}${refText(s.evidenceIds)}`).join('\n');
+const CHN = { web: '웹', mail: '메일', file: '파일' } as const;
+
+/** 양식 칸에 넣을 수 있는 품의서 항목 전체 (값은 ApprovalDoc에서만 가져온다) */
+export function approvalFields(doc: ApprovalDoc, header: ApprovalHeader): ApprovalField[] {
+  const f: ApprovalField[] = [];
+  const add = (key: string, label: string, value: string) => f.push({ key, label, value });
+  add('docNo', '문서번호', '');
+  add('title', '제목', doc.title);
+  add('date', '기안일', doc.date);
+  add('dept', '기안부서', header.dept);
+  add('author', '기안자', header.author);
+  add('purpose', '목적', sentences(doc.purpose));
+  add('reasons', '선정 사유', sentences(doc.reasons));
+  add('vendorName', '선정 업체', doc.vendorName ?? '선정 보류');
+  const b = doc.budget;
+  add('supply', '공급가액', b ? won(b.supply) : '');
+  add('vat', '부가세', b ? won(b.vat) : '');
+  add('total', '합계 금액', b ? `${won(b.total)}${refText(b.evidenceIds)}` : '');
+  add('totalKorean', '합계 금액(한글)', b ? `금 ${b.totalKorean}원정` : '');
+  add('budgetMax', '예산', b ? won(b.budgetMax) : '');
+  add('remaining', '예산 대비 잔액', b ? (b.remaining >= 0 ? won(b.remaining) : `초과 ${won(-b.remaining)}`) : '');
+  for (const t of doc.terms) {
+    const key = t.label === '납기' ? 'delivery' : t.label === '결제조건' ? 'payment' : 'place';
+    add(key, t.label, t.value ? `${t.value}${refText(t.evidenceIds)}` : '확인 필요');
+  }
+  doc.items.forEach((it, i) => {
+    const p = `item${i + 1}_`;
+    add(`${p}name`, `${i + 1}행 품명`, `${it.name}${refText(it.evidenceIds)}`);
+    add(`${p}spec`, `${i + 1}행 규격`, it.spec ?? '');
+    add(`${p}qty`, `${i + 1}행 수량`, String(it.qty));
+    add(`${p}unit`, `${i + 1}행 단가`, it.unitPrice === null ? '?' : it.unitPrice.toLocaleString('ko-KR'));
+    add(`${p}amount`, `${i + 1}행 금액`, it.amount === null ? '?' : it.amount.toLocaleString('ko-KR'));
+    add(`${p}note`, `${i + 1}행 비고`, it.note ?? '');
+  });
+  add('items_text', '구매 내역(전체)', doc.items.map((it, i) => `${i + 1}. ${it.name}${it.spec ? ` (${it.spec})` : ''} ${it.qty}개 × ${it.unitPrice === null ? '?' : it.unitPrice.toLocaleString('ko-KR')} = ${it.amount === null ? '?' : it.amount.toLocaleString('ko-KR')}원${refText(it.evidenceIds)}`).join('\n'));
+  add(
+    'vendors_text',
+    '업체 비교(전체)',
+    doc.vendors.map((v) => `${v.vendorName}${v.recommended ? '(선정)' : ''} · ${CHN[v.channel]} · ${won(v.total)}${v.complete ? '' : '?'} · 납기 ${v.leadTime} · A/S ${v.warranty}${refText(v.evidenceIds)}`).join('\n')
+  );
+  add('checks', '확인 필요 사항', doc.checks.length ? sentences(doc.checks) : '없음');
+  add(
+    'evidence_text',
+    '붙임 근거 자료',
+    doc.evidence
+      .map((e) => `[${e.id}] ${e.vendorName ? `${e.vendorName} ` : ''}${e.item} ${e.valueText} — ${e.kind === 'requirement' ? '사용자 입력' : e.source ? `${CHN[e.source.channel]} ${e.source.ref} “${e.source.snippet}” (${e.source.capturedAt.replace('T', ' ').slice(0, 16)})` : '출처 없음'}`)
+      .join('\n')
+  );
+  return f;
+}
