@@ -14,12 +14,10 @@ const STAGE_LABEL: Partial<Record<(typeof STAGES)[number]['id'], string>> = {
   questions: '확인 추천'
 };
 
-/** 새 견적 시작. 진행 중이면 확인 후 초기화 (헤더·사이드바 공용) */
+/** 새 견적 시작. 확인 없이 바로 초기화 (헤더·사이드바 공용) */
 export function useRestart() {
-  const { timeline, resetAll } = useStore();
-  const started = timeline.length > 1;
+  const { resetAll } = useStore();
   return async function restart() {
-    if (started && !window.confirm('지금까지 모은 견적이 사라져요. 새 견적을 시작할까요?')) return;
     dropReplay();
     await window.doldari.reset();
     resetAll();
