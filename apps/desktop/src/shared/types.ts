@@ -215,7 +215,16 @@ export interface AppConfig {
   model: string;
   smtpConfigured: boolean;
   imapConfigured: boolean;
+  /** 앱 비밀번호 방식으로 저장한 Gmail 주소 (설정 창 입력칸용) */
   smtpUser: string;
+  /** 지금 메일을 보내는 방법: Google 계정 연결(OAuth) | 앱 비밀번호 | 없음 */
+  mailAuth: 'google' | 'password' | null;
+  /** 메일을 보내는 주소 (Google 계정이 연결돼 있으면 그 주소) */
+  mailUser: string;
+  /** 연결된 Google 계정 주소 */
+  googleUser: string | null;
+  /** Google OAuth 클라이언트 ID가 설정돼 있어 "Google 계정으로 연결"을 쓸 수 있는지 */
+  googleClient: boolean;
 }
 
 /** 에이전트 도구 호출 한 단계 (UI의 Tool step) */
@@ -324,7 +333,9 @@ export interface BrowserInput {
   key?: string;
 }
 
-export type SettingsInput = Partial<Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND', string>>;
+export type SettingsInput = Partial<
+  Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET', string>
+>;
 
 /** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */
 export interface HistoryRecord {

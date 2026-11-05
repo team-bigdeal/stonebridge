@@ -13,6 +13,8 @@ import type { PolishInput } from '@shared/approval';
 import { analyzeTemplate, clearTemplate, fillTemplate, loadTemplate, previewTemplate, saveMapping } from './template';
 import type { FieldDef } from '@shared/template';
 import { deleteRecord, getRecord, getSession, listRecords, saveSession } from './history';
+import { cancelGoogleLogin, connectGoogle, disconnectGoogle } from './channels/google-auth';
+import { resumePolling } from './channels/mail-poll';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -62,6 +64,8 @@ function registerIpc() {
     }
     const prevPref = publicConfig().browserPref;
     saveSettings(input);
+    // 앱 비밀번호를 새로 넣었으면 기다리던 회신 확인을 이어 간다
+    resumePolling();
     if (publicConfig().browserPref !== prevPref) {
       // 탐색 중이면 에이전트를 멈춘 뒤 바꾼다 (끝난 견적·대화는 그대로 둔다)
       if (getStage() === 'search' || getStage() === 'collect') await flow.reset();
@@ -72,6 +76,25 @@ function registerIpc() {
   });
   ipcMain.handle('settings:clearKey', () => {
     clearApiKey();
+    return publicConfig();
+  });
+  ipcMain.handle('google:connect', async () => {
+    try {
+      await connectGoogle();
+      // 브라우저에서 로그인을 마치면 앱으로 돌아온다
+      if (process.platform === 'darwin') app.focus({ steal: true });
+      mainWindow?.show();
+      mainWindow?.focus();
+      // 회신을 기다리던 메일이 있으면 새 계정으로 바로 확인을 이어 간다
+      resumePolling();
+      return { ok: true, config: publicConfig() };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e), config: publicConfig() };
+    }
+  });
+  ipcMain.handle('google:cancel', () => cancelGoogleLogin());
+  ipcMain.handle('google:disconnect', async () => {
+    await disconnectGoogle();
     return publicConfig();
   });
   ipcMain.handle('chat:send', (_e, text: string) => flow.onChat(text));
