@@ -27,6 +27,8 @@ interface State {
   mails: MailRecord[];
   notices: Notice[];
   settingsOpen: boolean;
+  /** 설정 창을 열 때 먼저 보여 줄 탭 (없으면 필요한 곳부터) */
+  settingsTab?: 'ai' | 'browser' | 'mail';
   /** 왼쪽 히스토리 사이드 탭 */
   sidebarOpen: boolean;
   /** 히스토리가 바뀔 때마다 올라간다 (사이드 탭이 목록을 다시 읽음) */

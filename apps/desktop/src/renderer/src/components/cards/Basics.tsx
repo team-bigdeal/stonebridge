@@ -327,7 +327,7 @@ export function MailCard({ draft }: { draft: MailDraft }) {
           ) : demo ? (
             <span className="text-[13px] text-muted-foreground">메일 계정이 없어 실제로는 보내지 않고 시연만 해요</span>
           ) : (
-            <button onClick={() => set({ settingsOpen: true })} className="text-[13px] text-muted-foreground underline-offset-2 hover:text-ink hover:underline">
+            <button onClick={() => set({ settingsOpen: true, settingsTab: 'mail' })} className="text-[13px] text-muted-foreground underline-offset-2 hover:text-ink hover:underline">
               Google 계정을 연결하면 앱에서 바로 보낼 수 있어요
             </button>
           )}
