@@ -1,32 +1,42 @@
+import { ChevronDown } from 'lucide-react';
 import type { Slot } from '@shared/types';
-import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task';
-import { Shimmer } from '@/components/ai-elements/shimmer';
+import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
 import { useStore } from '@/store';
+import { cn } from '@/lib/utils';
 
-/** 에이전트 도구 호출 단계 (AI Elements Task) */
+/** 에이전트 작업 기록: 지금 하는 일 한 줄 + 펼치면 전체 기록 */
 export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?: boolean }) {
   const steps = useStore((s) => s.steps[slot]) ?? [];
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1];
+  const running = last.status === 'running';
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex items-center gap-2 text-[13px]">
-        {last.status === 'running' ? (
-          <span className="size-2 shrink-0 animate-pulse rounded-full bg-primary" />
-        ) : (
-          <span className={`size-2 shrink-0 rounded-full ${last.status === 'error' ? 'bg-destructive' : 'bg-primary/60'}`} />
-        )}
-        {last.status === 'running' ? <Shimmer className="truncate">{last.intent}</Shimmer> : <span className="truncate text-muted-foreground">{last.intent}</span>}
+        <span
+          className={cn(
+            'size-1.5 shrink-0 rounded-full',
+            running ? 'animate-pulse bg-primary' : last.status === 'error' ? 'bg-destructive' : 'bg-muted-foreground/50'
+          )}
+        />
+        <span className={cn('truncate', running ? 'text-foreground' : 'text-muted-foreground')} title={last.intent}>{last.intent}</span>
       </div>
       <Task defaultOpen={defaultOpen}>
-        <TaskTrigger title={`작업 ${steps.length}단계`} />
+        <TaskTrigger title="">
+          <button className="group flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+            진행 기록 {steps.length}개
+            <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+          </button>
+        </TaskTrigger>
         <TaskContent>
           {steps.map((s) => (
-            <TaskItem key={s.id} className={s.status === 'error' ? 'text-destructive' : undefined}>
-              <span className="mr-1.5 rounded bg-secondary px-1 text-[10px] font-semibold">{s.tool}</span>
-              {s.intent}
-              {s.detail && <span className="block text-[11px] opacity-80">{s.detail}</span>}
-            </TaskItem>
+            <div key={s.id} className={cn('text-[12px] leading-snug', s.status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+              <div className="flex items-baseline gap-2">
+                <span className="min-w-0 flex-1 text-foreground/85">{s.intent}</span>
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/60">{s.tool}</span>
+              </div>
+              {s.detail && <div className="mt-0.5 break-words opacity-80">{s.detail}</div>}
+            </div>
           ))}
         </TaskContent>
       </Task>
