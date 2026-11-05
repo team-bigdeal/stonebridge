@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import type {
   AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
-  Requirements, RunSummary, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
+  Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
 } from '@shared/types';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
@@ -35,10 +35,15 @@ interface State {
   replay: { id: string } | null;
   /** 지금 진행 중인 견적의 히스토리 id (첫 저장 뒤부터) */
   liveId: string | null;
+  /** 조건을 바꾸기 전 검색들 */
+  runs: Record<string, RunSnapshot>;
+  /** 타임라인 항목 id → 이전 검색 id */
+  runOf: Record<string, string>;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   backend: 'aside' | 'electron' | null;
-  viewer: { kind: 'vendor'; id: VendorId } | { kind: 'integrated' } | null;
+  /** scope가 있으면 이전 검색 카드에서 연 것 (그 검색의 값으로 보여 줌) */
+  viewer: { kind: 'vendor'; id: VendorId; scope?: RunSnapshot } | { kind: 'integrated'; scope?: RunSnapshot } | null;
   set: (p: Partial<State>) => void;
   push: (item: TimelineItem) => void;
   handle: (ev: AgentEvent) => void;
@@ -48,11 +53,14 @@ interface State {
 let noticeId = 0;
 /** replay 중에 쌓인 지금 견적의 이벤트 */
 export const pendingLive: AgentEvent[] = [];
-/** 조건 바꾸기로 화면을 비우기 직전에 부르는 훅 (replay.ts가 이전 검색 화면을 기록에 바로 저장) */
-let beforeRevised: (() => void) | null = null;
-export const setBeforeRevised = (fn: (() => void) | null) => {
-  beforeRevised = fn;
+/** 브라우저 카드 화면(별도 store)을 읽고 비우는 훅. LiveFrame이 등록한다 (순환 import 방지) */
+let frameIO: { get: () => Partial<Record<Slot, string>>; clear: () => void } = { get: () => ({}), clear: () => undefined };
+export const setFrameIO = (io: typeof frameIO) => {
+  frameIO = io;
 };
+
+/** 대화 안 이전 검색 카드가 해당하는 타임라인 종류 */
+const RUN_KINDS = new Set<TimelineItem['kind']>(['requirements', 'search', 'vendors', 'browser', 'mail', 'upload', 'compare', 'docs', 'report']);
 /** 사이드 탭 열림 상태는 이 컴퓨터에 기억 (저장소를 못 쓰면 열린 상태) */
 function readSidebar() {
   try {
@@ -89,7 +97,9 @@ const initial = () => ({
   originals: {},
   viewer: null,
   replay: null as { id: string } | null,
-  liveId: null as string | null
+  liveId: null as string | null,
+  runs: {} as Record<string, RunSnapshot>,
+  runOf: {} as Record<string, string>
 });
 
 export const useStore = create<State>((set, get) => ({
@@ -142,13 +152,27 @@ export const useStore = create<State>((set, get) => ({
         set({ reqReady: Boolean(ev.payload) });
         break;
       case 'revised': {
-        // 비우기 전에 이전 검색 화면을 그 기록에 저장하고, 이후 화면은 새 기록으로 (이전 기록을 덮어쓰지 않게)
-        beforeRevised?.();
-        set({ liveId: null });
-        // 이전 검색 화면(브라우저·비교·메일 카드)은 지우고 대화와 요약 기록만 남긴다
-        const keep = s.timeline.filter((t) => t.kind === 'user' || t.kind === 'assistant' || t.kind === 'history');
+        // 이전 검색 카드(요구 조건·브라우저·비교·견적서·메일)는 대화에 그대로 두고, 그 시점 상태를 따로 얼려 둔다.
+        // 새 검색은 그 아래로 이어진다.
+        const runId = crypto.randomUUID();
+        const snap: RunSnapshot = {
+          stage: s.stage,
+          requirements: s.requirements,
+          quotes: s.quotes,
+          vendors: s.vendors,
+          vendorStatus: s.vendorStatus,
+          steps: s.steps,
+          browsers: s.browsers,
+          sources: s.sources,
+          originals: s.originals,
+          frames: frameIO.get()
+        };
+        const runOf = { ...s.runOf };
+        for (const t of s.timeline) if (RUN_KINDS.has(t.kind) && !runOf[t.id]) runOf[t.id] = runId;
+        frameIO.clear();
         set({
-          timeline: [...keep, { id: crypto.randomUUID(), kind: 'history', summary: ev.payload as RunSummary }],
+          runs: { ...s.runs, [runId]: snap },
+          runOf,
           quotes: {},
           flash: null,
           vendors: [],
