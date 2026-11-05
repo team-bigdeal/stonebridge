@@ -38,7 +38,11 @@ export const notice = (message: string, vendorId?: VendorId) => {
   emit('notice', { message, vendorId });
 };
 
+/** 진행 문구에 섞여 나오는 내부 용어(ref 번호)를 뺀다 (예: "수량 선택 ref 확인" → "수량 선택 확인") */
+const cleanIntent = (t: string) => t.replace(/\s*[([]?\bref\s*#?\d*\b[)\]]?/gi, '').replace(/\s{2,}/g, ' ').trim() || t;
+
 export function step(slot: Slot, tool: string, intent: string) {
+  intent = cleanIntent(intent);
   const s: AgentStep = { id: randomUUID(), slot, tool, intent, status: 'running', at: new Date().toISOString() };
   emit('step', { payload: s });
   console.log(`[step] ${slot} ${maskText(intent)}`);

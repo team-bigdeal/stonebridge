@@ -3,6 +3,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useStore } from './store';
 import { Chat } from './components/Chat';
 import { ExpandedBrowser, Notices, SidebarToggle, TopBar } from './components/Shell';
+import { pushCursor } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
@@ -19,10 +20,16 @@ export default function App() {
     window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey }));
     const offEvent = window.doldari.onEvent(routeEvent);
     const offFrame = window.doldari.onFrame(routeFrame);
+    // 커서는 보고 있는 견적 세션 것만
+    const offCursor = window.doldari.onCursor((c) => {
+      const f = useStore.getState().focusedSid;
+      if (!f || c.sid === f) pushCursor(c);
+    });
     const offSave = startAutosave();
     return () => {
       offEvent();
       offFrame();
+      offCursor();
       offSave();
     };
   }, [set]);
