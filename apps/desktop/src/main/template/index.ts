@@ -150,19 +150,19 @@ export function clearTemplate() {
   return true;
 }
 
-/** values: 품의서 항목 key → 글자. 매핑된 자리에 넣어 저장 위치를 물어 저장한다 */
+/** values: 칸 id → 글자 (화면에서 고친 값 그대로). 빈 글자는 건너뛰고 저장 위치를 물어 저장한다 */
 export async function fillTemplate(win: BrowserWindow, values: Record<string, string>): Promise<TemplateFillResult> {
   const meta = readMeta();
   if (!meta || !fs.existsSync(binPath())) return { ok: false, error: '저장된 양식이 없어요.' };
   try {
     const scanned = await scanFile(new Uint8Array(fs.readFileSync(binPath())), meta.kind);
+    const ids = new Set(scanned.slots.map((s) => s.id));
     const bySlot: Record<string, string> = {};
     const skipped: string[] = [];
     for (const s of scanned.slots) {
-      const key = meta.mapping[s.id];
-      const v = key ? values[key] : undefined;
-      if (key && v) bySlot[s.id] = v;
-      else if (key) skipped.push(s.label);
+      const v = ids.has(s.id) ? values[s.id] : undefined;
+      if (typeof v === 'string' && v.trim() !== '') bySlot[s.id] = v;
+      else skipped.push(s.label);
     }
     const out = await scanned.apply(bySlot);
     const ext = meta.kind;
