@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
 import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
@@ -59,6 +59,21 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
   const [text, setText] = useState<Partial<Record<EditKey, string>>>({});
   const [install, setInstall] = useState<boolean | undefined>(undefined);
   const [starting, setStarting] = useState(false);
+  // 대화로 값이 새로 정해지면(예: "예산 30만원") 그 칸에 직접 입력해 둔 글자보다 대화 값을 보여 준다
+  const prevReq = useRef(r);
+  useEffect(() => {
+    const before = prevReq.current;
+    prevReq.current = r;
+    const changed = (['item', 'quantity', 'budgetMax', 'deadline', 'minWarrantyMonths', 'region'] as EditKey[]).filter((k) => r[k] !== before[k] && r[k] !== undefined);
+    if (changed.length) {
+      setText((t) => {
+        const next = { ...t };
+        for (const k of changed) delete next[k];
+        return next;
+      });
+    }
+    if (r.needInstall !== before.needInstall && r.needInstall !== undefined) setInstall(undefined);
+  }, [r]);
   const shown = (k: EditKey) => text[k] ?? (r[k] === undefined ? '' : String(r[k]));
   const invalid = NUM_KEYS.filter((k) => text[k] !== undefined && !validNum(k, text[k]!));
   const item = shown('item').trim();
