@@ -88,6 +88,11 @@ export async function onChat(text: string) {
   }
   try {
     setBusy(true);
+    // "멈춰" 같은 말은 어느 단계에서든 진행 중인 탐색을 멈춘다 (조건 변경으로 해석하지 않게 먼저 본다)
+    if (STOP_WORDS.test(text.trim())) {
+      stop();
+      return;
+    }
     if (getStage() === 'interview') {
       if (!interview) {
         interview = new Interview();
@@ -151,6 +156,12 @@ export async function onChat(text: string) {
  *  "네·응·좋아"는 인터뷰 질문에 대한 대답일 수 있어 넣지 않고, 조건이 섞인 말("아이폰 케이스 찾아줘")은 맞지 않게 전체 일치로 본다 */
 const START_WORDS = new RegExp(
   String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
+  'i'
+);
+
+/** 채팅으로 진행 중인 탐색을 멈추라는 짧은 말 ("멈춰", "그만", "검색 중지", "잠깐" 등). 다른 뜻이 섞인 말은 전체 일치가 아니라 맞지 않는다 */
+const STOP_WORDS = new RegExp(
+  String.raw`^(?:(?:잠깐\s*|일단\s*|다\s*|전부\s*|검색\s*|탐색\s*|작업\s*)*(?:멈춰|멈춰\s*줘|멈춰\s*주세요|멈춰라|멈추자|멈춰봐|멈춤|그만|그만해|그만해\s*줘|그만해\s*주세요|그만하자|중지|중지해|중지해\s*줘|중단|중단해|중단해\s*줘|정지|정지해|스톱|스탑|stop)|잠깐(?:만)?)\s*[.!~ㅠㅜ]*$`,
   'i'
 );
 
