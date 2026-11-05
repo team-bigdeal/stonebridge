@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, ExternalLink } from 'lucide-react';
-import type { Requirements, VendorId } from '@shared/types';
+import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
+import { buildApproval } from '@shared/approval';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ApprovalDocument, type ApprovalHeader } from '@/doc/ApprovalDocument';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/store';
@@ -25,6 +28,8 @@ export function QuoteViewer() {
     set({ viewer: null });
     setSaved('');
   };
+
+  if (viewer.kind === 'approval') return <ApprovalViewer req={req} quotes={quotes} urls={urls} onClose={close} />;
 
   if (viewer.kind === 'integrated') {
     const el = <IntegratedDocument quotes={quotes} req={req} urls={urls} />;
@@ -98,6 +103,64 @@ export function QuoteViewer() {
             ))}
           </TabsContent>
         </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const HEADER_KEY = 'doldari.approvalHeader';
+const DEFAULT_HEADER: ApprovalHeader = { dept: '', author: '', roles: ['담당', '팀장', '본부장'] };
+
+/** 기안부서·기안자·결재선은 이 컴퓨터에 기억 (저장소를 못 쓰면 기본값) */
+function readHeader(): ApprovalHeader {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HEADER_KEY) ?? 'null') as Partial<ApprovalHeader> | null;
+    if (!raw) return DEFAULT_HEADER;
+    const roles = Array.isArray(raw.roles) && raw.roles.length > 0 ? raw.roles.map(String).slice(0, 5) : DEFAULT_HEADER.roles;
+    return { dept: String(raw.dept ?? ''), author: String(raw.author ?? ''), roles };
+  } catch {
+    return DEFAULT_HEADER;
+  }
+}
+
+/** 구매 품의서 초안 (템플릿 문장 + 근거 붙임) */
+function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quotes: Partial<Record<VendorId, Quote>>; urls: Partial<Record<VendorId, string>>; onClose: () => void }) {
+  const [header, setHeader] = useState<ApprovalHeader>(readHeader);
+  const [saved, setSaved] = useState('');
+  const doc = useMemo(() => buildApproval(quotes, req, urls, { date: new Date().toISOString().slice(0, 10) }), [quotes, req, urls]);
+  const update = (p: Partial<ApprovalHeader>) => {
+    const next = { ...header, ...p };
+    setHeader(next);
+    try {
+      localStorage.setItem(HEADER_KEY, JSON.stringify(next));
+    } catch {
+      /* 저장소를 못 쓰면 이번 화면에서만 유지 */
+    }
+  };
+  const el = <ApprovalDocument doc={doc} header={header} />;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]">
+        <DialogHeader className="flex-row items-center gap-3">
+          <div className="min-w-0 space-y-1">
+            <DialogTitle>구매 품의서 초안</DialogTitle>
+            <DialogDescription>{req.item} · 모든 숫자에 근거 번호를 붙이고 붙임에 출처를 모았어요</DialogDescription>
+          </div>
+          <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `품의서_${req.item}`)) ?? '')}>
+            <Download className="size-4" /> PDF 저장
+          </Button>
+        </DialogHeader>
+        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <Input className="h-8 w-36" placeholder="기안부서" value={header.dept} onChange={(e) => update({ dept: e.target.value })} />
+          <Input className="h-8 w-28" placeholder="기안자" value={header.author} onChange={(e) => update({ author: e.target.value })} />
+          <span className="text-muted-foreground">결재선</span>
+          <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
+        </div>
+        {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <style>{DOC_CSS}</style>
+          {el}
+        </div>
       </DialogContent>
     </Dialog>
   );

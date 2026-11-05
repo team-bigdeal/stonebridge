@@ -282,6 +282,7 @@ export function ReportCard() {
       <Button variant="ghost" disabled={busy} onClick={() => void api.revise()}>
         <SlidersHorizontal className="size-4" /> 조건 바꾸기
       </Button>
+      <Button variant="outline" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
       <Button onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </Card>
   );
