@@ -2,7 +2,7 @@
 // 요구 조건 → 브라우저 3개가 동시에 각자 업체를 찾아 견적 수집(가격 없으면 메일/파일) → 업체별 통일 견적서 → 비교·추천 → 작성 → 통합 견적서
 import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
-import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
+import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, Quote, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
 import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
@@ -1036,6 +1036,14 @@ const DEMO_IMAP_LEAD_MS = 2000;
 const DEMO_IMAP_WATCHDOG_MS = 3000;
 const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
 
+/** 시연용 회신 가격 기준: 다른 업체의 최저 총액 (총액이 다 나온 업체 우선, 없으면 표시가가 있는 업체의 확인된 합계) */
+function marketTotal(self: VendorId, req: Requirements): number | undefined {
+  const others = (Object.values(quoteStore.quotes) as Quote[]).filter((q) => q && q.vendorId !== self && q.listedPrice.value !== null);
+  const full = others.map((q) => q.totalPrice).filter((t): t is number => t !== null && t > 0);
+  const sums = full.length ? full : others.map((q) => confirmedSum(q, req)).filter((t) => t > 0);
+  return sums.length ? Math.min(...sums) : undefined;
+}
+
 /** 시연용 주소(.test)로 보낸 메일: 잠시 뒤 목업 업체가 견적서 PDF를 붙여 답장한 것처럼 회신을 넣는다.
  *  메일 계정이 있으면 진짜 받은편지함에 넣어 평소처럼 IMAP으로 읽게 하고, 없으면 바로 회신으로 처리한다 */
 function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
@@ -1046,7 +1054,7 @@ function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
   const due = Date.now() + DEMO_REPLY_DELAY_MS;
   void (async () => {
     // 기다리는 동안 회신(견적서 PDF 포함)을 미리 만든다
-    const reply = await demoReply(draft, req, vendorName(draft.vendorId));
+    const reply = await demoReply(draft, req, vendorName(draft.vendorId), marketTotal(draft.vendorId, req));
     if (!reply) return;
     const inject = () =>
       handleReply(draft.vendorId, draft.kind, {
