@@ -23,7 +23,8 @@ export function siteKey(url: string): string {
     if (/(smartstore|11st|gmarket|auction|ssg|lotteon)/.test(u.hostname)) return u.host.replace(/^(www|m)\./, '') + u.pathname.split('/').slice(0, 3).join('/');
     const parts = u.hostname.split('.');
     const n = parts.length >= 3 && /^(co|or|go|ne|ac|re|pe|com|net|org)$/.test(parts[parts.length - 2]) ? 3 : 2;
-    return parts.slice(-n).join('.');
+    // 포트가 다르면 다른 사이트로 본다 (목업 업체 localhost:4101·4102… 가 한 업체로 묶이지 않도록)
+    return parts.slice(-n).join('.') + (u.port ? `:${u.port}` : '');
   } catch {
     return url;
   }
