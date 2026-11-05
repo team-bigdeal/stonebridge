@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, ShoppingCart } from 'lucide-react';
+import { FileText, ShoppingCart, SlidersHorizontal } from 'lucide-react';
 import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, type Check } from '@shared/quote';
 import { Badge } from '@/components/ui/badge';
@@ -231,7 +231,7 @@ export function DocsCard() {
 }
 
 export function ReportCard() {
-  const { set, quotes } = useStore();
+  const { set, quotes, busy } = useStore();
   const count = Object.values(quotes).filter((q) => q && q.listedPrice.value !== null).length;
   return (
     <Card className="flex-row items-center gap-4 border-primary/40 bg-gradient-to-r from-primary/15 to-card px-5 py-4">
@@ -242,6 +242,9 @@ export function ReportCard() {
         <div className="font-semibold">통합 견적서</div>
         <div className="text-[12px] text-muted-foreground">업체 {count}곳의 견적을 한 장으로 — 공급가액·부가세·합계·조건·추천 이유를 같은 기준으로 정리했어요.</div>
       </div>
+      <Button variant="outline" disabled={busy} onClick={() => void window.doldari.revise()}>
+        <SlidersHorizontal className="size-4" /> 조건 변경
+      </Button>
       <Button onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </Card>
   );
