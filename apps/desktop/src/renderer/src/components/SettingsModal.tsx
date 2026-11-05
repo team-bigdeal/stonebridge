@@ -56,6 +56,21 @@ export default function SettingsModal() {
           <span className="ml-auto text-[11px] text-muted-foreground">이 컴퓨터에만 저장됩니다</span>
         </div>
         <div className="space-y-5 px-5 py-4 text-sm">
+          {/* 지금 상태 한눈에 (상단 바에서 옮겨 옴) */}
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5">
+              <span className={`size-1.5 rounded-full ${config.hasApiKey ? 'bg-emerald-400' : 'bg-destructive'}`} />
+              {config.hasApiKey ? config.model : 'API 키 필요'}
+            </span>
+            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5" title={config.browser === 'aside' ? '사용자의 Aside 브라우저로 탐색' : '앱 안에 보이는 브라우저로 탐색'}>
+              <span className={`size-1.5 rounded-full ${config.browser === 'aside' ? 'bg-emerald-400' : config.browser === 'electron' ? 'bg-amber-400' : 'bg-muted-foreground'}`} />
+              {config.browser === 'aside' ? 'Aside 브라우저' : config.browser === 'electron' ? '내장 브라우저' : '브라우저 확인 중'}
+            </span>
+            <span className="flex items-center gap-1.5 rounded-full border px-2 py-0.5">
+              <span className={`size-1.5 rounded-full ${config.smtpConfigured ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
+              {config.smtpConfigured ? `메일 연결됨` : '메일 미연결'}
+            </span>
+          </div>
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="font-semibold text-foreground" htmlFor="api-key">Anthropic API 키</label>

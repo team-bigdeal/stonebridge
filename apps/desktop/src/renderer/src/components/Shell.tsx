@@ -8,7 +8,7 @@ import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
 
 export function TopBar() {
-  const { stage, config, backend, sidebarOpen, set, resetAll } = useStore();
+  const { stage, config, sidebarOpen, set, resetAll } = useStore();
   const current = STAGES.findIndex((s) => s.id === stage);
   return (
     <header className="drag flex h-12 shrink-0 items-center gap-4 border-b bg-background/90 pl-20 pr-4">
@@ -40,19 +40,13 @@ export function TopBar() {
         ))}
       </div>
       <div className="no-drag flex items-center gap-2">
-        {backend && (
-          <Badge variant="outline" title={backend === 'aside' ? '사용자의 Aside 브라우저로 탐색 (차단이 적음)' : 'Aside가 없어 내장 브라우저로 탐색'}>
-            <span className={cn('size-1.5 rounded-full', backend === 'aside' ? 'bg-emerald-400' : 'bg-amber-400')} />
-            {backend === 'aside' ? 'Aside 브라우저' : '내장 브라우저'}
-          </Badge>
-        )}
         <Button size="sm" variant="outline" onClick={async () => { await window.doldari.reset(); resetAll(); }}>
           <Plus className="size-4" /> 새 견적
         </Button>
-        <Button size="sm" variant="outline" onClick={() => set({ settingsOpen: true })}>
-          <span className={cn('size-1.5 rounded-full', config?.hasApiKey ? 'bg-emerald-400' : 'bg-destructive')} />
-          {config?.hasApiKey ? config.model : 'API 키 필요'}
+        {/* 브라우저·모델·API 키 상태는 설정 창 안에서 본다. API 키가 없을 때만 표시 */}
+        <Button size="icon" variant="outline" className="relative size-8" title="설정" onClick={() => set({ settingsOpen: true })}>
           <Settings className="size-4" />
+          {!config?.hasApiKey && <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-destructive" title="API 키 필요" />}
         </Button>
       </div>
     </header>
