@@ -39,7 +39,7 @@ export function Chat() {
             <Item key={item.id} item={item} />
           ))}
           {fresh && (
-            <div className="flex max-w-[760px] flex-wrap gap-2">
+            <div className="mx-auto flex w-full max-w-[760px] flex-wrap gap-2">
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex}
@@ -54,7 +54,7 @@ export function Chat() {
               ))}
             </div>
           )}
-          {busy && <Typing />}
+          {busy && <div className="mx-auto w-full max-w-[760px]"><Typing /></div>}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -106,23 +106,27 @@ function Typing() {
 }
 
 /** 대화 폭(읽기용)과 작업 폭(표·브라우저)을 나눈다 */
-const Narrow = ({ children }: { children: React.ReactNode }) => <div className="w-full max-w-[760px]">{children}</div>;
-const Medium = ({ children }: { children: React.ReactNode }) => <div className="w-full max-w-[1100px]">{children}</div>;
+const Narrow = ({ children }: { children: React.ReactNode }) => <div className="mx-auto w-full max-w-[760px]">{children}</div>;
+const Medium = ({ children }: { children: React.ReactNode }) => <div className="mx-auto w-full max-w-[1100px]">{children}</div>;
 const Wide = ({ children }: { children: React.ReactNode }) => <div className="w-full">{children}</div>;
 
 function Item({ item }: { item: TimelineItem }) {
   switch (item.kind) {
     case 'user':
       return (
-        <Message from="user" className="max-w-[640px]">
-          <MessageContent className="whitespace-pre-wrap text-[14px] leading-relaxed group-[.is-user]:rounded-2xl group-[.is-user]:px-4 group-[.is-user]:py-2.5">{item.text}</MessageContent>
-        </Message>
+        <Narrow>
+          <Message from="user" className="max-w-[640px]">
+            <MessageContent className="whitespace-pre-wrap text-[14px] leading-relaxed group-[.is-user]:rounded-2xl group-[.is-user]:px-4 group-[.is-user]:py-2.5">{item.text}</MessageContent>
+          </Message>
+        </Narrow>
       );
     case 'assistant':
       return (
-        <Message from="assistant">
-          <MessageContent className="max-w-[760px] whitespace-pre-wrap text-[15px] leading-7">{item.text}</MessageContent>
-        </Message>
+        <Narrow>
+          <Message from="assistant" className="max-w-full">
+            <MessageContent className="whitespace-pre-wrap text-[15px] leading-7">{item.text}</MessageContent>
+          </Message>
+        </Narrow>
       );
     case 'requirements':
       return <Medium><RequirementsCard /></Medium>;
