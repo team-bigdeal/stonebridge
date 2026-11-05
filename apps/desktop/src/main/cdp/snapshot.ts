@@ -20,6 +20,8 @@ const INTERACTIVE = new Set([
 const STRUCTURAL = new Set(['heading', 'table', 'row', 'cell', 'columnheader', 'rowheader', 'list', 'listitem', 'img', 'group', 'form']);
 const SKIP = new Set(['InlineTextBox', 'LineBreak']);
 const MAX_CHARS = 9000;
+/** 잘린 스냅샷에서도 남길 줄: 견적서·가격·배송 관련 버튼과 문구 */
+const KEEP_RE = /견적|PDF|출력|인쇄|합계|총\s*(금액|액)|결제\s*금액|배송|택배|납기|출고|수량|\[ref=\d+\].*(계산|조회|확인)/;
 
 export async function takeSnapshot(cdp: CdpSession): Promise<string> {
   const { nodes } = await cdp.send<{ nodes: AXNode[] }>('Accessibility.getFullAXTree');
@@ -63,6 +65,16 @@ export async function takeSnapshot(cdp: CdpSession): Promise<string> {
   if (nodes[0]) walk(nodes[0].nodeId, 0, '');
   const title = await cdp.evaluate<string>('document.title').catch(() => '');
   let out = `페이지: ${title}\nURL: ${cdp.url()}\n${lines.join('\n')}`;
-  if (out.length > MAX_CHARS) out = `${out.slice(0, MAX_CHARS)}\n…(이하 생략)`;
+  if (out.length > MAX_CHARS) {
+    // 메뉴가 긴 쇼핑몰은 아래쪽 견적서 출력·합계 버튼이 잘려 ref를 못 얻는다. 잘린 부분에서 견적·가격 관련 줄은 남긴다
+    const head = out.slice(0, MAX_CHARS);
+    const cut = head.split('\n').length - 1;
+    const keep = lines
+      .slice(Math.max(0, cut - 2))
+      .filter((l) => KEEP_RE.test(l))
+      .map((l) => l.trim())
+      .slice(0, 40);
+    out = `${head}\n…(이하 생략)${keep.length ? `\n\n## 생략된 부분의 견적·가격 관련 요소\n${keep.join('\n')}` : ''}`;
+  }
   return out;
 }

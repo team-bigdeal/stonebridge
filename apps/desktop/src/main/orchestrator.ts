@@ -69,7 +69,11 @@ const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
 const hostKey = (url: string) => {
   try {
     const u = new URL(url);
-    return u.host.replace(/^(www|m)\./, '') + (/(smartstore|11st|gmarket|auction|ssg|lotteon)/.test(u.hostname) ? u.pathname.split('/').slice(0, 3).join('/') : '');
+    // 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인으로 본다 (dev.·shop.·m. 같은 하위 도메인도 같은 업체)
+    if (/(smartstore|11st|gmarket|auction|ssg|lotteon)/.test(u.hostname)) return u.host.replace(/^(www|m)\./, '') + u.pathname.split('/').slice(0, 3).join('/');
+    const parts = u.hostname.split('.');
+    const n = parts.length >= 3 && /^(co|or|go|ne|ac|re|pe|com|net|org)$/.test(parts[parts.length - 2]) ? 3 : 2;
+    return parts.slice(-n).join('.');
   } catch {
     return url;
   }
