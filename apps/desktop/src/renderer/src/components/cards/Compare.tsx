@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, SlidersHorizontal, Table2, X } from 'lucide-react';
-import type { Field, FieldKey, Quote, Requirements, VendorId } from '@shared/types';
+import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, ImageOff, LayoutGrid, Package, SlidersHorizontal, Table2, X } from 'lucide-react';
+import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,14 +17,16 @@ import { CompareChart } from './CompareChart';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 
-type View = 'table' | 'chart';
-const VIEW_KEY = 'doldari.compareView';
+type View = 'cards' | 'table' | 'chart';
+// 기본을 카드로 바꾸면서 키를 새로 씀 (예전에 저장된 '표'가 남지 않도록)
+const VIEW_KEY = 'doldari.compareView.v2';
 // 마지막으로 고른 보기 방식은 이 컴퓨터에만 기억한다
 const readView = (): View => {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'chart' ? 'chart' : 'table';
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === 'table' || v === 'chart' ? v : 'cards';
   } catch {
-    return 'table';
+    return 'cards';
   }
 };
 const saveView = (v: View) => {
@@ -36,7 +38,7 @@ const saveView = (v: View) => {
 };
 
 function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
-  const items: [View, string, typeof Table2][] = [['table', '표', Table2], ['chart', '그래프', BarChart3]];
+  const items: [View, string, typeof Table2][] = [['cards', '카드', LayoutGrid], ['table', '표', Table2], ['chart', '그래프', BarChart3]];
   return (
     <div role="radiogroup" aria-label="보기 방식" className="flex rounded-lg bg-muted p-1">
       {items.map(([id, label, Icon]) => (
@@ -61,30 +63,45 @@ export function CompareCard() {
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
-  const heads = ['', '업체', '제품가', '설치비', '배송비', 'A/S', '추가 비용', '납기', '합계', '조건', ''];
+  const hide = hiddenItems(quotes, order, req);
+  // 해당 없는 항목(설치 불필요, A/S 불필요, 모든 업체 추가 비용 없음)은 열을 뺀다
+  const heads: [string, string][] = [
+    ['', ''], ['업체', ''], ['제품가', 'text-right'],
+    ...(hide.install ? [] : [['설치비', 'text-right']] as [string, string][]),
+    ['배송비', 'text-right'],
+    ...(hide.warranty ? [] : [['A/S', 'text-right']] as [string, string][]),
+    ...(hide.extra ? [] : [['추가 비용', 'text-right']] as [string, string][]),
+    ['납기', 'text-right'], ['합계', 'text-right'], ['조건', 'text-center'], ['', '']
+  ];
   return (
     <Card className="relative gap-4 py-4">
       <CardContent className="space-y-4 px-5">
         <SectionHead
           title="견적 비교"
-          hint={view === 'table' ? '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.' : '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.'}
+          hint={view === 'cards' ? '싼 순서예요. 금액을 누르면 출처가 보여요.' : view === 'table' ? '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.' : '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.'}
           right={<ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />}
         />
         {view === 'chart' ? (
           <CompareChart order={order} />
+        ) : view === 'cards' ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" onClick={() => setPop(null)}>
+            {order.map((id, i) => (
+              <VendorCard key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} onSource={setPop} canAct={['compare', 'questions', 'draft'].includes(stage)} />
+            ))}
+          </div>
         ) : (
         <div className="overflow-x-auto" onClick={() => setPop(null)}>
           <table className="w-full border-separate border-spacing-x-0 border-spacing-y-3 whitespace-nowrap text-[13px] font-medium text-ink">
             <thead>
               <tr className="text-left text-[13px] text-muted-foreground">
-                {heads.map((h, i) => (
-                  <th key={i} className={cn('px-2 font-medium', i >= 2 && i <= 8 && 'text-right', i === 9 && 'text-center')}>{h}</th>
+                {heads.map(([h, align], i) => (
+                  <th key={i} className={cn('px-2 font-medium', align)}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {order.map((id, i) => (
-                <Row key={id} q={quotes[id]!} rank={i + 1} req={req} leader={leader === id} onSource={setPop} canAct={['compare', 'questions', 'draft'].includes(stage)} />
+                <Row key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} leader={leader === id} onSource={setPop} canAct={['compare', 'questions', 'draft'].includes(stage)} />
               ))}
             </tbody>
           </table>
@@ -117,7 +134,7 @@ function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) 
   );
 }
 
-function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
+function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
   const api = useApi();
   const { flash, vendorStatus, set, scoped, backend } = useRunStore();
   const [opening, setOpening] = useState(false);
@@ -154,7 +171,6 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
   const n = (v: number | null, zero?: string) => (v === null ? '' : v === 0 && zero ? zero : v.toLocaleString('ko-KR'));
   const wm = q.warrantyMonths.value;
   const ex = extraSum(q);
-  const off = <td className="px-2 py-2 text-right text-muted-foreground/40">해당 없음</td>;
   return (
     <motion.tr layout transition={{ type: 'spring', stiffness: 260, damping: 28 }} className={cn('[&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg', top ? '[&>td]:bg-row' : '[&>td]:bg-row-alt')}>
       <td className={cn('w-8 py-2 pl-4 text-center text-[14px] font-semibold tabular-nums', top ? 'text-primary' : 'text-muted-foreground')}>{has ? rank : '–'}</td>
@@ -176,15 +192,15 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
           {priceQty(q) > 1 && <span className="block text-[11px] text-muted-foreground">{priceQty(q).toLocaleString('ko-KR')}개당 {q.listedPrice.value?.toLocaleString('ko-KR')}원</span>}
         </span>
       ))}
-      {req?.needInstall === false ? off : td(['installFee'], n(q.installFee.value, '포함'))}
+      {!hide.install && td(['installFee'], n(q.installFee.value, '포함'))}
       {td(['shippingFee'], n(q.shippingFee.value, '무료'))}
-      {req && req.minWarrantyMonths <= 0 ? off : td(['warrantyMonths', 'warrantyExtraFee'], (
+      {!hide.warranty && td(['warrantyMonths', 'warrantyExtraFee'], (
         <span>
           {wm !== null ? (wm % 12 === 0 && wm >= 12 ? `${wm / 12}년` : `${wm}개월`) : '?'}
           {q.warrantyExtraFee.value ? <span className="block text-[11px] text-muted-foreground">연장 +{q.warrantyExtraFee.value.toLocaleString('ko-KR')}</span> : null}
         </span>
       ))}
-      <td className="px-2 py-2 text-right tabular-nums">{ex ? `+${ex.toLocaleString('ko-KR')}` : <span className="text-muted-foreground/40">없음</span>}</td>
+      {!hide.extra && <td className="px-2 py-2 text-right tabular-nums">{ex ? `+${ex.toLocaleString('ko-KR')}` : <span className="text-muted-foreground/40">없음</span>}</td>}
       {td(['leadTimeDays'], q.leadTimeDays.value !== null ? `${q.leadTimeDays.value}일` : '', cond?.deadline === 'violate')}
       <td className={cn('px-2 py-2 text-right tabular-nums', cond?.budget === 'violate' && 'text-destructive')}>
         {has ? (
@@ -215,6 +231,150 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
         )}
       </td>
     </motion.tr>
+  );
+}
+
+/** 비교에서 뺄 항목: 설치가 필요 없음 · A/S가 필요 없음 · 어느 업체에도 추가 비용이 없음 */
+type Hidden = { install: boolean; warranty: boolean; extra: boolean };
+function hiddenItems(quotes: Partial<Record<VendorId, Quote>>, order: VendorId[], req: Requirements | null): Hidden {
+  return {
+    install: req?.needInstall === false,
+    warranty: Boolean(req && req.minWarrantyMonths <= 0),
+    extra: order.every((id) => !quotes[id] || !extraSum(quotes[id]!))
+  };
+}
+
+/** 카드에 보여 줄 제품 사진 (견적서·견적 화면 캡처는 쓰지 않는다) */
+function useProductPhoto(id: VendorId): string | null {
+  const { originals } = useRunStore();
+  const list: QuoteOriginal[] = [...(originals[id] ?? [])].reverse();
+  return list.find((o) => o.productImage)?.productImage ?? null;
+}
+
+const fmtWarranty = (m: number) => (m % 12 === 0 && m >= 12 ? `${m / 12}년` : `${m}개월`);
+
+/** 카드형 비교: 제품 사진 + 업체 이름 + 합계 + 항목 목록 + 버튼만 (군더더기 글씨 없이) */
+function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; hide: Hidden; onSource: (s: SourceEntry) => void; canAct: boolean }) {
+  const api = useApi();
+  const { flash, vendorStatus, set, scoped, backend } = useRunStore();
+  const photo = useProductPhoto(q.vendorId);
+  const [opening, setOpening] = useState(false);
+  const status = vendorStatus[q.vendorId] ?? 'idle';
+  // 주문 페이지를 내장 브라우저로 열고 크게 띄움 (표의 열기와 같음)
+  const openHere = async () => {
+    setOpening(true);
+    try {
+      const r = await api.openOrder(q.vendorId);
+      if (r?.ok && backend === 'electron') set({ expanded: q.vendorId });
+    } finally {
+      setOpening(false);
+    }
+  };
+  const has = q.listedPrice.value !== null;
+  const cond = req && has ? evaluateConditions(q, req) : null;
+  const settled = ['done', 'failed', 'waiting_reply', 'needs_mail', 'needs_file'].includes(status);
+  const top = rank === 1 && has;
+  const total = has ? confirmedSum(q, req) : null;
+  const isFlash = (keys: FieldKey[]) => Boolean(flash && flash.vendorId === q.vendorId && keys.includes(flash.field) && Date.now() - flash.at < 1500);
+  const n = (v: number | null, zero?: string) => (v === null ? '' : v === 0 && zero ? zero : `${v.toLocaleString('ko-KR')}원`);
+  const wm = q.warrantyMonths.value;
+  const ex = extraSum(q);
+
+  // 항목 한 줄: 이름 ··· 값. 값을 누르면 출처
+  const line = (label: string, keys: FieldKey[], content: React.ReactNode, danger = false) => {
+    const f = q[keys[0]] as Field<number>;
+    const src = keys.map((k) => (q[k].source ? { ...q[k].source!, vendorId: q.vendorId, field: k } : null)).find(Boolean) as SourceEntry | undefined;
+    const known = keys.some((k) => q[k].value !== null);
+    return (
+      <button
+        key={`${keys[0]}-${isFlash(keys) ? flash!.at : 0}`}
+        type="button"
+        disabled={!src}
+        onClick={(e) => { e.stopPropagation(); if (src) onSource(src); }}
+        title={src ? '출처 보기' : undefined}
+        className={cn('flex items-center justify-between gap-3 rounded-md px-1 py-1 text-left', src && 'hover:bg-card', isFlash(keys) && 'flash')}
+      >
+        <span className="text-muted-foreground">{label}</span>
+        <span className={cn('truncate font-semibold tabular-nums text-ink', danger && 'text-destructive')}>
+          {known ? content : f.status === 'asked' ? <Pill tone="warn">질문함</Pill> : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <motion.div
+      layout
+      transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+      className={cn('flex min-w-0 flex-col overflow-hidden rounded-lg', top ? 'bg-row ring-2 ring-primary/40' : 'bg-row-alt')}
+    >
+      {/* 제품 사진 + 순위 + 조건 */}
+      <div className="relative aspect-[16/10] overflow-hidden bg-white">
+        {photo ? (
+          <img src={photo} alt={`${q.vendorName} 제품 사진`} className="size-full object-contain p-3" draggable={false} />
+        ) : (
+          <div className="flex size-full items-center justify-center text-muted-foreground/40">
+            {settled || has ? <ImageOff className="size-8" /> : <Package className="size-8 animate-pulse" />}
+          </div>
+        )}
+        <span className={cn('absolute left-3 top-3 rounded-lg px-2.5 py-1 text-[13px] font-semibold tabular-nums shadow-sm', top ? 'bg-primary text-white' : 'bg-card/95 text-ink')}>
+          {has ? `${rank}위` : '–'}
+        </span>
+        {cond && (
+          <span className="absolute right-3 top-3 rounded-lg bg-card shadow-sm">
+            <CheckPill c={cond.overall} title={cond.violations.join(', ')} />
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        {/* 업체 + 합계 */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[q.vendorId])} />
+            <span className="truncate text-[16px] font-semibold text-ink" title={q.vendorName}>{q.vendorName}</span>
+          </div>
+          <div className={cn('mt-1 text-[26px] font-bold leading-tight tabular-nums', cond?.budget === 'violate' ? 'text-destructive' : top ? 'text-primary' : 'text-ink')}>
+            {total !== null ? <CountUp value={total} /> : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
+            {total !== null && q.missing.length > 0 && <Pill tone="warn" className="ml-2 align-middle" title={q.missing.join(', ')}>일부 미확인</Pill>}
+          </div>
+        </div>
+
+        {/* 항목 */}
+        <div className="flex flex-col text-[14px]">
+          {line('제품가', ['listedPrice'], n(productAmount(q, req)))}
+          {!hide.install && line('설치비', ['installFee'], n(q.installFee.value, '포함'))}
+          {line('배송비', ['shippingFee'], n(q.shippingFee.value, '무료'))}
+          {!hide.warranty && line('A/S', ['warrantyMonths', 'warrantyExtraFee'], wm !== null ? fmtWarranty(wm) : '?')}
+          {!hide.extra && (
+            <div className="flex items-center justify-between gap-3 px-1 py-1">
+              <span className="text-muted-foreground">추가 비용</span>
+              <span className="font-semibold tabular-nums text-ink">{ex ? `+${ex.toLocaleString('ko-KR')}원` : '없음'}</span>
+            </div>
+          )}
+          {line('납기', ['leadTimeDays'], q.leadTimeDays.value !== null ? `${q.leadTimeDays.value}일` : '', cond?.deadline === 'violate')}
+        </div>
+
+        {/* 버튼 */}
+        {has && (
+          <div className="mt-auto flex flex-wrap gap-2">
+            <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
+              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 견적서
+            </Button>
+            {canAct && q.channel === 'web' && !scoped && (
+              <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} disabled={opening} onClick={() => void openHere()} title="이 업체 주문 페이지를 앱 안 브라우저로 열기">
+                <ExternalLink className="size-4" /> 열기
+              </Button>
+            )}
+            {canAct && (
+              <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} onClick={() => api.draftOrder(q.vendorId)}>
+                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 주문 문의
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 

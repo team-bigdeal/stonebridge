@@ -15,6 +15,7 @@ import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
 import { ENGINE_ORDER, type Engine } from './browser/page';
+import { photoFromPage, productPhoto } from './browser/photo';
 import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
 import { sizeScanStarted, startSizeScan, stopSizeScan } from './sizes';
@@ -489,6 +490,13 @@ async function captureWeb(slot: VendorId, url: string, force = false) {
     capturedAt: new Date().toISOString()
   };
   emit('original', { vendorId: slot, payload: original });
+  // 비교 카드에 보여 줄 제품 사진은 따로 찾아서 같은 원본에 붙여 다시 보낸다 (못 찾아도 견적 진행에는 영향 없음).
+  // 이 화면에 없으면 업체 상품 페이지에서 찾는다
+  const home = getVendor(slot)?.url;
+  const photo =
+    (await productPhoto(driver, buf, url).catch(() => null)) ??
+    (home && home !== url ? await photoFromPage(home).catch(() => null) : null);
+  if (photo) emit('original', { vendorId: slot, payload: { ...original, productImage: photo } });
 }
 
 /** 사용자가 차단 화면을 해결함 → 같은 단계부터 이어서 */
