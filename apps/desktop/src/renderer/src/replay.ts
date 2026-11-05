@@ -5,7 +5,7 @@
 // - 히스토리를 누르면 그 세션 화면을 그대로 다시 그린다 (보기 전용). 그동안 들어온 이벤트는 돌아올 때 반영한다.
 import type { AgentEvent, HistoryEventPayload, HistoryRecord, SessionSnapshot, Slot, Stage, TimelineItem, VendorId, VendorStatus } from '@shared/types';
 import { pendingLive, useStore, type SessionMeta } from '@/store';
-import { useFrames, pushFrame } from '@/components/workspace/LiveFrame';
+import { useCursors, useFrames, pushFrame } from '@/components/workspace/LiveFrame';
 import { resendViews } from '@/components/workspace/viewManager';
 
 const KEYS = ['stage', 'requirements', 'timeline', 'quotes', 'vendors', 'vendorStatus', 'steps', 'browsers', 'sources', 'mails', 'originals', 'runs', 'runOf', 'rankLog'] as const;
@@ -162,6 +162,8 @@ function unpark(sid: string) {
     useFrames.setState({ frames: {} });
     useStore.setState({ focusedSid: sid, liveId: meta?.recordId ?? null });
   }
+  // 에이전트 커서는 그 세션 브라우저가 다음에 움직일 때 다시 그린다 (이전 세션 커서가 남지 않게)
+  useCursors.setState({ cursors: {} });
   for (const [slot, data] of Object.entries(p?.frames ?? {})) pushFrame(slot as Slot, data);
   const handle = useStore.getState().handle;
   for (const ev of p?.pending ?? []) handle(ev);
@@ -232,6 +234,7 @@ export async function resumeReplay() {
     unpark(r.sid);
   } else {
     applySnapshot(shown);
+    useCursors.setState({ cursors: {} });
     const p = parked.get(r.sid);
     parked.delete(r.sid);
     useStore.setState({ replay: null, focusedSid: r.sid, liveId: id, busy: false });
