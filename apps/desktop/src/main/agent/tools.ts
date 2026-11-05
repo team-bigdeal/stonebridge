@@ -124,6 +124,18 @@ export interface ToolContext {
   missingOnDone?: () => string[];
   doneNudged?: boolean;
   shipNudged?: boolean;
+  /** 업체를 고를 때 견적서를 내주는 곳을 우선 (자유 탐색일 때만). 견적서 기능이 없으면 몇 번 다른 후보를 찾게 한다 */
+  preferQuoteDoc?: boolean;
+  /** 견적서 기능이 없어 다른 후보를 찾게 한 횟수·사이트 */
+  noDocSkips?: number;
+  noDocHosts?: Set<string>;
+  /** 확정한 업체 페이지에서 찾은 견적서 버튼 글자 */
+  quoteDoc?: string | null;
+  /** 이번 탐색에서 견적서 PDF를 받았는지 */
+  pdfGot?: boolean;
+  docNudged?: boolean;
+  /** 견적서 기능이 없어 건너뛴 업체 기록 (다른 브라우저와 공유) */
+  onNoQuoteDoc?: (v: PickedVendor) => void;
   /** 페이지에 도착하면 기록하고, 다른 브라우저가 이미 본 곳이면 그 메모 */
   onVisit?: (url: string, title: string) => string | null;
   /** 다른 브라우저들이 본 사이트·판단 메모 (검색 결과 아래에 붙임) */
@@ -206,6 +218,7 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
         if (!ctx.onPdf) return { text: '이 단계에서는 PDF를 받을 수 없습니다.', isError: true };
         const file = name === 'save_page_pdf' ? await d.printPdf() : await d.downloadPdf({ ref: input.ref ? String(input.ref) : undefined, url: input.url ? String(input.url) : undefined });
         const added = await ctx.onPdf(file);
+        ctx.pdfGot = true;
         return {
           text: `가견적서 PDF를 받아 읽었습니다 (${file.name}, ${Math.max(1, Math.round(file.data.length / 1024))}KB). ${added.length ? `반영된 항목: ${added.join(', ')}.` : '숫자 항목은 찾지 못했습니다.'} 빠진 항목(배송비·납기 등)은 페이지에서 계속 찾고, 다 됐으면 report_quote(done=true)로 끝내세요.`
         };
@@ -217,9 +230,38 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
       case 'claim_vendor': {
         if (!isUrl(input.url)) return { text: 'http(s) URL이 필요합니다.', isError: true };
         const v = { name: String(input.name), url: String(input.url), reason: String(input.reason ?? '') };
+        // 견적서를 내주는 업체 우선: 확정 전에 그 페이지에 견적서 출력·다운로드 기능이 있는지 직접 확인한다
+        const host = (u: string) => {
+          try {
+            return new URL(u).hostname.replace(/^(www|m)\./, '');
+          } catch {
+            return u;
+          }
+        };
+        let doc: string | null = null;
+        if (ctx.preferQuoteDoc) {
+          if (host(await d.url().catch(() => '')) !== host(v.url)) await d.navigate(v.url).catch(() => undefined);
+          doc = await pageTools.findQuoteDocButton(d);
+          ctx.noDocHosts ??= new Set();
+          const skips = ctx.noDocSkips ?? 0;
+          if (!doc && skips < 2 && !ctx.noDocHosts.has(host(v.url))) {
+            ctx.noDocSkips = skips + 1;
+            ctx.noDocHosts.add(host(v.url));
+            ctx.onNoQuoteDoc?.(v);
+            return {
+              text: `${v.name} 페이지에서 견적서 출력·다운로드 기능을 찾지 못했습니다. 돌다리는 업체 견적서를 받아 정리하는 서비스라 견적서를 내주는 곳을 우선합니다. "견적서 출력", "가견적서" 기능이 있는 다른 후보(인쇄·제작 전문몰 등)를 찾아보세요 (${skips + 1}/2). 더 나은 후보가 없으면 이 업체를 다시 claim_vendor 하면 확정됩니다.`,
+              isError: true
+            };
+          }
+        }
         const err = ctx.onClaim?.(v) ?? null;
         if (err) return { text: err, isError: true };
-        return { text: `업체 확정: ${v.name}. 이제 이 업체의 견적 정보를 찾아 report_quote로 보고하세요.` };
+        ctx.quoteDoc = doc;
+        return {
+          text: doc
+            ? `업체 확정: ${v.name}. 이 사이트에는 "${doc}" 기능이 있습니다. 옵션을 요구 조건에 맞춘 뒤 download_quote_pdf로 견적서를 꼭 받고, 빠진 항목은 report_quote로 보고하세요.`
+            : `업체 확정: ${v.name}. 이제 이 업체의 견적 정보를 찾아 report_quote로 보고하세요.`
+        };
       }
       case 'select_vendors': {
         const vendors = (Array.isArray(input.vendors) ? input.vendors : [])
@@ -237,6 +279,13 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
         if (shipDoubt) {
           ctx.shipNudged = true;
           return { text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}${shipDoubt}` };
+        }
+        // 견적서 버튼이 있는 사이트인데 아직 견적서를 받지 않았으면 끝내기 전에 한 번 받게 한다
+        if (input.done && ctx.quoteDoc && !ctx.pdfGot && !ctx.docNudged) {
+          ctx.docNudged = true;
+          return {
+            text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}이 사이트에는 "${ctx.quoteDoc}" 기능이 있는데 아직 견적서를 받지 않았습니다. 옵션이 요구 조건과 맞는지 확인하고 download_quote_pdf(그 버튼의 ref)로 견적서를 받은 뒤 끝내세요. 받을 수 없으면(로그인·개인정보 요구 등) report_quote(done=true)를 다시 호출하세요.`
+          };
         }
         const missing = input.done && !ctx.doneNudged ? (ctx.missingOnDone?.() ?? []) : [];
         if (missing.length) {

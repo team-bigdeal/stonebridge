@@ -556,6 +556,9 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           ),
         onAfter: () => void refreshState(slot),
         // 자기 업체 사이트 안에서 움직일 때는 기록만 하고 알림은 붙이지 않는다
+        // 자유 탐색이면 견적서를 내주는 업체를 우선한다 (사용자가 주소·이름으로 정한 업체는 그대로)
+        preferQuoteDoc: mode === 'hunt' && !targets.has(slot),
+        onNoQuoteDoc: (pv) => noteVerdict(slot, pv.url, `${pv.name}: 견적서 출력 기능 없음`),
         onVisit: (url, title) => {
           const note = noteVisit(slot, url, title);
           const own = getVendor(slot);
