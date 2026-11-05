@@ -45,7 +45,7 @@ interface State {
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   backend: 'aside' | 'electron' | null;
   /** scope가 있으면 이전 검색 카드에서 연 것 (그 검색의 값으로 보여 줌) */
-  viewer: { kind: 'vendor'; id: VendorId; scope?: RunSnapshot } | { kind: 'integrated'; scope?: RunSnapshot } | null;
+  viewer: { kind: 'vendor'; id: VendorId; scope?: RunSnapshot } | { kind: 'integrated'; scope?: RunSnapshot } | { kind: 'approval'; scope?: RunSnapshot } | null;
   set: (p: Partial<State>) => void;
   push: (item: TimelineItem) => void;
   handle: (ev: AgentEvent) => void;

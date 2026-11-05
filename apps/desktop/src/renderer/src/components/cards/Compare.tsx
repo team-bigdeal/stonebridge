@@ -351,6 +351,7 @@ export function ReportCard() {
       <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={busy} onClick={() => void api.revise()}>
         <SlidersHorizontal className="size-4" /> 조건 바꾸기
       </Button>
+      <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
       <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </Card>
   );
