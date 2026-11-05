@@ -1,0 +1,4 @@
+#!/bin/sh
+# 커밋 메시지에서 AI 공동작업 표기(Co-Authored-By: Claude 등)를 지운다. 규칙: AGENTS.md
+command -v node >/dev/null 2>&1 || exit 0
+exec node "$(git rev-parse --show-toplevel)/scripts/ai-attribution.mjs" --strip "$1"

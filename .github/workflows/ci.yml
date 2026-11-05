@@ -1,0 +1,67 @@
+# PR마다 상태만 보여 준다. 합치기는 막지 않는다 (CONTRIBUTING.md).
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck · build
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --prefix apps/desktop
+      - run: npm run typecheck
+      - run: npm run build
+
+  no-secrets:
+    name: no-secrets
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: .env·API 키 커밋 검사
+        run: |
+          fail=0
+          if git ls-files | grep -E '(^|/)\.env(\..*)?$' | grep -v '\.env\.example$'; then
+            echo "::error::.env 파일이 커밋되어 있습니다"; fail=1
+          fi
+          if git grep -nIE 'sk-ant-[A-Za-z0-9_-]{20,}' -- . ':!**/package-lock.json'; then
+            echo "::error::Anthropic API 키로 보이는 문자열이 있습니다"; fail=1
+          fi
+          exit $fail
+
+  no-ai-attribution:
+    name: no-ai-attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 커밋 메시지 검사
+        if: github.event_name == 'pull_request'
+        run: git log --format=%B "origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}" | node scripts/ai-attribution.mjs --check -
+      - name: PR 제목·본문 검사
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n%s\n' "$TITLE" "$BODY" | node scripts/ai-attribution.mjs --check -
+      - name: main 커밋 검사
+        if: github.event_name == 'push'
+        run: git log -1 --format=%B "${{ github.sha }}" | node scripts/ai-attribution.mjs --check -
