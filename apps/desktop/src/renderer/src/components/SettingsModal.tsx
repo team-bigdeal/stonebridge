@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronDown, Loader2, Mail, X } from 'lucide-react';
 import type { SettingsInput } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,13 +17,22 @@ export default function SettingsModal() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [loginUrl, setLoginUrl] = useState('https://www.naver.com');
+  const [google, setGoogle] = useState<'idle' | 'waiting'>('idle');
+  const [googleError, setGoogleError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showClient, setShowClient] = useState(false);
 
   useEffect(() => {
     if (!settingsOpen || !config) return;
     setForm({ ANTHROPIC_MODEL: config.model, SMTP_USER: config.smtpUser, BROWSER_BACKEND: config.browserPref });
     setError('');
     setSaved('');
-  }, [settingsOpen, config]);
+    setGoogleError('');
+    setShowPassword(config.mailAuth === 'password');
+    // 열 때마다 최신 상태로 (Google 연결이 만료됐을 수 있음)
+    void window.doldari.config().then((c) => set({ config: c }));
+    // 열 때 한 번만 초기화한다 (config가 바뀔 때마다 하면 연결 중에 입력한 값이 지워짐)
+  }, [settingsOpen]);
 
   if (!settingsOpen || !config) return null;
   const up = (k: keyof SettingsInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
@@ -42,8 +51,32 @@ export default function SettingsModal() {
       return;
     }
     set({ config: res.config! });
-    setForm((f) => ({ ...f, ANTHROPIC_API_KEY: '', SMTP_PASS: '' }));
+    setForm((f) => ({ ...f, ANTHROPIC_API_KEY: '', SMTP_PASS: '', GOOGLE_CLIENT_SECRET: '' }));
     setSaved('저장했어요.');
+  }
+
+  /** 시스템 브라우저에서 로그인·동의를 마칠 때까지 기다린다 */
+  async function connectGoogle() {
+    setGoogleError('');
+    setGoogle('waiting');
+    try {
+      const res = await window.doldari.connectGoogle();
+      set({ config: res.config });
+      if (!res.ok) setGoogleError(res.error ?? 'Google 계정을 연결하지 못했어요.');
+    } catch (e) {
+      setGoogleError(e instanceof Error ? e.message : 'Google 계정을 연결하지 못했어요.');
+    } finally {
+      setGoogle('idle');
+    }
+  }
+
+  async function disconnectGoogle() {
+    setGoogleError('');
+    try {
+      set({ config: await window.doldari.disconnectGoogle() });
+    } catch (e) {
+      setGoogleError(e instanceof Error ? e.message : '연결을 해제하지 못했어요.');
+    }
   }
 
   const select = 'h-9 w-full rounded-lg border border-input bg-white px-3 text-sm text-foreground outline-none focus:border-ring focus:ring-[3px] focus:ring-ring/50';
@@ -73,7 +106,9 @@ export default function SettingsModal() {
           <Status on={config.browser === 'aside'} warn={config.browser === 'electron'} title={config.browser === 'aside' ? '사용자의 Aside 브라우저로 탐색해요' : '앱 안에 보이는 브라우저로 탐색해요'}>
             {config.browser === 'aside' ? 'Aside 브라우저' : config.browser === 'electron' ? '내장 브라우저' : '브라우저 확인 중'}
           </Status>
-          <Status on={config.smtpConfigured}>{config.smtpConfigured ? '메일 연결됨' : '메일 연결 안 됨'}</Status>
+          <Status on={config.smtpConfigured} title={config.mailUser || undefined}>
+            {config.mailAuth === 'google' ? 'Google 메일 연결됨' : config.mailAuth === 'password' ? '메일 연결됨 (앱 비밀번호)' : '메일 연결 안 됨'}
+          </Status>
         </div>
 
         <div className="scroll-thin min-h-0 flex-1 divide-y overflow-y-auto px-5 text-sm">
@@ -128,15 +163,66 @@ export default function SettingsModal() {
           </Section>
 
           <Section title="메일 (Gmail)" status={config.smtpConfigured ? <Pill tone="ok">연결됨</Pill> : <span className="text-[12px] text-muted-foreground">선택 사항</span>}>
-            <Input type="email" placeholder="Gmail 주소" value={form.SMTP_USER ?? ''} onChange={up('SMTP_USER')} />
-            <Input
-              type="password"
-              placeholder={config.smtpConfigured ? '앱 비밀번호 (비워 두면 그대로)' : '앱 비밀번호 16자리'}
-              value={form.SMTP_PASS ?? ''}
-              onChange={up('SMTP_PASS')}
-              className="font-mono"
-            />
-            <Hint>Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호에서 만들 수 있어요. 연결하면 업체 회신도 자동으로 읽어요. 없으면 메일 앱으로 열어서 보내면 돼요.</Hint>
+            {config.googleUser ? (
+              <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Mail className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium" title={config.googleUser}>{config.googleUser}</div>
+                  <div className="text-[12px] text-muted-foreground">Google 계정으로 연결됨</div>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void disconnectGoogle()}>
+                  연결 해제
+                </Button>
+              </div>
+            ) : google === 'waiting' ? (
+              <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+                <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+                <div className="min-w-0 flex-1 text-[13px]">브라우저에서 Google 로그인과 메일 권한 동의를 마쳐 주세요.</div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => void window.doldari.cancelGoogle()}>
+                  취소
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" className="w-full" disabled={!config.googleClient} onClick={() => void connectGoogle()} title={config.googleClient ? undefined : '아래에 OAuth 클라이언트 ID를 먼저 저장해 주세요'}>
+                <Mail className="size-4" /> Google 계정으로 연결
+              </Button>
+            )}
+            {googleError && <p className="text-[12px] text-destructive">{googleError}</p>}
+            <Hint>연결하면 메일 카드에서 '승인하고 보내기'를 누를 때 이 계정으로 업체에 메일을 보내고, 업체 회신도 자동으로 읽어요. 돌다리는 Google 비밀번호를 보지 않아요.</Hint>
+
+            {config.googleClient && !showClient && (
+              <button type="button" onClick={() => setShowClient(true)} className="text-[12px] text-muted-foreground hover:text-foreground">
+                OAuth 클라이언트 바꾸기
+              </button>
+            )}
+            {(!config.googleClient || showClient) && (
+              <div className="space-y-2 rounded-lg bg-muted/50 p-3">
+                <span className="text-[12px] font-medium">Google OAuth 클라이언트</span>
+                <Input placeholder="클라이언트 ID (….apps.googleusercontent.com)" spellCheck={false} value={form.GOOGLE_CLIENT_ID ?? ''} onChange={up('GOOGLE_CLIENT_ID')} />
+                <Input type="password" placeholder="클라이언트 보안 비밀" value={form.GOOGLE_CLIENT_SECRET ?? ''} onChange={up('GOOGLE_CLIENT_SECRET')} className="font-mono" />
+                <Hint>Google Cloud 콘솔에서 만든 'OAuth 클라이언트 ID (데스크톱 앱)' 값을 넣고 저장하면 연결 버튼이 켜져요. 팀 공용 값은 팀 비밀번호 관리자에서 받으세요.</Hint>
+              </div>
+            )}
+
+            <button type="button" onClick={() => setShowPassword((v) => !v)} className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+              앱 비밀번호로 연결 (다른 방법)
+              <ChevronDown className={cn('size-3.5 transition-transform', showPassword && 'rotate-180')} />
+            </button>
+            {showPassword && (
+              <div className="space-y-2">
+                <Input type="email" placeholder="Gmail 주소" value={form.SMTP_USER ?? ''} onChange={up('SMTP_USER')} />
+                <Input
+                  type="password"
+                  placeholder={config.mailAuth === 'password' ? '앱 비밀번호 (비워 두면 그대로)' : '앱 비밀번호 16자리'}
+                  value={form.SMTP_PASS ?? ''}
+                  onChange={up('SMTP_PASS')}
+                  className="font-mono"
+                />
+                <Hint>Google 계정 → 보안 → 2단계 인증 → 앱 비밀번호에서 만들 수 있어요. Google 계정이 연결돼 있으면 그쪽을 먼저 써요.</Hint>
+              </div>
+            )}
           </Section>
         </div>
 

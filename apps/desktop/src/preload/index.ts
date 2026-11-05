@@ -25,6 +25,10 @@ const api = {
   historyGetSession: (id: string): Promise<SessionSnapshot | null> => ipcRenderer.invoke('history:getSession', id),
   saveSettings: (input: SettingsInput): Promise<{ ok: boolean; error?: string; config?: AppConfig }> => ipcRenderer.invoke('settings:save', input),
   clearApiKey: (): Promise<AppConfig> => ipcRenderer.invoke('settings:clearKey'),
+  /** 브라우저에서 Google 로그인을 마칠 때까지 기다린다 (토큰은 main에만 있고 여기로 오지 않음) */
+  connectGoogle: (): Promise<{ ok: boolean; error?: string; config: AppConfig }> => ipcRenderer.invoke('google:connect'),
+  cancelGoogle: (): Promise<void> => ipcRenderer.invoke('google:cancel'),
+  disconnectGoogle: (): Promise<AppConfig> => ipcRenderer.invoke('google:disconnect'),
   onEvent: (cb: (ev: AgentEvent) => void) => on('agent:event', cb),
   onFrame: (cb: (f: { slot: Slot; data: string }) => void) => on('browser:frame', cb),
   sendChat: (text: string) => ipcRenderer.invoke('chat:send', text),

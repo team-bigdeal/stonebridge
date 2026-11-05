@@ -5,6 +5,7 @@ import { app } from 'electron';
 import dotenv from 'dotenv';
 import type { AppConfig, SettingsInput } from '@shared/types';
 import { getBackend } from './browser';
+import { googleAccount, googleClientConfigured } from './channels/google-auth';
 
 // 빌드한 앱(이름 "돌다리")도 개발 때와 같은 데이터 폴더를 써서 견적 히스토리·설정을 같이 본다
 if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'doldari-desktop'));
@@ -42,7 +43,9 @@ function fromEnv() {
 
 export const config = fromEnv();
 
-const SETTING_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'BROWSER_BACKEND'] as const;
+const SETTING_KEYS = [
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'BROWSER_BACKEND', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
+] as const;
 
 const quote = (v: string) => (/^[\w@.\-:/+=]*$/.test(v) ? v : `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
 
@@ -76,8 +79,12 @@ export function clearApiKey() {
   Object.assign(config, fromEnv());
 }
 
-export const smtpConfigured = () => Boolean(config.smtp.user && config.smtp.pass);
-export const imapConfigured = () => Boolean(config.imap.user && config.imap.pass);
+/** 메일을 보내는 방법: Google 계정 연결이 있으면 그것, 없으면 앱 비밀번호 */
+export const mailAuth = (): AppConfig['mailAuth'] => (googleAccount() ? 'google' : config.smtp.user && config.smtp.pass ? 'password' : null);
+/** 메일을 보내는 주소 */
+export const mailUser = () => googleAccount() ?? config.smtp.user;
+export const smtpConfigured = () => mailAuth() !== null;
+export const imapConfigured = () => Boolean(googleAccount()) || Boolean(config.imap.user && config.imap.pass);
 export const hasApiKey = () => Boolean(config.apiKey);
 
 export function publicConfig(): AppConfig {
@@ -88,7 +95,11 @@ export function publicConfig(): AppConfig {
     model: config.model,
     smtpConfigured: smtpConfigured(),
     imapConfigured: imapConfigured(),
-    smtpUser: config.smtp.user
+    smtpUser: config.smtp.user,
+    mailAuth: mailAuth(),
+    mailUser: mailUser(),
+    googleUser: googleAccount(),
+    googleClient: googleClientConfigured()
   };
 }
 
