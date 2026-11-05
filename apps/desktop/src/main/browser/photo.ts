@@ -22,7 +22,9 @@ const FIND = `(() => {
   const vw = innerWidth, vh = innerHeight;
   const meta = document.querySelector('meta[property="og:image"], meta[name="og:image"], meta[name="twitter:image"]');
   const abs = (u) => { try { return new URL(u, location.href).href; } catch { return ''; } };
-  const SKIP = /logo|guide|notice|event|icon|ico_|banner|sprite|btn|button|badge|arrow|loading|blank|spacer|pixel|tracking|avatar|profile|emoji|star|rating|pay|card_|kakao|naver_|facebook|instagram|youtube/i;
+  // 단어 경계로 본다 (silicone 안의 icon처럼 상품 이름에 섞인 글자는 거르지 않게)
+  const SKIP = /(^|[\\/_\\-. ])(logo|guide|notice|event|icons?|ico|banner|sprite|btn|button|badge|arrow|loading|blank|spacer|pixel|tracking|avatar|profile|emoji|star|rating|pay|card|kakao|naver|facebook|instagram|youtube|sns)(?=[\\/_\\-. \\d]|$)/i;
+  const PRODUCT = /(goods|item|product|prd|shopimages|thumb|detail_main|main_img)/i;
   // og:image가 사이트 로고인 곳도 있어 같은 기준으로 거른다
   const ogRaw = meta && meta.content ? abs(meta.content) : '';
   const og = SKIP.test(ogRaw.split('?')[0]) ? '' : ogRaw;
@@ -30,7 +32,8 @@ const FIND = `(() => {
   const cands = [];
   let best = null, bestScore = 0;
   for (const img of document.images) {
-    const src = abs(img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src') || '');
+    // 지연 로딩 사진은 src가 자리 표시 이미지라 data-* 주소를 먼저 본다
+    const src = abs(img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src') || img.currentSrc || img.src || '');
     if (!src || /\\.svg(\\?|$)/i.test(src) || /^data:image\\/svg/i.test(src)) continue;
     if (SKIP.test(src + ' ' + (img.alt || '') + ' ' + (img.className || '') + ' ' + (img.id || ''))) continue;
     const r = img.getBoundingClientRect();
@@ -44,6 +47,9 @@ const FIND = `(() => {
     // 화면 위쪽에 크게 보이는 사진이 대개 대표 사진, 아래로 한참 내려간 사진(상세 안내 등)은 뒤로
     if (shown) score *= r.top < vh * 1.2 ? 4 : r.top < vh * 2.5 ? 1 : 0.3;
     if (ogFile && src.split('?')[0].split('/').pop() === ogFile) score *= 3;
+    // 상품 사진은 대개 정사각형에 가깝다. 세로로 긴 상세 설명·가로로 긴 배너는 뒤로
+    if (ratio < 0.6 || ratio > 1.9) score *= 0.15;
+    if (PRODUCT.test(src)) score *= 1.5;
     cands.push({ src, score });
     const st = getComputedStyle(img);
     const x0 = Math.max(0, r.left), y0 = Math.max(0, r.top), x1 = Math.min(vw, r.right), y1 = Math.min(vh, r.bottom);
@@ -75,17 +81,31 @@ function bytesToPhoto(buf: Buffer, type: string): string | null {
   return buf.length >= 1024 && buf.length <= MAX_RAW_BYTES ? `data:${type};base64,${buf.toString('base64')}` : null;
 }
 
+/** 파일 앞 바이트로 사진 형식을 알아낸다 (content-type을 text/plain 등으로 잘못 주는 서버가 있음) */
+function sniffImage(buf: Buffer): string | null {
+  if (buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf.subarray(0, 4).toString('hex') === '89504e47') return 'image/png';
+  if (buf.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif';
+  if (buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (buf.subarray(4, 12).toString('latin1').startsWith('ftypavif')) return 'image/avif';
+  return null;
+}
+
 /** 사진 주소 하나를 받아 본다 (실패하면 null) */
 async function fetchPhoto(url: string, referer: string): Promise<string | null> {
   try {
     const inline = /^data:(image\/(?:jpeg|png|webp|gif|avif));base64,(.+)$/i.exec(url);
     if (inline) return bytesToPhoto(Buffer.from(inline[2], 'base64'), inline[1]);
     if (!/^https?:\/\//.test(url)) return null;
-    const res = await net.fetch(url, { headers: { Referer: referer }, signal: AbortSignal.timeout(8000) });
+    // Referer는 헤더로 넣으면 다른 도메인(CDN) 사진 요청이 ERR_BLOCKED_BY_CLIENT로 막힌다. referrer 옵션으로 넘긴다
+    const res = await net.fetch(url, { referrer: referer, signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
-    const type = (res.headers.get('content-type') ?? '').split(';')[0].trim();
-    if (!/^image\/(jpeg|png|webp|gif|avif)$/.test(type)) return null;
-    return bytesToPhoto(Buffer.from(await res.arrayBuffer()), type);
+    const len = Number(res.headers.get('content-length') || 0);
+    if (len > MAX_FETCH_BYTES) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const type = sniffImage(buf);
+    return type ? bytesToPhoto(buf, type) : null;
   } catch {
     return null;
   }
@@ -125,7 +145,7 @@ export async function productPhoto(d: BrowserDriver, shot: Buffer | null, pageUr
 }
 
 // 페이지 HTML에서 쓰는 거르기 기준 (FIND의 SKIP과 같음)
-const SKIP_URL = /logo|guide|notice|event|icon|ico_|banner|sprite|btn|button|badge|arrow|loading|blank|spacer|pixel|tracking|avatar|profile|emoji|star|rating|pay|card_|kakao|naver_|facebook|instagram|youtube/i;
+const SKIP_URL = /(^|[\/_\-. ])(logo|guide|notice|event|icons?|ico|banner|sprite|btn|button|badge|arrow|loading|blank|spacer|pixel|tracking|avatar|profile|emoji|star|rating|pay|card|kakao|naver|facebook|instagram|youtube|sns)(?=[\/_\-. \d]|$)/i;
 
 /**
  * 견적을 찾은 화면에 사진이 없을 때(FAQ·주문서 화면 등) 업체 상품 페이지 HTML을 따로 받아 사진을 찾는다.
