@@ -218,7 +218,17 @@ export type TimelineItem =
   | { id: string; kind: 'compare' }
   | { id: string; kind: 'browser'; slot: Slot; title: string }
   | { id: string; kind: 'docs' }
-  | { id: string; kind: 'report' };
+  | { id: string; kind: 'report' }
+  | { id: string; kind: 'history'; summary: RunSummary };
+
+/** 조건 변경 전 검색 결과 요약 (화면은 지우고 기록만 남김) */
+export interface RunSummary {
+  requirements: Requirements;
+  rows: { id: VendorId; name: string; url: string; channel: Channel; total: number | null; rank: number | null }[];
+  recommended: VendorId | null;
+  reasons: string[];
+  at: string;
+}
 
 export interface BrowserState {
   slot: Slot;
@@ -235,6 +245,8 @@ export type AgentEventType =
   | 'quote_update'
   | 'source'
   | 'requirements'
+  | 'requirements_ready'
+  | 'revised'
   | 'vendors'
   | 'vendor_status'
   | 'timeline'

@@ -2,9 +2,9 @@
 // 요구 조건 → 브라우저 3개가 동시에 각자 업체를 찾아 견적 수집(가격 없으면 메일/파일) → 업체별 통일 견적서 → 비교·추천 → 작성 → 통합 견적서
 import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
-import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, Slot, VendorId, VendorInfo } from '@shared/types';
+import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
-import { missingKeys, productAmount, priceQty, recommend } from '@shared/quote';
+import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
 import { hasApiKey, imapConfigured } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
@@ -93,15 +93,14 @@ export async function onChat(text: string) {
         timeline({ kind: 'requirements' });
       }
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
-      const q = await interview.next(text);
+      const { question, ready } = await interview.next(text);
       emit('requirements', { payload: interview.req });
-      if (q) {
-        say(q);
+      emit('requirements_ready', { payload: ready });
+      if (question) {
+        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
         return;
       }
-      requirements = interview.result();
-      emit('requirements', { payload: requirements });
-      void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
+      say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이대로 검색 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
       return;
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
@@ -121,6 +120,33 @@ export async function onChat(text: string) {
   } finally {
     setBusy(false);
   }
+}
+
+// ─── 요구 조건 확인 → 검색 시작 ──────────────────────────────
+
+const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
+
+/** 사용자가 카드에서 확인(필요하면 수정)하고 시작을 누름 */
+export async function startSearch(patch: Partial<Requirements>) {
+  if (!interview || getStage() !== 'interview') return;
+  // renderer 입력이라 값을 검증해서 받는다
+  const clean: Partial<Requirements> = {};
+  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
+  if (posInt(patch.quantity)) clean.quantity = patch.quantity;
+  if (posInt(patch.budgetMax)) clean.budgetMax = patch.budgetMax;
+  if (typeof patch.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(patch.deadline)) clean.deadline = patch.deadline;
+  if (typeof patch.needInstall === 'boolean') clean.needInstall = patch.needInstall;
+  if (typeof patch.minWarrantyMonths === 'number' && Number.isInteger(patch.minWarrantyMonths) && patch.minWarrantyMonths >= 0) clean.minWarrantyMonths = patch.minWarrantyMonths;
+  if (typeof patch.region === 'string') clean.region = patch.region.trim().slice(0, 100) || undefined;
+  interview.apply(clean);
+  if (!interview.req.item) {
+    say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
+    return;
+  }
+  requirements = interview.result();
+  emit('requirements', { payload: requirements });
+  emit('requirements_ready', { payload: false });
+  void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
 }
 
 // ─── 브라우저 3개가 동시에: 업체 찾기 → 견적 받기 ──────────────
@@ -471,7 +497,9 @@ function afterSent(draft: MailDraft) {
   if (draft.kind === 'order') return;
   setVendorStatus(draft.vendorId, 'waiting_reply');
   if (draft.kind === 'question' && draft.fields) quoteStore.markAsked(draft.vendorId, draft.fields);
-  if (imapConfigured()) watchReply(draft.vendorId, draft.kind, subjectTag(draft), (r) => void handleReply(draft.vendorId, draft.kind, r));
+  // 조건 변경 뒤 늦게 온 이전 검색의 회신은 새 견적에 섞지 않는다
+  const gen = generation;
+  if (imapConfigured()) watchReply(draft.vendorId, draft.kind, subjectTag(draft), (r) => void (gen === generation && handleReply(draft.vendorId, draft.kind, r)));
   maybeOpenGate();
 }
 
@@ -704,11 +732,10 @@ function openDraft(draft: MailDraft) {
 
 // ─── 새 견적 ──────────────────────────────────────────────────
 
-export async function reset() {
+/** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함) */
+async function clearRun() {
   generation++;
   startRecord();
-  interview = null;
-  requirements = null;
   docsShown = false;
   compareShown = false;
   announced = '';
@@ -721,10 +748,52 @@ export async function reset() {
   triedNames.clear();
   engines.clear();
   handoffMode.clear();
-  givenUrls = [];
   setVendors([]);
   resetStatuses();
   quoteStore.reset(null);
   setStage('interview', true);
   await resetAll();
+}
+
+export async function reset() {
+  interview = null;
+  requirements = null;
+  givenUrls = [];
+  await clearRun();
+}
+
+// ─── 조건 변경: 요구 조건 단계로 돌아가 다시 검색 ───────────────
+
+export async function revise() {
+  if (!interview || !requirements || !['compare', 'questions', 'draft'].includes(getStage())) return;
+  const req = requirements;
+  const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
+  const rec = recommend(quoteStore.quotes, req);
+  const summary: RunSummary = {
+    requirements: req,
+    rows: listVendors().map((v) => {
+      const q = quoteStore.get(v.id);
+      return {
+        id: v.id,
+        name: v.name,
+        url: v.url,
+        channel: q?.channel ?? 'web',
+        total: q && q.listedPrice.value !== null ? confirmedSum(q, req) : null,
+        rank: rank.includes(v.id) ? rank.indexOf(v.id) + 1 : null
+      };
+    }),
+    recommended: rec.vendorId,
+    reasons: rec.reasons,
+    at: new Date().toISOString()
+  };
+  await clearRun();
+  requirements = null;
+  // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
+  interview.apply(req);
+  interview.reopen();
+  emit('revised', { payload: summary });
+  timeline({ kind: 'requirements' });
+  emit('requirements', { payload: interview.req });
+  emit('requirements_ready', { payload: true });
+  say('이전 검색 결과는 요약으로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
 }
