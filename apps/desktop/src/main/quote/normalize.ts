@@ -50,7 +50,8 @@ export function toMeta(raw: any, src: { channel: Source['channel']; ref: string 
   const now = new Date().toISOString();
   const pq = Number(raw.fields?.listedPrice?.price_qty ?? raw.price_qty) || inferPriceQty(raw.fields?.listedPrice?.snippet ?? raw.listedPrice?.snippet);
   return {
-    priceQty: Number.isFinite(pq) && pq > 1 ? Math.round(pq) : undefined,
+    // 1도 그대로 둔다: 재확인에서 "1개 가격이 맞다"로 바로잡을 수 있게
+    priceQty: Number.isFinite(pq) && pq >= 1 ? Math.round(pq) : undefined,
     productName: raw.product?.name || undefined,
     spec: raw.product?.spec || undefined,
     supplier: clean(raw.supplier),

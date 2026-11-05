@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
-import { missingKeys, recommend } from '@shared/quote';
+import { missingKeys, productAmount, priceQty, recommend } from '@shared/quote';
 import { hasApiKey, imapConfigured } from './config';
 import {
   emit, getStage, getVendorStatus, notice, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
@@ -14,7 +14,7 @@ import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
 import { ENGINE_ORDER, type Engine } from './browser/page';
 import { runAgent } from './agent/loop';
-import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt } from './agent/prompts';
+import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
 import { formMessage, orderDraft, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
@@ -52,6 +52,10 @@ let givenUrls: string[] = [];
 /** 사용자에게 넘긴 브라우저가 어떤 단계였는지 (계속/건너뛰기용) */
 const handoffMode = new Map<VendorId, { mode: 'hunt' | 'collect'; url?: string }>();
 const captured = new Set<string>();
+/** 가격 이상치 재확인을 이미 한 업체 (값이 바뀌면 다시 할 수 있게 값까지 키로) */
+const verified = new Set<string>();
+/** 다른 업체 금액과 이만큼(배) 이상 차이 나면 기준 수량을 다시 확인한다 */
+const OUTLIER_RATIO = 3;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
@@ -406,7 +410,11 @@ function applyFields(slot: VendorId, fields: ReportedFields, meta: QuoteMeta, ch
 }
 
 function maybeOpenGate() {
-  if (VENDOR_IDS.every((id) => !['browsing', 'parsing'].includes(getVendorStatus(id)))) quoteStore.openGate();
+  if (VENDOR_IDS.every((id) => !['browsing', 'parsing'].includes(getVendorStatus(id)))) {
+    quoteStore.openGate();
+    // 반영 대기 중인 값이 없으면 지금 바로 가격 이상치 확인 (있으면 큐가 비었을 때 onQuotesSettled에서)
+    if (!quoteStore.hasPending()) checkPriceOutliers();
+  }
 }
 
 function showCompare() {
@@ -521,6 +529,7 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
 let announced = '';
 function onQuotesSettled() {
   if (!requirements) return;
+  checkPriceOutliers();
   const priced = listVendors().filter((v) => quoteStore.get(v.id)?.listedPrice.value !== null);
   if (priced.length === 0) return;
   if (!docsShown) {
@@ -535,6 +544,92 @@ function onQuotesSettled() {
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
   say(`${rec.vendorId ? `추천: ${vendorName(rec.vendorId)}${rec.tentative ? ' (확인 필요)' : ''}` : '조건을 모두 만족하는 업체가 없어요.'}\n${rec.reasons.map((r) => `· ${r}`).join('\n')}${missing ? `\n견적서에 빠진 항목이 있는 업체가 ${missing}곳 있어요. 확인 질문 메일로 채울 수 있어요.` : ''}`);
   timeline({ kind: 'report' });
+}
+
+// ─── 가격 이상치: 기준 수량을 잘못 읽었는지 다시 확인 ──────────
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+function checkPriceOutliers() {
+  if (!requirements) return;
+  // 아직 탐색 중인 브라우저가 있으면 비교 대상이 덜 모였으니 기다린다 (모두 끝나면 다시 불린다)
+  if (VENDOR_IDS.some((id) => ['browsing', 'parsing'].includes(getVendorStatus(id)))) return;
+  const rows = listVendors()
+    .map((v) => ({ v, q: quoteStore.get(v.id) }))
+    .map((r) => ({ ...r, amount: r.q ? productAmount(r.q, requirements) : null }))
+    .filter((r): r is typeof r & { amount: number } => r.amount !== null && r.amount > 0);
+  if (rows.length < 2) return;
+  // 3곳 이상이면 전체 중앙값에서 튀는 곳만, 2곳뿐이면 어느 쪽이 틀렸는지 모르니 둘 다 확인
+  const all = rows.map((r) => r.amount);
+  const m = median(all);
+  const spread = Math.max(...all) / Math.min(...all);
+  for (const r of rows) {
+    const others = rows.filter((o) => o.v.id !== r.v.id);
+    const ratio = rows.length >= 3 ? Math.max(r.amount / m, m / r.amount) : spread;
+    if (ratio < OUTLIER_RATIO) continue;
+    const key = `${r.v.id}:${r.q.listedPrice.value}:${priceQty(r.q)}`;
+    if (verified.has(key) || ['browsing', 'parsing'].includes(getVendorStatus(r.v.id))) continue;
+    verified.add(key);
+    const othersText = others.map((o) => `${o.v.name} ${o.amount.toLocaleString('ko-KR')}원`);
+    if (r.q.channel !== 'web') {
+      say(`${r.v.name} 금액(${r.amount.toLocaleString('ko-KR')}원)이 다른 업체와 약 ${ratio.toFixed(1)}배 차이 나요. 견적서의 수량 기준(1개·묶음·시트)을 한 번 확인해 주세요.`);
+      continue;
+    }
+    void verifyPrice(r.v.id, { listed: r.q.listedPrice.value!, priceQty: priceQty(r.q), amount: r.amount, snippet: r.q.listedPrice.source?.snippet, others: othersText, ratio });
+  }
+}
+
+async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSystemPrompt>[2], gen = generation) {
+  const v = getVendor(slot);
+  if (!requirements || !v) return;
+  const url = quoteStore.get(slot)?.listedPrice.source?.ref || v.url;
+  say(`${v.name} 금액이 다른 업체와 약 ${info.ratio.toFixed(1)}배 차이 나요. 수량 기준을 잘못 읽었을 수 있어 다시 확인할게요.`);
+  const driver = getDriver(slot);
+  driver.locked = false;
+  setVendorStatus(slot, 'browsing');
+  const before = { listed: info.listed, pq: info.priceQty };
+  let note = '';
+  try {
+    await runAgent(
+      {
+        slot,
+        driver,
+        onReport: (fields, meta, u) => {
+          note = meta.notes?.find((n) => n.includes('재확인')) ?? note;
+          return applyFields(slot, fields, meta, 'web', u);
+        },
+        onAfter: () => void refreshState(slot)
+      },
+      {
+        system: verifyPriceSystemPrompt(v, requirements, info),
+        goal: `${url} 에서 이 가격이 몇 개(매) 기준인지 다시 확인해 줘.`,
+        tools: ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote'],
+        maxSteps: 12,
+        signal: { get aborted() { return gen !== generation; } }
+      }
+    );
+  } catch (e) {
+    notice(`${v.name} 가격 재확인 실패: ${errMsg(e)}`, slot);
+  }
+  if (gen !== generation) return;
+  setVendorStatus(slot, 'done');
+  // 큐가 반영된 뒤 값 비교
+  setTimeout(() => {
+    const q = quoteStore.get(slot);
+    if (!q || !requirements) return;
+    const changed = q.listedPrice.value !== before.listed || priceQty(q) !== before.pq;
+    const amt = productAmount(q, requirements);
+    say(
+      changed
+        ? `${v.name} 가격을 바로잡았어요: ${amt?.toLocaleString('ko-KR')}원 (${priceQty(q)}개 기준 ${q.listedPrice.value?.toLocaleString('ko-KR')}원).${note ? ` ${note}` : ''}`
+        : `${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`
+    );
+  }, 2500);
+  maybeOpenGate();
 }
 
 export async function onSavePdf(win: BrowserWindow, html: string, fileName: string) {
@@ -608,6 +703,7 @@ export async function reset() {
   drafts.clear();
   banned.clear();
   captured.clear();
+  verified.clear();
   tries.clear();
   fallbacks.clear();
   triedNames.clear();
