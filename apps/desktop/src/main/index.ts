@@ -8,6 +8,8 @@ import { bindWindow } from './events';
 import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
 import { emit, getStage } from './events';
 import * as flow from './orchestrator';
+import { polishApproval } from './agent/approvalPolish';
+import type { PolishInput } from '@shared/approval';
 import { analyzeTemplate, clearTemplate, fillTemplate, loadTemplate, previewTemplate, saveMapping } from './template';
 import type { FieldDef } from '@shared/template';
 import { deleteRecord, getRecord, getSession, listRecords, saveSession } from './history';
@@ -88,6 +90,7 @@ function registerIpc() {
   ipcMain.handle('browser:login', (_e, url: string) => openLoginWindow(url));
   ipcMain.handle('agent:resume', (_e, slot: Slot) => flow.resume(slot));
   ipcMain.handle('report:pdf', (_e, html: string, name: string) => (mainWindow ? flow.onSavePdf(mainWindow, html, name) : null));
+  ipcMain.handle('approval:polish', (_e, input: PolishInput) => polishApproval(input));
   ipcMain.handle('template:get', () => loadTemplate());
   ipcMain.handle('template:analyze', (_e, file: { name: string; data: Uint8Array }, fields: FieldDef[]) => analyzeTemplate(file, fields));
   ipcMain.handle('template:mapping', (_e, mapping: Record<string, string | null>) => saveMapping(mapping));
