@@ -1,6 +1,7 @@
 // 총액·순위·조건 판정·추천·확인 질문 (순수 함수, main과 renderer가 같은 규칙을 쓴다)
 import type { Field, FieldKey, Quote, Requirements, VendorId } from './types';
 import { FIELD_KEYS } from './types';
+import { localIsoDate } from './parse';
 
 export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 
@@ -279,7 +280,7 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     wm !== null ? `기본 A/S ${wm % 12 === 0 && wm >= 12 ? `${wm / 12}년` : `${wm}개월`}` : '',
     ...(m.notes ?? [])
   ].filter(Boolean);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
   return {
     vendorId: q.vendorId,
     no: `DL-${today.replace(/-/g, '')}-${q.vendorId}`,

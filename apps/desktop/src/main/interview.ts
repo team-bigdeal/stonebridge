@@ -1,6 +1,6 @@
 // 인터뷰: 견적 비교에 필요한 요구 조건을 짧은 질문으로 채운다 (Claude 구조화 출력)
 import type { Requirements } from '@shared/types';
-import { addDaysIso } from '@shared/parse';
+import { addDaysIso, localIsoDate } from '@shared/parse';
 import { structured } from './agent/claude';
 
 /** A/S가 의미 없는 품목: 인쇄물·판촉물·소모품·식품·꽃 등. 사용자가 A/S를 따로 말하지 않으면 요구하지 않는다 */
@@ -53,7 +53,7 @@ export class Interview {
   async next(text: string): Promise<{ question: string | null; ready: boolean; wantsSizeHelp?: boolean; defaulted?: string[] }> {
     this.history.push({ role: 'user', text });
     const out = await structured<StepOut>({
-      system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 오늘은 ${new Date().toISOString().slice(0, 10)}이다.
+      system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 오늘은 ${localIsoDate()}이다.
 사용자가 사려는 품목의 견적을 업체별로 비교하려면 품목, 수량, 예산 상한(원), 납기(오늘부터 며칠 안), 설치/시공 필요 여부, 최소 A/S 기간(개월), 지역(설치·배송이 필요할 때)을 알아야 한다.
 지금까지의 대화를 보고 확정된 값을 채우고(모르면 null), 아직 모르는 중요한 값이 있으면 한 번에 하나만 묻는 짧고 친근한 한국어 질문을 nextQuestion에 넣는다.
 설치가 의미 없는 품목이면 needInstall=false로 두고 묻지 않는다.

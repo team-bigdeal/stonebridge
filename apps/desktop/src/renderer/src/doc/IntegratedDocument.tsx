@@ -2,6 +2,7 @@
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc, won } from '@shared/quote';
 import { buildCompareTable, type CompareCell, type CompareRow } from '@shared/compare-table';
+import { localIsoDate } from '@shared/parse';
 
 const n = (v: number | string | null | undefined) => (v === null || v === undefined ? '?' : typeof v === 'number' ? v.toLocaleString('ko-KR') : v);
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
@@ -25,7 +26,7 @@ export function IntegratedDocument({ quotes, req, urls }: { quotes: Partial<Reco
   const { vendors, recommendation: rec } = table;
   const best = rec.vendorId;
   const docs = vendors.map((v) => ({ q: quotes[v.id]!, d: buildDoc(quotes[v.id]!, req, urls[v.id]) }));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
 
   return (
     <div className="dl-paper">

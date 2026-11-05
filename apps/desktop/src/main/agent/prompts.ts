@@ -1,5 +1,6 @@
 // 에이전트 시스템 프롬프트
 import type { Requirements, VendorId, VendorInfo } from '@shared/types';
+import { localIsoDate } from '@shared/parse';
 
 export function reqText(r: Requirements) {
   return [
@@ -17,7 +18,7 @@ export function reqText(r: Requirements) {
     .join('\n');
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localIsoDate();
 
 /** 브라우저마다 다른 경로로 업체를 찾는다 */
 export const ANGLES: Record<VendorId, string> = {

@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { won } from '@shared/quote';
 import { buildCompareTable, type CompareCell, type CompareRow } from '@shared/compare-table';
+import { localIsoDate } from '@shared/parse';
 
 export interface XlsxPayload {
   quotes: Partial<Record<VendorId, Quote>>;
@@ -51,7 +52,7 @@ export function buildWorkbook({ quotes, req, urls }: XlsxPayload): ExcelJS.Workb
   wb.created = new Date();
   const ws = wb.addWorksheet('비교표', { views: [{ state: 'frozen', xSplit: 1, ySplit: 6 }] });
   const cols = table.vendors.length + 1;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localIsoDate();
 
   const note = (r: number, text: string, bold = false) => {
     ws.mergeCells(r, 1, r, Math.max(cols, 2));
