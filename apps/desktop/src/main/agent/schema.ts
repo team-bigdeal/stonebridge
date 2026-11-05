@@ -12,6 +12,12 @@ const FIELD_DESC: Record<string, string> = {
 
 const str = { type: 'string' };
 
+/** 견적 조건 글 항목 설명 (납기 칸에 배송 방법이 들어가거나 외국어 원문이 그대로 남지 않게) */
+const TERM_DESC = {
+  delivery: '납기: 주문 후 받기까지 걸리는 기간이나 날짜만 ("주문 후 5일", "11월 20일까지"). 택배·선불·착불 같은 배송 방법은 넣지 않는다',
+  payment: '결제 조건 (한국어로. 예: "제작 전 계좌이체")'
+};
+
 /** report_quote 도구 입력의 부가 정보 (모두 선택) */
 export const metaProperties = {
   product: { type: 'object', description: '견적 대상 상품', properties: { name: { ...str, description: '상품명' }, spec: { ...str, description: '모델명·규격·옵션' } } },
@@ -23,7 +29,13 @@ export const metaProperties = {
   terms: {
     type: 'object',
     description: '견적 조건',
-    properties: { validity: { ...str, description: '견적 유효기간' }, delivery: { ...str, description: '납기 원문' }, leadTimeText: { ...str, description: '제작·출고·발송 기간 원문 그대로 ("7영업일" 등)' }, payment: { ...str, description: '결제 조건' }, place: { ...str, description: '인도·설치 장소' } }
+    properties: {
+      validity: { ...str, description: '견적 유효기간' },
+      delivery: { ...str, description: TERM_DESC.delivery },
+      leadTimeText: { ...str, description: '제작·출고·발송 기간 원문 그대로 ("7영업일" 등)' },
+      payment: { ...str, description: TERM_DESC.payment },
+      place: { ...str, description: '인도·설치 장소' }
+    }
   },
   extras: {
     type: 'array',
@@ -92,7 +104,12 @@ export const extractionSchema = {
       required: ['bizNo', 'ceo', 'phone', 'email', 'address'],
       properties: { bizNo: nstr, ceo: nstr, phone: nstr, email: nstr, address: nstr }
     },
-    terms: { type: 'object', additionalProperties: false, required: ['validity', 'delivery', 'leadTimeText', 'payment', 'place'], properties: { validity: nstr, delivery: nstr, leadTimeText: nstr, payment: nstr, place: nstr } },
+    terms: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['validity', 'delivery', 'leadTimeText', 'payment', 'place'],
+      properties: { validity: nstr, delivery: { ...nstr, description: `${TERM_DESC.delivery}. ${nstr.description}` }, leadTimeText: nstr, payment: { ...nstr, description: `${TERM_DESC.payment}. ${nstr.description}` }, place: nstr }
+    },
     extras: {
       type: 'array',
       items: {

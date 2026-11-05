@@ -253,6 +253,17 @@ export interface QuoteDoc {
   complete: boolean;
 }
 
+/** 납기로 볼 수 있는 글: 기간·날짜가 들어 있어야 한다 ("parcel, prepaid"·"택배 선불" 같은 배송 방법은 납기가 아님) */
+const LEAD_TEXT = /\d+\s*(?:영업일|일|주|개월|달|시간|business|working|days?|weeks?|months?|hours?)|\d{4}[-./]\d{1,2}|\d{1,2}\s*[./월]\s*\d{1,2}|당일|익일|즉시|협의|일주일|한\s*달/i;
+
+/** 견적서 납기 칸: 납기 원문 → 제작 기간 원문 → 일수. 외국어 원문이면 비교표와 같은 "주문 후 N일"로 적는다 */
+export function deliveryText(t: import('./types').QuoteTerms | undefined, leadDays: number | null): string | undefined {
+  const days = leadDays !== null ? `주문 후 ${leadDays}일` : undefined;
+  const text = [t?.delivery, t?.leadTimeText].find((s) => s && LEAD_TEXT.test(s));
+  if (text && !/[가-힣]/.test(text) && days) return days;
+  return text ?? days;
+}
+
 /** 서로 다른 형태(웹·메일·파일)의 견적을 하나의 양식으로 */
 export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
   const qty = req.quantity || 1;
@@ -314,7 +325,7 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     supplier: { name: q.vendorName, url, ...(m.supplier ?? {}) },
     terms: {
       validity: m.terms?.validity,
-      delivery: m.terms?.delivery ?? m.terms?.leadTimeText ?? (q.leadTimeDays.value !== null ? `주문 후 ${q.leadTimeDays.value}일` : undefined),
+      delivery: deliveryText(m.terms, q.leadTimeDays.value),
       payment: m.terms?.payment,
       place: m.terms?.place ?? req.region
     },

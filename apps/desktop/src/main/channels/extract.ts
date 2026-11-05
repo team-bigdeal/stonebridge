@@ -23,7 +23,9 @@ export async function extractQuote(params: {
 - warrantyMonths: 기본 무상 A/S 개월 수. warrantyExtraFee: 요구 A/S ${params.requirements.minWarrantyMonths}개월을 맞추는 데 드는 추가비 (기본으로 충족하면 0).
 - leadTimeDays: 주문 후 받기까지 걸리는 일수 ("3주" → 21). 제작·출고 기간과 배송 기간이 따로 적혀 있으면 더한다 (범위면 큰 값. "3영업일 출고 + 택배 1~2일" → 5). 원문은 terms.leadTimeText에.
 - stated_total: 견적서에 적힌 최종 합계(총 합계·합계금액). 없으면 0.
-- product·supplier·terms에는 견적서의 상품명·규격, 공급자(사업자번호·대표자·연락처·주소), 유효기간·납기·결제 조건·인도 장소를 그대로 옮긴다.
+- product·supplier·terms에는 견적서의 상품명·규격, 공급자(사업자번호·대표자·연락처·주소), 유효기간·납기·결제 조건·인도 장소를 옮긴다.
+- terms.delivery(납기)에는 받기까지 걸리는 기간·날짜만 적는다. "Shipping: parcel, prepaid", "택배 선불"처럼 배송 방법·운임 조건은 납기가 아니다 (필요하면 notes에).
+- 영어 등 외국어 견적서면 product.name·terms·notes·extras의 name·note를 한국어로 옮겨 적는다 (예: "bank transfer before production" → "제작 전 계좌이체", "parcel, prepaid" → "택배, 선불", "4 business days after artwork approval" → "시안 확정 후 4영업일"). 상호·모델명·사업자번호·주소와 snippet은 원문 그대로.
 - extras에는 출장비·철거비·추가 자재 등 그 밖의 비용을 넣는다 (반드시 내야 하면 required=true).
 - notes에는 특기사항을 한 줄씩.
 - 문서에 없는 항목은 반드시 null. 추측하지 않는다.
