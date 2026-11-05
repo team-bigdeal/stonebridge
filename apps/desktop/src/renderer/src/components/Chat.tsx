@@ -35,7 +35,10 @@ const FOLLOW_UPS = ['수량을 5000개로 바꿔서 다시 찾아 줘', '예산�
 
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation · Message · PromptInput · Suggestion) */
 export function Chat() {
-  const { timeline, busy, replay } = useStore();
+  const { timeline, busy, replay, stage, runOf } = useStore();
+  // 요구 조건 단계에서는 지금 견적의 확인 카드를 최신 메시지 바로 아래에 둔다 (위로 밀려 안 보이지 않게).
+  // 조건을 바꾸기 전 검색의 카드(runOf)는 제자리에 둔다
+  const liveReq = stage === 'interview' && !replay ? timeline.find((t) => t.kind === 'requirements' && !runOf[t.id]) : undefined;
   // 처음 그릴 때(또는 지난 견적을 열 때) 이미 있던 항목은 등장 애니메이션 없이, 이후 새로 붙는 항목만 살짝 미끄러져 들어온다
   const settled = useRef<Set<string>>(new Set());
   const replayId = replay?.id ?? null;
@@ -49,9 +52,8 @@ export function Chat() {
     <div className="flex h-full min-h-0 flex-col">
       <Conversation className="min-h-0">
         <ConversationContent className="w-full gap-6 px-8 py-8">
-          {timeline.map((item) => (
-            <Item key={item.id} item={item} animate={!settled.current.has(item.id)} />
-          ))}
+          {timeline.map((item) => (item === liveReq ? null : <Item key={item.id} item={item} animate={!settled.current.has(item.id)} />))}
+          {liveReq && <Item key={liveReq.id} item={liveReq} animate={!settled.current.has(liveReq.id)} />}
           {busy && (
             <div className="w-full animate-in fade-in-0 duration-300 motion-reduce:animate-none">
               <Typing />
@@ -121,9 +123,7 @@ function Composer() {
               placeholder={
                 stage === 'interview'
                   ? '어떤 견적이 필요한지 적어 주세요'
-                  : after
-                    ? '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요'
-                    : '업체 사이트 주소를 붙여 넣으면 그 업체도 비교에 넣어요'
+                  : '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요'
               }
               className="min-h-11 text-[14px]"
             />

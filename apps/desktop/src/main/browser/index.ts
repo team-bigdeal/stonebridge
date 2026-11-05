@@ -126,11 +126,14 @@ export async function goBack(slot: Slot) {
 }
 
 export async function resetAll() {
-  for (const [slot, d] of drivers) {
-    await d.reset();
-    states.delete(slot);
-    emit('browser', { payload: { slot, url: '', title: '', locked: false } });
-  }
+  // 하나씩 기다리면 조건 변경 뒤 새 검색 시작이 늦어지므로 동시에 정리한다
+  await Promise.all(
+    [...drivers].map(async ([slot, d]) => {
+      await d.reset();
+      states.delete(slot);
+      emit('browser', { payload: { slot, url: '', title: '', locked: false } });
+    })
+  );
 }
 
 export async function closeAll() {
