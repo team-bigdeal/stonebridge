@@ -393,7 +393,7 @@ function BareInput({
       {...rest}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={cn('h-auto w-full rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]', className)}
+      className={cn('h-auto w-full rounded-none border-0 bg-transparent dark:bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]', className)}
     />
   );
 }

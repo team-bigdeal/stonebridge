@@ -120,7 +120,7 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
             onChange={(e) => setText({ ...text, [k]: e.target.value })}
             aria-invalid={bad || undefined}
             className={cn(
-              'h-auto min-w-[3ch] max-w-[220px] rounded-none border-0 bg-transparent p-0 text-[14px] font-medium shadow-none [field-sizing:content] focus-visible:ring-0 md:text-[14px]',
+              'h-auto min-w-[3ch] max-w-[220px] rounded-none border-0 bg-transparent dark:bg-transparent p-0 text-[14px] font-medium shadow-none [field-sizing:content] focus-visible:ring-0 md:text-[14px]',
               has ? 'text-ink' : 'text-muted-foreground'
             )}
           />
@@ -252,7 +252,7 @@ export function MailCard({ draft }: { draft: MailDraft }) {
   const demo = isDemoAddress(edit.to);
   const canSend = Boolean(config?.smtpConfigured) || demo;
   // 디자인 29:174: 흰 카드, 칸마다 아래 줄, 근거는 회색 상자, 버튼은 외곽선 + 연파랑
-  const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 disabled:opacity-100';
+  const bare = 'h-auto rounded-none border-0 bg-transparent dark:bg-transparent p-0 shadow-none focus-visible:ring-0 disabled:opacity-100';
   return (
     <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-card p-5">
       <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
@@ -363,7 +363,7 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
   const [showContact, setShowContact] = useState(false);
   const vendor = vendors.find((v) => v.id === draft.vendorId);
   const chatLabel = draft.chatUrl?.includes('talk.naver.com') ? '네이버 톡톡 열기' : '카카오톡 열기';
-  const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0';
+  const bare = 'h-auto rounded-none border-0 bg-transparent dark:bg-transparent p-0 shadow-none focus-visible:ring-0';
   const copy = async () => {
     await navigator.clipboard.writeText(body);
     setCopied(true);

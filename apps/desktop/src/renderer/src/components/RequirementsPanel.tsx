@@ -240,7 +240,7 @@ function TextBox({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onCommit ? (e) => onCommit(e.target.value) : undefined}
         onKeyDown={onCommit ? (e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur() : undefined}
-        className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]"
+        className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent dark:bg-transparent p-0 text-[14px] font-medium text-ink shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px]"
       />
       {suffix && value && <span className="shrink-0 text-[13px] text-muted-foreground">{suffix}</span>}
     </label>
