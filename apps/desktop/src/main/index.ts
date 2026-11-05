@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import type { MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
 import { clearApiKey, config, publicConfig, saveSettings, themeMode } from './config';
@@ -63,7 +64,31 @@ function createWindow() {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // preload(window.doldari)가 붙은 앱 창은 앱 화면 밖으로 이동하지 않는다 (링크는 기본 브라우저로)
+  win.webContents.on('will-navigate', (e, url) => {
+    if (isAppUrl(url)) return;
+    e.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+  });
 }
+
+/** 앱 화면 주소인지: 개발 실행은 vite 주소(같은 origin), 빌드한 앱은 renderer/index.html 파일 */
+function isAppUrl(url: string) {
+  try {
+    const u = new URL(url);
+    const dev = process.env.ELECTRON_RENDERER_URL;
+    if (dev) return u.origin === new URL(dev).origin;
+    return u.protocol === 'file:' && u.pathname === pathToFileURL(path.join(__dirname, '../renderer/index.html')).pathname;
+  } catch {
+    return false;
+  }
+}
+
+// 모든 웹 화면: <webview>는 붙이지 않고, 새 창은 기본으로 거부한다 (필요한 화면은 만든 뒤 자기 처리기로 바꿔 씀)
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (ev) => ev.preventDefault());
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+});
 
 /** 화면 배율: Ctrl(⌘) + "+" / "-" / "0", Ctrl + 휠. 너무 작거나 커져 화면이 깨지지 않게 80%~150%로 묶는다 */
 const ZOOM = { min: 0.8, max: 1.5, step: 0.1 };
