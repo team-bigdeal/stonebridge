@@ -179,7 +179,8 @@ async function startHunt(req: Requirements) {
   triedNames.clear();
   const gen = generation;
   await Promise.all(VENDOR_IDS.map((id) => hunt(id, gen)));
-  maybeOpenGate();
+  // 조건 변경·새 견적으로 멈춘 검색이면 비교를 다시 열지 않는다
+  if (gen === generation) maybeOpenGate();
 }
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
@@ -197,7 +198,7 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   timeline({ kind: 'vendors' });
   const gen = generation;
   await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
-  maybeOpenGate();
+  if (gen === generation) maybeOpenGate();
 }
 
 /** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
