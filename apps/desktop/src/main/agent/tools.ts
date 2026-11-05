@@ -45,7 +45,7 @@ export const TOOL_DEFS = {
     '사이트가 내주는 가견적서·견적서 PDF를 받는다. "견적서 출력/다운로드/가견적서" 버튼이나 링크의 ref, 또는 PDF 주소(url). 받은 PDF는 자동으로 읽혀 견적에 반영된다. 옵션을 요구 조건에 맞춘 뒤 쓴다.',
     { ref: { type: 'string', description: 'snapshot의 버튼·링크 ref' }, url: { type: 'string', description: 'PDF 주소 (ref 대신)' } }
   ),
-  save_page_pdf: T('save_page_pdf', '지금 화면이 인쇄용 견적서 페이지일 때 그 화면을 PDF로 저장하고 읽어 견적에 반영한다.'),
+  save_page_pdf: T('save_page_pdf', '지금 화면이 인쇄용 견적서 페이지이거나, 클릭으로 견적서 팝업(새 창)이 열렸을 때 그 화면을 PDF로 저장하고 읽어 견적에 반영한다. 팝업이 열려 있으면 팝업을 저장한다.'),
   expand_all: T('expand_all', '접힌 섹션(<details>, 아코디언)을 펼친다. 숨은 비용(설치비·배송비·옵션) 확인용.'),
   claim_vendor: T('claim_vendor', '이 브라우저가 견적을 받을 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체면 거부된다.', vendorItem.properties, ['name', 'url', 'reason']),
   select_vendors: T('select_vendors', '견적을 받을 업체를 확정한다.', { vendors: { type: 'array', minItems: 1, maxItems: 3, items: vendorItem } }, ['vendors']),
@@ -100,12 +100,30 @@ export interface ToolContext {
   /** done=true 직전에 아직 비어 있는 주요 항목 (한 번은 되돌려 보내 더 찾게 한다) */
   missingOnDone?: () => string[];
   doneNudged?: boolean;
+  shipNudged?: boolean;
 }
 
 export interface ToolResult {
   text: string;
   isError?: boolean;
   outcome?: AgentOutcome;
+}
+
+/** 배송비 0원의 근거가 조건부 무료(금액 기준·회원 혜택)면 다시 확인하라는 안내. 아니면 null */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function freeShippingDoubt(fields: any): string | null {
+  const f = fields?.shippingFee;
+  if (!f || Number(f.value) !== 0) return null;
+  const snip = String(f.snippet ?? '');
+  if (/VIP|회원|등급|멤버십|쿠폰|이벤트|첫\s*구매|적립/i.test(snip)) {
+    return `배송비 0원의 근거("${snip.slice(0, 60)}")가 회원 등급·멤버십·쿠폰·이벤트 혜택으로 보입니다. 로그인하지 않은 일반 주문에는 적용되지 않으니, 일반 배송비(택배비)를 찾아 shippingFee를 다시 보고하세요.`;
+  }
+  const m = /(\d[\d,]*)\s*(만)?\s*원\s*이상/.exec(snip);
+  if (m) {
+    const won = Number(m[1].replace(/,/g, '')) * (m[2] ? 10000 : 1);
+    return `배송비 0원의 근거가 "${won.toLocaleString('ko-KR')}원 이상 무료" 조건입니다. 이번 주문 합계(부가세 포함)가 그 금액 이상인지 확인하세요. 미만이면 일반 배송비를 찾아 shippingFee를 다시 보고하세요.`;
+  }
+  return null;
 }
 
 const isUrl = (u: unknown) => /^https?:\/\//.test(String(u ?? ''));
@@ -177,8 +195,13 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
       }
       case 'report_quote': {
         const url = await d.url();
+        const shipDoubt = !ctx.shipNudged ? freeShippingDoubt(input.fields) : null;
         const added = (await ctx.onReport?.(toReported(input.fields), toMeta(input, { channel: 'web', ref: url }), url)) ?? [];
         // 끝내기 전에 빠진 항목이 있으면 한 번은 더 찾아보게 한다
+        if (shipDoubt) {
+          ctx.shipNudged = true;
+          return { text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}${shipDoubt}` };
+        }
         const missing = input.done && !ctx.doneNudged ? (ctx.missingOnDone?.() ?? []) : [];
         if (missing.length) {
           ctx.doneNudged = true;
