@@ -22,7 +22,7 @@ export function HistorySidebar() {
 
   if (!sidebarOpen) return null;
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
+    <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-muted/20 fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
       <div className="flex h-11 items-center gap-2 px-4 text-[13px] font-medium">
         <History className="size-4 text-muted-foreground" /> 지난 견적
         {list && list.length > 0 && <span className="tabular-nums text-muted-foreground">{list.length}</span>}
