@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
 import dotenv from 'dotenv';
-import type { AppConfig, SettingsInput } from '@shared/types';
+import type { AppConfig, SettingsInput, ThemeMode } from '@shared/types';
 import { getBackend } from './browser';
 import { googleAccount, googleClientConfigured } from './channels/google-auth';
 
@@ -44,8 +44,14 @@ function fromEnv() {
 export const config = fromEnv();
 
 const SETTING_KEYS = [
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'BROWSER_BACKEND', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'BROWSER_BACKEND', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
 ] as const;
+
+/** 화면 테마 설정. 값이 이상하면 system */
+export function themeMode(): ThemeMode {
+  const v = env.THEME?.trim();
+  return v === 'light' || v === 'dark' ? v : 'system';
+}
 
 const quote = (v: string) => (/^[\w@.\-:/+=]*$/.test(v) ? v : `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
 
@@ -89,6 +95,7 @@ export const hasApiKey = () => Boolean(config.apiKey);
 
 export function publicConfig(): AppConfig {
   return {
+    theme: themeMode(),
     browser: getBackend(),
     browserPref: env.BROWSER_BACKEND === 'electron' ? 'electron' : 'auto',
     hasApiKey: hasApiKey(),

@@ -8,11 +8,13 @@ import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
 import { startAutosave } from './replay';
+import { useTheme } from './lib/theme';
 
 export default function App() {
   const handle = useStore((s) => s.handle);
   const set = useStore((s) => s.set);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
+  useTheme(useStore((s) => s.config?.theme));
 
   useEffect(() => {
     window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey, backend: c.browser }));

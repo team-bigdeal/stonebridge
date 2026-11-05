@@ -2,9 +2,9 @@
 import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import type { BrowserInput, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
-import { clearApiKey, config, publicConfig, saveSettings } from './config';
+import { clearApiKey, config, publicConfig, saveSettings, themeMode } from './config';
 import { verifyApiKey } from './agent/claude';
 import { bindWindow } from './events';
 import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
@@ -20,6 +20,13 @@ import { resumePolling } from './channels/mail-poll';
 
 let mainWindow: BrowserWindow | null = null;
 
+/** 창 배경색: 테마 설정에 맞춰 켤 때 번쩍이지 않게 한다. nativeTheme.themeSource는 바꾸지 않고 읽기만 한다 */
+function windowBackground() {
+  const mode = themeMode();
+  const dark = mode === 'dark' || (mode === 'system' && nativeTheme.shouldUseDarkColors);
+  return dark ? '#17171c' : '#f4f5f9';
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -27,7 +34,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 720,
     title: '돌다리',
-    backgroundColor: '#07080b',
+    backgroundColor: windowBackground(),
     titleBarStyle: 'hiddenInset',
     // 창 버튼을 상단 바(높이 56px) 가운데 높이에 맞춘다
     trafficLightPosition: { x: 20, y: 21 },
@@ -73,6 +80,8 @@ function registerIpc() {
     }
     const prevPref = publicConfig().browserPref;
     saveSettings(input);
+    // 테마를 바꿨으면 창 배경색도 맞춰 둔다 (크기를 줄일 때 비치는 색)
+    if (input.THEME) mainWindow?.setBackgroundColor(windowBackground());
     // 앱 비밀번호를 새로 넣었으면 기다리던 회신 확인을 이어 간다
     resumePolling();
     if (publicConfig().browserPref !== prevPref) {
