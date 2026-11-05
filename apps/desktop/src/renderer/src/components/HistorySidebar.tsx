@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, Trash2 } from 'lucide-react';
+import { FileText, History, Trash2 } from 'lucide-react';
 import type { HistoryRecord, HistorySummary, Quote } from '@shared/types';
 import { confirmedSum, productAmount } from '@shared/quote';
 import { Badge } from '@/components/ui/badge';
@@ -12,73 +12,85 @@ const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const CHANNEL = { web: '웹', mail: '메일', file: '파일' } as const;
 
-/** 지난 견적 목록 → 한 건 열기 → 업체별·통합 견적서 다시 보기 */
-export function HistoryDialog() {
-  const { historyOpen, set } = useStore();
+/** 왼쪽 사이드 탭: 지난 견적 목록. 누르면 상세 창이 열린다 */
+export function HistorySidebar() {
+  const { sidebarOpen, historyRev, historyRecord, set } = useStore();
   const [list, setList] = useState<HistorySummary[] | null>(null);
-  const [record, setRecord] = useState<HistoryRecord | null>(null);
 
   useEffect(() => {
-    if (!historyOpen) return;
-    setRecord(null);
+    if (!sidebarOpen) return;
     void window.doldari.historyList().then(setList);
-  }, [historyOpen]);
+  }, [sidebarOpen, historyRev]);
 
-  if (!historyOpen) return null;
-  const close = () => set({ historyOpen: false });
-
+  if (!sidebarOpen) return null;
   return (
-    <Dialog open onOpenChange={(o) => !o && close()}>
+    <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
+      <div className="flex h-10 items-center gap-2 px-3 text-[12px] font-semibold text-muted-foreground">
+        <History className="size-3.5" /> 히스토리
+        {list && list.length > 0 && <span className="font-normal">{list.length}</span>}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {list === null ? (
+          <div className="px-2 py-3 text-[12px] text-muted-foreground">불러오는 중…</div>
+        ) : list.length === 0 ? (
+          <div className="px-2 py-3 text-[12px] leading-relaxed text-muted-foreground">아직 저장된 견적이 없어요. 견적 비교가 끝나면 여기에 자동으로 쌓여요.</div>
+        ) : (
+          <ul className="space-y-0.5">
+            {list.map((h) => (
+              <li key={h.id} className="group relative">
+                <button
+                  type="button"
+                  className={cn('w-full rounded-md px-2.5 py-2 text-left hover:bg-accent', historyRecord?.id === h.id && 'bg-accent')}
+                  onClick={async () => set({ historyRecord: await window.doldari.historyGet(h.id) })}
+                >
+                  <div className="truncate pr-6 text-[13px] font-medium">{h.item}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span>{when(h.updatedAt)}</span>
+                    <span>·</span>
+                    <span>{h.quantity.toLocaleString('ko-KR')}개</span>
+                    <span>·</span>
+                    <span>{h.pricedCount}/{h.vendorCount}곳</span>
+                  </div>
+                  {h.best && (
+                    <div className="mt-0.5 truncate text-[11px]">
+                      <span className="text-muted-foreground">추천 {h.best.name} </span>
+                      <span className="font-semibold text-primary">{won(h.best.total)}</span>
+                    </div>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  title="이 기록 삭제"
+                  className="absolute right-1.5 top-2 rounded p-1 text-muted-foreground opacity-0 hover:bg-background hover:text-destructive group-hover:opacity-100"
+                  onClick={async () => {
+                    if (!confirm(`"${h.item}" 견적 기록을 삭제할까요?`)) return;
+                    await window.doldari.historyDelete(h.id);
+                    if (historyRecord?.id === h.id) set({ historyRecord: null });
+                  }}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/** 히스토리에서 고른 견적 한 건 */
+export function HistoryDetail() {
+  const { historyRecord: record, set } = useStore();
+  if (!record) return null;
+  return (
+    <Dialog open onOpenChange={(o) => !o && set({ historyRecord: null })}>
       <DialogContent className="flex max-h-[86vh] max-w-[860px] flex-col gap-3 sm:max-w-[860px]">
-        <DialogHeader className="flex-row items-center gap-2">
-          {record && (
-            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setRecord(null)}>
-              <ArrowLeft className="size-4" />
-            </Button>
-          )}
-          <DialogTitle>{record ? `${record.requirements.item} · ${record.requirements.quantity.toLocaleString('ko-KR')}개` : '견적 히스토리'}</DialogTitle>
+        <DialogHeader>
+          <DialogTitle>{record.requirements.item} · {record.requirements.quantity.toLocaleString('ko-KR')}개</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {record ? (
-            <RecordDetail record={record} />
-          ) : list === null ? (
-            <div className="p-6 text-sm text-muted-foreground">불러오는 중…</div>
-          ) : list.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">아직 저장된 견적이 없어요. 견적 비교가 끝나면 여기에 자동으로 쌓여요.</div>
-          ) : (
-            <ul className="space-y-1.5">
-              {list.map((h) => (
-                <li key={h.id} className="group flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 hover:border-primary/60">
-                  <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={async () => setRecord(await window.doldari.historyGet(h.id))}>
-                    <span className="w-24 shrink-0 text-[12px] text-muted-foreground">{when(h.updatedAt)}</span>
-                    <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">
-                      {h.item} <span className="font-normal text-muted-foreground">· {h.quantity.toLocaleString('ko-KR')}개</span>
-                    </span>
-                    <span className="shrink-0 text-[12px] text-muted-foreground">견적 {h.pricedCount}/{h.vendorCount}곳</span>
-                    {h.best && (
-                      <span className="shrink-0 text-[13px]">
-                        <span className="text-muted-foreground">추천 </span>
-                        <span className="font-semibold">{h.best.name}</span> <span className="font-bold text-primary">{won(h.best.total)}</span>
-                      </span>
-                    )}
-                  </button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-muted-foreground opacity-0 group-hover:opacity-100"
-                    title="이 기록 삭제"
-                    onClick={async () => {
-                      if (!confirm(`"${h.item}" 견적 기록을 삭제할까요?`)) return;
-                      await window.doldari.historyDelete(h.id);
-                      setList((l) => l?.filter((x) => x.id !== h.id) ?? null);
-                    }}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <RecordDetail record={record} />
         </div>
       </DialogContent>
     </Dialog>

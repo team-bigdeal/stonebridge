@@ -6,7 +6,7 @@ import { ExpandedBrowser, Notices, TopBar } from './components/Shell';
 import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
-import { HistoryDialog } from './components/HistoryDialog';
+import { HistoryDetail, HistorySidebar } from './components/HistorySidebar';
 
 export default function App() {
   const handle = useStore((s) => s.handle);
@@ -28,11 +28,14 @@ export default function App() {
     <TooltipProvider>
       <div className="dark flex h-full flex-col">
         <TopBar />
-        <main className="min-h-0 flex-1">
-          <Chat />
-        </main>
+        <div className="flex min-h-0 flex-1">
+          <HistorySidebar />
+          <main className="min-w-0 flex-1">
+            <Chat />
+          </main>
+        </div>
         <ExpandedBrowser />
-        <HistoryDialog />
+        <HistoryDetail />
         <QuoteViewer />
         <SettingsModal />
         <Notices />

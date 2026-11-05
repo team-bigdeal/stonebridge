@@ -1,18 +1,30 @@
-import { History, Plus, Settings, X } from 'lucide-react';
+import { PanelLeft, Plus, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useStore, VENDOR_DOT } from '@/store';
+import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
 
 export function TopBar() {
-  const { stage, config, backend, set, resetAll } = useStore();
+  const { stage, config, backend, sidebarOpen, set, resetAll } = useStore();
   const current = STAGES.findIndex((s) => s.id === stage);
   return (
     <header className="drag flex h-12 shrink-0 items-center gap-4 border-b bg-background/90 pl-20 pr-4">
       <div className="flex items-center gap-2">
+        <Button
+          size="icon"
+          variant="ghost"
+          className={cn('no-drag size-7', sidebarOpen && 'text-primary')}
+          title={sidebarOpen ? '히스토리 닫기' : '히스토리 열기'}
+          onClick={() => {
+            saveSidebar(!sidebarOpen);
+            set({ sidebarOpen: !sidebarOpen });
+          }}
+        >
+          <PanelLeft className="size-4" />
+        </Button>
         <span className="text-[15px] font-black tracking-tight">돌다리</span>
         <Badge variant="secondary" className="text-primary">견적 에이전트</Badge>
       </div>
@@ -34,9 +46,6 @@ export function TopBar() {
             {backend === 'aside' ? 'Aside 브라우저' : '내장 브라우저'}
           </Badge>
         )}
-        <Button size="sm" variant="outline" onClick={() => set({ historyOpen: true })}>
-          <History className="size-4" /> 히스토리
-        </Button>
         <Button size="sm" variant="outline" onClick={async () => { await window.doldari.reset(); resetAll(); }}>
           <Plus className="size-4" /> 새 견적
         </Button>
