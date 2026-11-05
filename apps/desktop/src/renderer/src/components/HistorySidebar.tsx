@@ -26,7 +26,7 @@ export function HistorySidebar() {
   return (
     <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-white fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
       {/* 새 견적 버튼 + 사이드바 닫기 */}
-      <div className="flex items-center gap-2 px-3 pt-3">
+      <div className="flex items-center gap-1.5 pl-3 pr-2 pt-3">
         <button
           type="button"
           onClick={() => void restart()}
@@ -34,7 +34,8 @@ export function HistorySidebar() {
         >
           <Plus className="size-4" /> 새 견적 추가하기
         </button>
-        <SidebarToggle />
+        {/* 새 견적 버튼과 같은 높이로 */}
+        <SidebarToggle className="size-10 rounded-lg hover:bg-muted" />
       </div>
       <div className="flex h-12 items-center gap-2 pl-5 pr-3 text-[14px] font-semibold text-black">
         <History className="size-4 text-muted-foreground" /> 지난 견적

@@ -27,6 +27,8 @@ interface State {
   mails: MailRecord[];
   notices: Notice[];
   settingsOpen: boolean;
+  /** 설정 창을 열 때 먼저 보여 줄 탭 (없으면 필요한 곳부터) */
+  settingsTab?: 'ai' | 'browser' | 'mail';
   /** 왼쪽 히스토리 사이드 탭 */
   sidebarOpen: boolean;
   /** 히스토리가 바뀔 때마다 올라간다 (사이드 탭이 목록을 다시 읽음) */
@@ -244,7 +246,7 @@ export const useStore = create<State>((set, get) => ({
 
 export const VENDOR_DOT: Record<VendorId, string> = { A: 'bg-va', B: 'bg-vb', C: 'bg-vc' };
 export const VENDOR_TEXT: Record<VendorId, string> = { A: 'text-va', B: 'text-vb', C: 'text-vc' };
-export const ANGLE_LABEL: Record<VendorId, string> = { A: '전문 업체·공식몰', B: '쇼핑몰·오픈마켓', C: '시공·설치 업체' };
+export const ANGLE_LABEL: Record<VendorId, string> = { A: '전문 업체·공식몰', B: '견적 계산·견적서 사이트', C: '시공·설치 업체' };
 
 export const STATUS_LABEL: Record<VendorStatus, string> = {
   idle: '대기',

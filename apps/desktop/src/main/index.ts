@@ -1,4 +1,5 @@
 // Electron main: 창, IPC
+import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
@@ -28,6 +29,8 @@ function createWindow() {
     title: '돌다리',
     backgroundColor: '#07080b',
     titleBarStyle: 'hiddenInset',
+    // 창 버튼을 상단 바(높이 56px) 가운데 높이에 맞춘다
+    trafficLightPosition: { x: 20, y: 21 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -41,6 +44,9 @@ function createWindow() {
   bindWindow(win);
   // 시연용: 화면을 꽉 채워 연다 (에이전트 브라우저를 크게 보여 주려고)
   win.maximize();
+  // 개발 실행(npm run dev)에서도 Dock에 돌다리 아이콘을 보여 준다 (빌드한 앱은 build/icon.png가 앱 아이콘)
+  const devIcon = path.join(__dirname, '../../build/icon.png');
+  if (!app.isPackaged && process.platform === 'darwin' && fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else win.loadFile(path.join(__dirname, '../renderer/index.html'));

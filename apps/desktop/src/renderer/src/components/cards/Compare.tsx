@@ -119,8 +119,19 @@ function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) 
 
 function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
   const api = useApi();
-  const { flash, vendorStatus, set } = useRunStore();
+  const { flash, vendorStatus, set, scoped, backend } = useRunStore();
+  const [opening, setOpening] = useState(false);
   const status = vendorStatus[q.vendorId] ?? 'idle';
+  // 주문 페이지를 내장 브라우저로 열고 크게 띄움 (OrderActions의 주문 페이지 열기와 같음)
+  const openHere = async () => {
+    setOpening(true);
+    try {
+      const r = await api.openOrder(q.vendorId);
+      if (r?.ok && backend === 'electron') set({ expanded: q.vendorId });
+    } finally {
+      setOpening(false);
+    }
+  };
   const has = q.listedPrice.value !== null;
   const cond = req && has ? evaluateConditions(q, req) : null;
   const settled = ['done', 'failed', 'waiting_reply', 'needs_mail', 'needs_file'].includes(status);
@@ -190,6 +201,11 @@ function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: numbe
             <Button variant="outline" className={ROW_BTN} onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
               <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 견적서
             </Button>
+            {canAct && q.channel === 'web' && !scoped && (
+              <Button variant="outline" className={ROW_BTN} disabled={opening} onClick={() => void openHere()} title="이 업체 주문 페이지를 앱 안 브라우저로 열기">
+                <ExternalLink className="size-4" /> 열기
+              </Button>
+            )}
             {canAct && (
               <Button variant="outline" className={ROW_BTN} onClick={() => api.draftOrder(q.vendorId)}>
                 <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 주문 문의
@@ -253,7 +269,7 @@ export function Recommend() {
         <ol className="list-decimal space-y-3 pl-6 text-[16px] font-medium leading-normal text-ink">
           {rec.reasons.map((r) => <li key={r}>{r}</li>)}
         </ol>
-        {pick && <OrderActions vendorId={pick.vendorId} />}
+        {pick && <OrderPicker defaultVendorId={pick.vendorId} req={req} />}
       </div>
       {questions.length > 0 && (
         <div className="rounded-lg bg-row-alt p-6">
@@ -355,13 +371,8 @@ export function ReportCard() {
     </div>
       {/* 견적에서 끝내지 않고 실제 주문까지: 추천 업체의 주문 페이지 또는 주문 메일 */}
       {pick && (
-        <div className="flex flex-col gap-3 border-t pt-5">
-          <div className="flex items-center gap-2 text-[16px] font-semibold text-black">
-            <img src={cartIcon} alt="" className="size-5" />
-            {pick.vendorName}에 주문하기
-            <span className="text-[14px] font-medium text-muted-foreground">합계 {won(confirmedSum(pick, requirements as Requirements))}</span>
-          </div>
-          <OrderActions vendorId={pick.vendorId} />
+        <div className="border-t pt-5">
+          <OrderPicker defaultVendorId={pick.vendorId} req={requirements as Requirements} />
         </div>
       )}
     </Card>
@@ -398,6 +409,59 @@ function QuoteSources({ q }: { q: Quote }) {
         ))}
       </SourcesContent>
     </Sources>
+  );
+}
+
+/** 주문할 업체 고르기: 추천 업체가 기본 선택, 견적이 있는 다른 업체로도 바꿔서 주문할 수 있게 */
+function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req: Requirements }) {
+  const { quotes } = useRunStore();
+  const [sel, setSel] = useState<VendorId | null>(null);
+  // 표시가가 있거나 메일·파일로 받은 견적
+  const ids = rankQuotes(quotes, req).filter((id) => {
+    const q = quotes[id];
+    return q && (q.listedPrice.value !== null || q.channel === 'mail' || q.channel === 'file');
+  });
+  // 고른 업체가 목록에서 빠지면 추천으로 돌아감
+  const cur = sel && ids.includes(sel) ? sel : defaultVendorId;
+  const q = quotes[cur];
+  if (!q) return null;
+  const has = (id: VendorId) => quotes[id]!.listedPrice.value !== null;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-black">
+        <img src={cartIcon} alt="" className="size-5" />
+        {q.vendorName}에 주문하기
+        <span className="text-[14px] font-medium text-muted-foreground">합계 {has(cur) ? won(confirmedSum(q, req)) : '미확인'}</span>
+      </div>
+      {ids.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="주문할 업체">
+          {ids.map((id) => {
+            const v = quotes[id]!;
+            const on = id === cur;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setSel(id)}
+                className={cn(
+                  'flex h-auto items-center gap-2 rounded-lg border px-4 py-2.5 text-[14px] font-medium transition-colors',
+                  on ? 'border-primary bg-tint text-primary' : 'border-line bg-card text-black hover:bg-muted/50',
+                )}
+              >
+                <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[id])} />
+                <span className="max-w-[160px] truncate">{v.vendorName}</span>
+                <span className={cn('tabular-nums', on ? 'text-primary' : 'text-muted-foreground')}>{has(id) ? won(confirmedSum(v, req)) : '합계 미확인'}</span>
+                {id === defaultVendorId && <Pill tone="primary">추천</Pill>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {/* 업체가 바뀌면 안내 문구 등 상태를 새로 */}
+      <OrderActions key={cur} vendorId={cur} />
+    </div>
   );
 }
 

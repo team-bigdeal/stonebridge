@@ -47,8 +47,9 @@ export async function startSizeScan(item: string, onDone: (options: SizeOption[]
   const id = randomUUID();
   current = { id, item, status: 'searching', options: [], aborted: false };
   const me = current;
+  // 작은 조사 브라우저를 먼저, 그 아래에 사이즈 선택 카드
+  timeline({ kind: 'browser', slot: SLOT, title: `"${item}" 사이즈 조사`, compact: true });
   emit('timeline', { payload: { id, kind: 'sizes', item, status: 'searching', options: [] } });
-  timeline({ kind: 'browser', slot: SLOT, title: `"${item}" 사이즈 조사` });
   setVendorStatus(SLOT, 'browsing');
   const driver = getDriver(SLOT);
   driver.locked = false;
