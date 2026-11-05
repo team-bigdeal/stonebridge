@@ -46,6 +46,8 @@ export class Interview {
   private asked = 0;
   /** 코드가 직접 물어본 항목 (같은 걸 두 번 묻지 않게) */
   private askedKeys = new Set<keyof Requirements>();
+  /** 패널에서 마지막으로 바꾼 품목 */
+  private wantedItem = '';
 
   /** 사용자 입력 → 다음 질문 (null이면 인터뷰 종료) + 지금 조건으로 검색을 시작할 수 있는지 + 기본값으로 채운 항목 */
   async next(text: string): Promise<{ question: string | null; ready: boolean; wantsSizeHelp?: boolean; defaulted?: string[] }> {
@@ -166,6 +168,47 @@ showInstall·showWarranty·showRegion은 이 품목에서 설치 여부·A/S 기
       return { label: s.label, value: old?.value ?? s.value, ...(s.unit ? { unit: s.unit } : {}), ...(s.options?.length ? { options: s.options.slice(0, 4) } : {}) };
     });
     if (merged.length) this.req.specs = merged;
+  }
+
+  /** 사용자가 패널에서 품목을 바꿨을 때: 새 품목에 맞는 세부 조건·보일 항목을 다시 정한다 (이전 품목의 세부 조건 값은 버림) */
+  async changeItem(item: string) {
+    // 빠르게 두 번 바꾸면 늦게 온 앞 품목 결과가 새 품목을 덮지 않게, 마지막에 바꾼 품목만 반영
+    this.wantedItem = item;
+    const out = await structured<Pick<StepOut, 'specs' | 'showInstall' | 'showWarranty' | 'showRegion'>>({
+      system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 사용자가 견적을 받을 품목을 바꿨다.
+이 품목의 견적 가격을 크게 바꾸는 세부 조건을 2~4개 specs에 넣는다 (품목·수량·예산·납기·설치·A/S·지역은 넣지 않는다). 예: 롤스크린 블라인드 → 가로(cm)·세로(cm)·원단(암막/일반/우드), 원형 스티커 → 지름(mm)·재질(유포지/아트지/투명)·코팅(유광/무광), 노트북 → 화면 크기(인치)·메모리(GB)·용도, 사무실 의자 → 등받이(메쉬/가죽)·팔걸이(있음/없음).
+품목 이름에 값이 들어 있으면(예: "명함 90×50mm") value에 넣고, 모르면 null. 고를 값이 정해져 있으면 options(2~4개), 단위가 있으면 unit.
+showInstall·showWarranty·showRegion은 이 품목에서 설치 여부·A/S 기간·지역을 물을 의미가 있으면 true (스티커·명함 같은 인쇄물은 설치·A/S가 false).`,
+      content: JSON.stringify({ item }),
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['specs', 'showInstall', 'showWarranty', 'showRegion'],
+        properties: {
+          specs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['label', 'value', 'unit', 'options'],
+              properties: { label: { type: 'string' }, value: nullable('string'), unit: nullable('string'), options: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] } }
+            }
+          },
+          showInstall: { type: 'boolean' },
+          showWarranty: { type: 'boolean' },
+          showRegion: { type: 'boolean' }
+        }
+      }
+    });
+    if (this.wantedItem !== item) return;
+    this.req.item = item;
+    this.req.specs = [];
+    this.mergeSpecs(out.specs);
+    this.req.shown = { install: out.showInstall, warranty: out.showWarranty, region: out.showRegion };
+    // 설치·A/S가 의미 없는 품목이면 값도 맞춰 둔다
+    if (!out.showInstall) this.req.needInstall = false;
+    const said = this.history.filter((h) => h.role === 'user').map((h) => h.text).join(' ');
+    if (!out.showWarranty || (NO_WARRANTY_ITEM.test(item) && !MENTIONS_WARRANTY.test(said))) this.req.minWarrantyMonths = 0;
   }
 
   /** 사용자가 카드에서 직접 고친 값 반영 */

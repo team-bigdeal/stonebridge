@@ -27,8 +27,8 @@ export function ResizeHandle({
   const start = useRef<{ x: number; w: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const clamp = (w: number) => Math.min(range.max, Math.max(range.min, w));
-  // 최소 너비에서 이만큼 더 끌면 닫힌다
-  const closeAt = range.min - 80;
+  // 최소 너비에서 이만큼 더 끌면 (손을 놓지 않아도) 바로 닫힌다
+  const closeAt = range.min - 60;
   const raw = (x: number) => start.current!.w + (side === 'right' ? x - start.current!.x : start.current!.x - x);
 
   return (
@@ -49,28 +49,33 @@ export function ResizeHandle({
         } catch {
           /* 캡처를 못 해도 끌기는 된다 */
         }
-        start.current = { x: e.clientX, w: width };
+        start.current = { x: e.clientX, w: e.currentTarget.parentElement?.getBoundingClientRect().width ?? width };
         setDragging(true);
       }}
       onPointerMove={(e) => {
         if (!start.current) return;
         const w = raw(e.clientX);
-        onClosing?.(Boolean(onClose) && w < closeAt);
+        if (onClose && w < closeAt) {
+          // 닫고 끌기를 끝낸다. 다시 열면 끌기 전 너비로
+          const startW = start.current.w;
+          start.current = null;
+          setDragging(false);
+          onClosing?.(false);
+          onResize(startW);
+          onClose();
+          return;
+        }
+        // 닫히는 지점에 가까워질수록 흐려져서 곧 닫힌다는 걸 알 수 있게
+        onClosing?.(Boolean(onClose) && w < range.min - 20);
         onResize(clamp(w));
       }}
       onPointerUp={(e) => {
         if (!start.current) return;
         const w = raw(e.clientX);
-        const startW = start.current.w;
         start.current = null;
         setDragging(false);
         onClosing?.(false);
-        if (onClose && w < closeAt) {
-          // 닫고, 다시 열 때는 끌기 전 너비로
-          onResize(startW);
-          onClose();
-          return;
-        }
+        onResize(clamp(w));
         onDone(clamp(w));
       }}
       onPointerCancel={() => {

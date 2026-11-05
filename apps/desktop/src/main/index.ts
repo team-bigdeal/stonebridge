@@ -49,6 +49,7 @@ function createWindow() {
   });
   mainWindow = win;
   bindWindow(win);
+  limitZoom(win);
   // 시연용: 화면을 꽉 채워 연다 (에이전트 브라우저를 크게 보여 주려고)
   win.maximize();
   // 개발 실행(npm run dev)에서도 Dock에 돌다리 아이콘을 보여 준다 (빌드한 앱은 build/icon.png가 앱 아이콘)
@@ -62,6 +63,24 @@ function createWindow() {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+}
+
+/** 화면 배율: Ctrl(⌘) + "+" / "-" / "0", Ctrl + 휠. 너무 작거나 커져 화면이 깨지지 않게 80%~150%로 묶는다 */
+const ZOOM = { min: 0.8, max: 1.5, step: 0.1 };
+function limitZoom(win: BrowserWindow) {
+  const wc = win.webContents;
+  const apply = (z: number) => wc.setZoomFactor(Math.min(ZOOM.max, Math.max(ZOOM.min, Math.round(z * 10) / 10)));
+  // 키 입력을 메뉴 단축키보다 먼저 받아 직접 처리한다 (기본 확대·축소는 한계가 너무 넓음)
+  wc.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return;
+    const z = wc.getZoomFactor();
+    if (input.key === '=' || input.key === '+') apply(z + ZOOM.step);
+    else if (input.key === '-' || input.key === '_') apply(z - ZOOM.step);
+    else if (input.key === '0') apply(1);
+    else return;
+    event.preventDefault();
+  });
+  wc.on('zoom-changed', (_e, dir) => apply(wc.getZoomFactor() + (dir === 'in' ? ZOOM.step : -ZOOM.step)));
 }
 
 function registerIpc() {
@@ -123,6 +142,7 @@ function registerIpc() {
     return !mainWindow.isFullScreen();
   });
   ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
+  ipcMain.handle('req:item', (_e, item: string) => flow.onItemChange(item));
   ipcMain.handle('flow:revise', () => flow.revise());
   ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));

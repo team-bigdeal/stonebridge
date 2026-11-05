@@ -191,6 +191,21 @@ const STOP_WORDS = new RegExp(
 const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : undefined);
 
 /** 사용자가 카드에서 확인(필요하면 수정)하고 시작을 누름 */
+/** 요구 조건 패널에서 품목을 바꿨을 때: 새 품목에 맞게 세부 조건을 다시 정해 패널에 보낸다 */
+export async function onItemChange(item: unknown) {
+  if (!interview || getStage() !== 'interview' || typeof item !== 'string') return;
+  const next = item.trim().slice(0, 200);
+  if (!next || next === interview.req.item) return;
+  try {
+    await interview.changeItem(next);
+  } catch (e) {
+    // 세부 조건을 못 정해도 품목은 바꿔 둔다
+    interview.apply({ item: next, specs: [] });
+    notice(`품목에 맞는 조건을 정하지 못했어요: ${errMsg(e)}`);
+  }
+  emit('requirements', { payload: interview.req });
+}
+
 export async function startSearch(patch: Partial<Requirements>) {
   if (!interview || getStage() !== 'interview') return;
   // renderer 입력이라 값을 검증해서 받는다
