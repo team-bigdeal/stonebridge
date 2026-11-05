@@ -45,6 +45,29 @@ export const TOOL_DEFS = {
     '사이트가 내주는 가견적서·견적서 PDF를 받는다. "견적서 출력/다운로드/가견적서" 버튼이나 링크의 ref, 또는 PDF 주소(url). 받은 PDF는 자동으로 읽혀 견적에 반영된다. 옵션을 요구 조건에 맞춘 뒤 쓴다.',
     { ref: { type: 'string', description: 'snapshot의 버튼·링크 ref' }, url: { type: 'string', description: 'PDF 주소 (ref 대신)' } }
   ),
+  report_sizes: T(
+    'report_sizes',
+    '사이트에서 파는 사이즈 선택지를 보고한다. 찾을 때마다 보고하고, 2~3개 사이트를 다 봤으면 done=true.',
+    {
+      sizes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: '사이트에 적힌 이름 그대로 (예: "일반 명함 90×50", "A4")' },
+            width_mm: { type: 'number', description: '가로 mm' },
+            height_mm: { type: 'number', description: '세로 mm' },
+            vendor: { type: 'string', description: '업체 이름' },
+            url: { type: 'string', description: '이 사이즈를 본 페이지 URL' },
+            note: { type: 'string', description: '가격대·용도 등 한 줄 (선택)' }
+          },
+          required: ['label', 'width_mm', 'height_mm', 'vendor', 'url']
+        }
+      },
+      done: { type: 'boolean' }
+    },
+    ['sizes', 'done']
+  ),
   save_page_pdf: T('save_page_pdf', '지금 화면이 인쇄용 견적서 페이지이거나, 클릭으로 견적서 팝업(새 창)이 열렸을 때 그 화면을 PDF로 저장하고 읽어 견적에 반영한다. 팝업이 열려 있으면 팝업을 저장한다.'),
   expand_all: T('expand_all', '접힌 섹션(<details>, 아코디언)을 펼친다. 숨은 비용(설치비·배송비·옵션) 확인용.'),
   claim_vendor: T('claim_vendor', '이 브라우저가 견적을 받을 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체면 거부된다.', vendorItem.properties, ['name', 'url', 'reason']),
@@ -105,6 +128,8 @@ export interface ToolContext {
   onVisit?: (url: string, title: string) => string | null;
   /** 다른 브라우저들이 본 사이트·판단 메모 (검색 결과 아래에 붙임) */
   board?: () => string;
+  /** 사이즈 조사: 찾은 사이즈 보고 */
+  onSizes?: (sizes: { label: string; widthMm: number; heightMm: number; vendor: string; url: string; note?: string }[]) => number;
 }
 
 export interface ToolResult {
@@ -224,6 +249,13 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
           text: added.length ? `보고 완료: ${added.join(', ')}` : '숫자 필드는 없었습니다. (부가 정보는 기록됨)',
           outcome: input.done ? { kind: 'reported' } : undefined
         };
+      }
+      case 'report_sizes': {
+        const list = (Array.isArray(input.sizes) ? input.sizes : [])
+          .map((x: Record<string, unknown>) => ({ label: String(x.label ?? '').slice(0, 40), widthMm: Number(x.width_mm), heightMm: Number(x.height_mm), vendor: String(x.vendor ?? '').slice(0, 40), url: String(x.url ?? ''), note: x.note ? String(x.note).slice(0, 60) : undefined }))
+          .filter((x: { widthMm: number; heightMm: number }) => x.widthMm > 0 && x.heightMm > 0 && x.widthMm < 10000 && x.heightMm < 10000);
+        const total = ctx.onSizes?.(list) ?? 0;
+        return { text: `사이즈 ${list.length}개 기록 (지금까지 ${total}종).`, outcome: input.done ? { kind: 'reported' } : undefined };
       }
       case 'switch_channel':
         return {

@@ -2,8 +2,7 @@
 import { create } from 'zustand';
 import type {
   AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
-  Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
-} from '@shared/types';
+  Requirements, RunSnapshot, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus, SizesEventPayload } from '@shared/types';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
 export interface Notice { id: number; message: string; vendorId?: VendorId }
@@ -132,6 +131,12 @@ export const useStore = create<State>((set, get) => ({
       case 'timeline':
         set({ timeline: [...s.timeline, ev.payload as TimelineItem] });
         break;
+      case 'sizes': {
+        // 사이즈 조사 카드: 같은 id의 항목을 새 값으로 바꾼다
+        const p = ev.payload as SizesEventPayload;
+        set({ timeline: s.timeline.map((t) => (t.kind === 'sizes' && t.id === p.id ? { ...t, status: p.status, options: p.options } : t)) });
+        break;
+      }
       case 'step': {
         const st = ev.payload as AgentStep;
         const list = s.steps[st.slot] ?? [];

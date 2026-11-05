@@ -27,6 +27,7 @@ interface StepOut {
   notes: string | null;
   vendors: string[] | null;
   onlyVendors: boolean | null;
+  askingSize: boolean;
   nextQuestion: string | null;
   ready: boolean;
 }
@@ -39,7 +40,7 @@ export class Interview {
   private asked = 0;
 
   /** 사용자 입력 → 다음 질문 (null이면 인터뷰 종료) + 지금 조건으로 검색을 시작할 수 있는지 */
-  async next(text: string): Promise<{ question: string | null; ready: boolean }> {
+  async next(text: string): Promise<{ question: string | null; ready: boolean; askingSize?: boolean }> {
     this.history.push({ role: 'user', text });
     const out = await structured<StepOut>({
       system: `너는 견적 탐색 앱 '돌다리'의 인터뷰어다. 오늘은 ${new Date().toISOString().slice(0, 10)}이다.
@@ -49,13 +50,15 @@ export class Interview {
 A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판촉물·단체복, 소모품, 식품, 꽃 등)이면 minWarrantyMonths=0으로 두고 A/S는 묻지 않는다.
 배송이 필요 없으면(방문 수령, 매장 픽업, 현장 서비스) needDelivery=false, 택배·배송·설치 장소가 있으면 true. 모르면 null. 사용자가 "상관없어", "알아서"라고 하면 합리적인 값을 채운다.
 사용자가 특정 업체·사이트 이름을 말하면(예: "와우프레스에서", "비즈하우스랑 와우프레스 비교") vendors에 그 이름을 넣는다. 그 업체에서만 받고 싶어 하면(예: "와우프레스에서 견적 받아줘", "여기 두 곳만 비교") onlyVendors=true, 다른 업체와 함께 비교하길 원하면(예: "와우프레스도 포함해서") false. 업체를 말하지 않았으면 둘 다 null. 업체 이름은 묻지 않는다.
-질문은 최대 5개. 충분하면 nextQuestion=null.
+질문은 꼭 필요한 것만, 짧게 (보통 1~3개, 최대 5개). 키워드 하나만 줘도 바로 찾을 수 있게 나머지는 합리적인 기본값으로 둔다. 충분하면 nextQuestion=null.
+사이즈·규격이 가격을 크게 바꾸는 품목(명함·스티커·라벨·전단·포스터·현수막·배너·봉투·쇼핑백·박스·액자·책자 등)인데 사용자가 사이즈를 말하지 않았으면, 다른 것보다 사이즈를 먼저 묻고 askingSize=true로 한다. 이때 질문 끝에 "업체 사이트에서 많이 쓰는 사이즈를 모아 실제 크기로 보여 드릴게요. 보고 고르셔도 돼요."를 덧붙인다. 사이즈를 묻는 질문이 아니면 askingSize=false.
+사용자가 사이즈를 골랐으면(예: "90×50mm로 할게요") item에 사이즈를 넣는다 (예: "명함 90×50mm").
 남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.`,
       content: JSON.stringify({ current: this.req, conversation: this.history, questionsAsked: this.asked }),
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'nextQuestion', 'ready'],
+        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'askingSize', 'nextQuestion', 'ready'],
         properties: {
           item: nullable('string'),
           quantity: nullable('integer'),
@@ -68,6 +71,7 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
           notes: nullable('string'),
           vendors: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
           onlyVendors: nullable('boolean'),
+          askingSize: { type: 'boolean' },
           nextQuestion: nullable('string'),
           ready: { type: 'boolean' }
         }
@@ -90,7 +94,7 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
     if (!out.nextQuestion || this.asked >= 5) return { question: null, ready: Boolean(this.req.item) };
     this.asked++;
     this.history.push({ role: 'assistant', text: out.nextQuestion });
-    return { question: out.nextQuestion, ready: Boolean(this.req.item) && out.ready };
+    return { question: out.nextQuestion, ready: Boolean(this.req.item) && out.ready, askingSize: out.askingSize };
   }
 
   /** 사용자가 카드에서 직접 고친 값 반영 */

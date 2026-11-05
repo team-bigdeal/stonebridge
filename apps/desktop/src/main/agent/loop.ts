@@ -16,6 +16,7 @@ export interface AgentTask {
 
 const TOOL_LABEL: Partial<Record<ToolName, string>> = {
   search_web: '검색',
+  report_sizes: '사이즈 기록',
   navigate: '이동',
   snapshot: '화면 읽기',
   read_text: '본문 읽기',

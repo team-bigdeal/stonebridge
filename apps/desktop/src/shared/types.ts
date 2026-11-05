@@ -229,7 +229,26 @@ export type TimelineItem =
   | { id: string; kind: 'browser'; slot: Slot; title: string }
   | { id: string; kind: 'docs' }
   | { id: string; kind: 'report' }
-  | { id: string; kind: 'history'; summary: RunSummary };
+  | { id: string; kind: 'history'; summary: RunSummary }
+  | { id: string; kind: 'sizes'; item: string; status: SizeScanStatus; options: SizeOption[] };
+
+/** 사이트를 돌며 모은 사이즈 선택지 (실제 크기로 그려서 고르게 한다) */
+export interface SizeOption {
+  /** 사이트에 적힌 이름 (예: "일반 명함", "90×50") */
+  label: string;
+  widthMm: number;
+  heightMm: number;
+  /** 이 사이즈를 파는 업체 */
+  vendors: { name: string; url: string }[];
+  /** 가격대·용도 등 짧은 메모 */
+  note?: string;
+}
+export type SizeScanStatus = 'searching' | 'done' | 'failed' | 'stopped';
+export interface SizesEventPayload {
+  id: string;
+  status: SizeScanStatus;
+  options: SizeOption[];
+}
 
 /** 조건 변경 전 검색 결과 요약 (화면은 지우고 기록만 남김) */
 export interface RunSummary {
@@ -266,6 +285,7 @@ export type AgentEventType =
   | 'original'
   | 'backend'
   | 'history'
+  | 'sizes'
   | 'busy';
 
 export interface AgentEvent {
