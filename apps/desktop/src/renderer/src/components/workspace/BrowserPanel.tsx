@@ -95,11 +95,12 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
             </div>
           </div>
           {vid && status === 'needs_user' && (
-            <div className="mt-2.5 flex gap-1.5">
-              <Button size="sm" className="h-7 flex-1" disabled={pending} onClick={once(() => api.resume(slot))}>
+            // 카드가 좁으면 버튼 글자가 잘리지 않게 줄을 바꾼다
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <Button size="sm" className="h-7 flex-auto" disabled={pending} onClick={once(() => api.resume(slot))}>
                 <Play className="size-3.5" /> 해결했어요, 계속
               </Button>
-              <Button size="sm" variant="outline" className="h-7 flex-1" disabled={pending} onClick={once(() => api.skip(vid))}>
+              <Button size="sm" variant="outline" className="h-7 flex-auto" disabled={pending} onClick={once(() => api.skip(vid))}>
                 <SkipForward className="size-3.5" /> 건너뛰기
               </Button>
             </div>
