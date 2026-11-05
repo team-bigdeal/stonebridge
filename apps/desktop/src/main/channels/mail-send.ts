@@ -44,30 +44,42 @@ function smtpError(e: unknown) {
   return `메일을 보내지 못했어요: ${err.message ?? String(e)}`;
 }
 
-/** 시연용 주소(.test)는 계정이 없어도 보낸 것으로 처리한다 (회신은 orchestrator가 흉내 냄) */
-export async function sendMail(draft: MailDraft): Promise<MailRecord> {
+/** 계정으로 실제 발송 (시연용 주소는 내 메일함으로 받는다). 보낸 메일의 Message-ID */
+async function deliver(draft: MailDraft, subject: string, messageId: string, demo: boolean): Promise<string> {
+  const { options, from, user } = await smtp();
+  const transporter = nodemailer.createTransport(options);
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to: draft.to,
+      subject,
+      text: draft.body,
+      messageId,
+      // 시연용 주소는 실제로 배달될 수 없으니 내 메일함으로 받는다 (보낸편지함에는 업체 주소로 보낸 메일로 남음)
+      ...(demo ? { envelope: { from: user, to: user } } : {})
+    });
+    return info.messageId || messageId;
+  } catch (e) {
+    throw new Error(smtpError(e));
+  } finally {
+    transporter.close();
+  }
+}
+
+/** 시연용 주소(.test)는 계정이 없거나 계정으로 보내지 못해도 보낸 것으로 처리한다 (회신은 orchestrator가 흉내 냄).
+ *  계정으로 못 보낸 시연 메일은 simulated에 그 사유를 담는다 (받은편지함으로 회신을 기다리지 않게) */
+export async function sendMail(draft: MailDraft): Promise<MailRecord & { simulated?: string }> {
   const tag = subjectTag(draft);
   const subject = draft.subject.includes(tag) ? draft.subject : `${draft.subject} ${tag}`;
   let messageId = `<${draft.id}@doldari.local>`;
   const demo = isDemoAddress(draft.to);
+  let simulated: string | undefined;
   if (mailAuth()) {
-    const { options, from, user } = await smtp();
-    const transporter = nodemailer.createTransport(options);
     try {
-      const info = await transporter.sendMail({
-        from,
-        to: draft.to,
-        subject,
-        text: draft.body,
-        messageId,
-        // 시연용 주소는 실제로 배달될 수 없으니 내 메일함으로 받는다 (보낸편지함에는 업체 주소로 보낸 메일로 남음)
-        ...(demo ? { envelope: { from: user, to: user } } : {})
-      });
-      messageId = info.messageId || messageId;
+      messageId = await deliver(draft, subject, messageId, demo);
     } catch (e) {
-      throw new Error(smtpError(e));
-    } finally {
-      transporter.close();
+      if (!demo) throw e;
+      simulated = e instanceof Error ? e.message : String(e);
     }
   } else if (!demo) {
     throw new Error(NOT_CONNECTED);
@@ -84,5 +96,5 @@ export async function sendMail(draft: MailDraft): Promise<MailRecord> {
     at: new Date().toISOString()
   };
   recordMail(rec);
-  return rec;
+  return simulated ? { ...rec, simulated } : rec;
 }
