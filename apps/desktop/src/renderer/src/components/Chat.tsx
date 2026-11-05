@@ -57,7 +57,7 @@ export function Chat() {
                 void send();
               }
             }}
-            placeholder={stage === 'interview' ? '예: 사무실 회의실에 롤스크린 블라인드 3개 설치하고 싶어요' : '업체 사이트 URL을 붙여 넣으면 그 업체도 견적에 넣어요'}
+            placeholder={stage === 'interview' ? '예: 사무실 회의실에 롤스크린 블라인드 3개 설치하고 싶어요' : ['compare', 'questions', 'draft'].includes(stage) ? '바꿀 조건을 말하면 다시 검색할 수 있어요 (예: 5일 안에 받고 싶어요). 업체 URL을 붙여 넣어도 돼요' : '업체 사이트 URL을 붙여 넣으면 그 업체도 견적에 넣어요'}
             className="max-h-40 min-h-[44px] flex-1 resize-none border-0 bg-transparent text-[14px] shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           <Button type="submit" size="icon" disabled={!text.trim()} className="size-10 rounded-xl">

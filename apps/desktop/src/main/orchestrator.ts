@@ -114,6 +114,18 @@ export async function onChat(text: string) {
       }
       return;
     }
+    // 비교·추천 이후 채팅으로 조건을 바꾸면 조건 변경 흐름으로 (바뀐 게 없으면 안내만)
+    if (interview && requirements && ['compare', 'questions', 'draft'].includes(getStage())) {
+      interview.apply(requirements);
+      interview.reopen();
+      const before = JSON.stringify(interview.result());
+      const { question } = await interview.next(text);
+      if (JSON.stringify(interview.result()) !== before) {
+        await revise(true);
+        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
+        return;
+      }
+    }
     say('진행 중인 카드의 버튼으로 이어서 할 수 있어요. 업체 사이트 URL을 붙여 넣으면 그 업체도 견적에 넣을게요. 처음부터 하려면 위의 "새 견적"을 눌러 주세요.');
   } catch (e) {
     notice(`처리 실패: ${errMsg(e)}`);
@@ -773,7 +785,8 @@ export async function reset() {
 
 // ─── 조건 변경: 요구 조건 단계로 돌아가 다시 검색 ───────────────
 
-export async function revise() {
+/** fromChat: 채팅으로 이미 새 조건을 받아 둔 경우 (이전 조건으로 덮어쓰지 않고 안내는 호출한 쪽이 함) */
+export async function revise(fromChat = false) {
   if (!interview || !requirements || !['compare', 'questions', 'draft'].includes(getStage())) return;
   const req = requirements;
   const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
@@ -797,12 +810,14 @@ export async function revise() {
   };
   await clearRun();
   requirements = null;
-  // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
-  interview.apply(req);
-  interview.reopen();
+  if (!fromChat) {
+    // 기본값으로 채운 항목까지 카드에 보이도록 확정했던 조건을 그대로 넣어 둔다
+    interview.apply(req);
+    interview.reopen();
+  }
   emit('revised', { payload: summary });
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: true });
-  say('이전 검색 결과는 요약으로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
+  if (!fromChat) say('이전 검색 결과는 요약으로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
 }
