@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
+import { BarChart3, Check as CheckIcon, ChevronRight, ExternalLink, FileText, HelpCircle, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
-import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
+import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, daysUntil, type Check, type ConditionResult } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -471,6 +471,9 @@ function VendorCard({ q, rank, req, hide, onSource, canAct, fx }: { q: Quote; ra
           {line('납기', ['leadTimeDays'], q.leadTimeDays.value !== null ? `${q.leadTimeDays.value}일` : '', cond?.deadline === 'violate')}
         </div>
 
+        {/* 요구 조건 충족 여부 (앱이 판정할 수 있는 예산·납기·A/S만) */}
+        {cond && req && <Conditions q={q} req={req} cond={cond} showWarranty={!hide.warranty} />}
+
         {/* 버튼 */}
         {has && (
           <div className="mt-auto flex flex-wrap gap-2">
@@ -510,6 +513,46 @@ function Unsettled({ q, className }: { q: Quote; className?: string }) {
         </Pill>
       </span>
     </Hint>
+  );
+}
+
+/** 카드 좁은 칸용 금액: 만원 단위로 떨어지면 "20만원" */
+const manWon = (n: number) => (n >= 10000 && n % 10000 === 0 ? `${(n / 10000).toLocaleString('ko-KR')}만원` : won(n));
+
+/** 카드 속 요구 조건 체크리스트: 처음에 말한 조건을 업체마다 충족·안 맞음·확인 필요로 보여 준다 */
+function Conditions({ q, req, cond, showWarranty }: { q: Quote; req: Requirements; cond: ConditionResult; showWarranty: boolean }) {
+  const limit = req.deadline ? daysUntil(req.deadline) : NaN;
+  const lead = q.leadTimeDays.value;
+  const wm = q.warrantyMonths.value;
+  const rows: { key: string; label: string; c: Check; detail: string }[] = [];
+  if (req.budgetMax > 0) {
+    rows.push({ key: 'budget', label: `예산 ${manWon(req.budgetMax)} 이내`, c: cond.budget, detail: cond.budget === 'unknown' ? '일부 미확인' : '' });
+  }
+  if (!Number.isNaN(limit)) {
+    rows.push({ key: 'deadline', label: `납기 ${limit}일 이내`, c: cond.deadline, detail: lead !== null ? `${lead}일` : '미확인' });
+  }
+  if (showWarranty && req.minWarrantyMonths > 0) {
+    rows.push({ key: 'warranty', label: `A/S ${fmtWarranty(req.minWarrantyMonths)} 이상`, c: cond.warranty, detail: wm !== null ? fmtWarranty(wm) : q.warrantyExtraFee.value !== null ? '연장 가능' : '미확인' });
+  }
+  if (q.meta?.priceDoubt) rows.push({ key: 'price', label: '가격 기준 확인', c: 'violate', detail: q.meta.priceDoubt });
+  if (rows.length === 0) return null;
+  const icon = { ok: <CheckIcon className="size-3.5" />, violate: <X className="size-3.5" />, unknown: <HelpCircle className="size-3.5" /> } as const;
+  const tone = { ok: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', violate: 'bg-destructive/15 text-destructive', unknown: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' } as const;
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-line bg-card/60 px-2.5 py-2 text-[13px]">
+      <span className="text-[12px] font-medium text-muted-foreground">요구 조건</span>
+      {rows.map((r) => (
+        <div key={r.key} className="flex items-center gap-2">
+          <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-full', tone[r.c])} aria-label={{ ok: '충족', violate: '안 맞음', unknown: '확인 필요' }[r.c]}>
+            {icon[r.c]}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-ink">{r.label}</span>
+          <span className={cn('shrink-0 truncate tabular-nums', r.c === 'violate' ? 'font-semibold text-destructive' : 'text-muted-foreground')} title={r.detail}>
+            {r.detail}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
