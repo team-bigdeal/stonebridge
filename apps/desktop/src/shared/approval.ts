@@ -101,6 +101,8 @@ export interface ApprovalDoc {
   checks: ApprovalSentence[];
   /** 붙임 */
   evidence: Evidence[];
+  /** AI가 다듬은 문장 수 (0이면 템플릿 문장 그대로) */
+  polishedCount?: number;
 }
 
 const n = (v: number) => v.toLocaleString('ko-KR');
@@ -337,4 +339,53 @@ export function approvalFields(doc: ApprovalDoc, header: ApprovalHeader): Approv
       .join('\n')
   );
   return f;
+}
+
+// ─── AI 문장 다듬기 (2단계) ────────────────────────────────────
+// AI는 1.목적과 3.선정 사유 문장만 다듬는다. 입력은 근거 번호가 붙은 사실 목록뿐이고,
+// 결과는 숫자·근거 번호를 검증해 통과한 문장만 쓴다(못 쓰면 1단계 템플릿 문장 그대로).
+
+export interface PolishFact {
+  id: number;
+  text: string;
+}
+export interface PolishInput {
+  facts: PolishFact[];
+  purpose: ApprovalSentence[];
+  reasons: ApprovalSentence[];
+}
+/** 문장 하나의 다듬은 결과 (검증 실패·없음은 null → 템플릿 문장 유지) */
+export interface PolishResult {
+  purpose: (ApprovalSentence | null)[];
+  reasons: (ApprovalSentence | null)[];
+}
+
+/** AI에 줄 입력: 근거(붙임)의 값과 템플릿 문장 */
+export function buildPolishInput(doc: ApprovalDoc): PolishInput {
+  return {
+    facts: doc.evidence.map((e) => ({ id: e.id, text: `${e.vendorName ? `${e.vendorName} ` : ''}${e.item}: ${e.valueText}` })),
+    purpose: doc.purpose,
+    reasons: doc.reasons
+  };
+}
+
+const NUM = /\d[\d,]*(?:\.\d+)?/g;
+const nums = (s: string) => (s.match(NUM) ?? []).map((x) => x.replace(/,/g, ''));
+
+/** 다듬은 문장이 써도 되는지: 근거 번호가 있고 모두 실제 번호이며, 문장 안 모든 숫자가 사실 목록·원래 문장에 있는 값이어야 한다 */
+export function acceptPolished(candidate: ApprovalSentence, input: PolishInput): boolean {
+  if (!candidate.text.trim() || candidate.evidenceIds.length === 0) return false;
+  const ids = new Set(input.facts.map((f) => f.id));
+  if (!candidate.evidenceIds.every((id) => ids.has(id))) return false;
+  const allowed = new Set([...input.facts.flatMap((f) => nums(f.text)), ...input.purpose.flatMap((s) => nums(s.text)), ...input.reasons.flatMap((s) => nums(s.text))]);
+  return nums(candidate.text).every((n) => allowed.has(n));
+}
+
+/** 다듬은 문장으로 바꾼 문서. 사용한 문장이 하나도 없으면 원본 그대로 */
+export function applyPolished(doc: ApprovalDoc, r: PolishResult): ApprovalDoc {
+  const pick = (base: ApprovalSentence[], got: (ApprovalSentence | null)[]) => base.map((s, i) => got[i] ?? s);
+  const purpose = pick(doc.purpose, r.purpose);
+  const reasons = pick(doc.reasons, r.reasons);
+  const used = [...r.purpose, ...r.reasons].filter(Boolean).length;
+  return used === 0 ? doc : { ...doc, purpose, reasons, polishedCount: used };
 }
