@@ -239,7 +239,7 @@ async function startHunt(req: Requirements, slots: VendorId[] = [...VENDOR_IDS],
   const free = slots.filter((id) => !targets.has(id));
   if (!free.length) say(`좋아요. ${named.join(', ')}에서 "${req.item}" 견적을 받아 올게요. ${slots.length === 1 ? '브라우저 1개로' : `브라우저 ${slots.length}개가 한 곳씩`} 진행해요.`);
   else if (named.length) say(`좋아요. ${named.join(', ')}은(는) 바로 찾아가고, 나머지 브라우저 ${free.length}개는 비교할 다른 업체를 찾아 "${req.item}" 견적을 받아 올게요.`);
-  else say(`좋아요. 브라우저 3개가 동시에 "${req.item}" 업체를 찾아 견적을 받아 올게요.\nA는 전문 업체·공식몰, B는 쇼핑몰, C는 시공·설치 업체 쪽을 맡아요.`);
+  else say(`좋아요. 브라우저 3개가 동시에 "${req.item}" 업체를 찾아 견적을 받아 올게요.\nA는 전문 업체·공식몰, B는 견적을 계산해 견적서를 내주는 사이트, C는 시공·설치 업체 쪽을 맡아요.`);
   timeline({ kind: 'vendors', slots });
   tries.clear();
   fallbacks.clear();
