@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Download, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
 import { approvalFields, buildApproval, type ApprovalHeader } from '@shared/approval';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ApprovalDocument } from '@/doc/ApprovalDocument';
-import { ApprovalTemplatePanel } from '@/components/ApprovalTemplatePanel';
+import { TemplateBar, TemplateEditor, useApprovalTemplate } from '@/components/ApprovalTemplatePanel';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/store';
@@ -124,11 +124,18 @@ function readHeader(): ApprovalHeader {
   }
 }
 
-/** 구매 품의서 초안 (템플릿 문장 + 근거 붙임) */
+
+/** 구매 품의서 초안 (템플릿 문장 + 근거 붙임). 회사 양식을 끌어다 놓으면 옆 페이지로 넘겨 고치고 내려받는다 */
 function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quotes: Partial<Record<VendorId, Quote>>; urls: Partial<Record<VendorId, string>>; onClose: () => void }) {
   const [header, setHeader] = useState<ApprovalHeader>(readHeader);
   const [saved, setSaved] = useState('');
+  const [page, setPage] = useState<0 | 1>(0);
+  const [dragging, setDragging] = useState(false);
   const doc = useMemo(() => buildApproval(quotes, req, urls, { date: new Date().toISOString().slice(0, 10) }), [quotes, req, urls]);
+  const fields = useMemo(() => approvalFields(doc, header), [doc, header]);
+  const t = useApprovalTemplate(fields, () => setPage(1));
+  const hasTpl = t.tpl !== null;
+  const view = hasTpl ? page : 0;
   const update = (p: Partial<ApprovalHeader>) => {
     const next = { ...header, ...p };
     setHeader(next);
@@ -139,30 +146,67 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
     }
   };
   const el = <ApprovalDocument doc={doc} header={header} />;
-  const fields = useMemo(() => approvalFields(doc, header), [doc, header]);
+  const arrow = 'absolute top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border bg-background/95 shadow-md hover:bg-accent';
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]">
+      <DialogContent
+        className="relative flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]"
+        onDragOver={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          void t.upload(e.dataTransfer.files[0]);
+        }}
+      >
+        {dragging && <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 text-[15px] font-semibold">여기에 회사 품의서 양식을 놓으세요 (docx · xlsx · hwpx · PDF)</div>}
         <DialogHeader className="flex-row items-center gap-3">
           <div className="min-w-0 space-y-1">
-            <DialogTitle>구매 품의서 초안</DialogTitle>
-            <DialogDescription>{req.item} · 모든 숫자에 근거 번호를 붙이고 붙임에 출처를 모았어요</DialogDescription>
+            <DialogTitle>{view === 0 ? '구매 품의서 초안' : '회사 양식으로 작성'}</DialogTitle>
+            <DialogDescription>{view === 0 ? `${req.item} · 모든 숫자에 근거 번호를 붙이고 붙임에 출처를 모았어요` : '칸마다 들어갈 글자를 확인하고 고친 뒤 내려받으세요'}</DialogDescription>
           </div>
-          <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `품의서_${req.item}`)) ?? '')}>
-            <Download className="size-4" /> PDF 저장
-          </Button>
+          {view === 0 ? (
+            <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `품의서_${req.item}`)) ?? '')}>
+              <Download className="size-4" /> PDF 저장
+            </Button>
+          ) : (
+            <Button size="sm" className="ml-auto mr-8" disabled={t.busy} onClick={() => void t.download()}>
+              <Download className="size-4" /> 다운로드 (.{t.tpl?.kind})
+            </Button>
+          )}
         </DialogHeader>
-        <div className="flex flex-wrap items-center gap-2 text-[12px]">
-          <Input className="h-8 w-36" placeholder="기안부서" value={header.dept} onChange={(e) => update({ dept: e.target.value })} />
-          <Input className="h-8 w-28" placeholder="기안자" value={header.author} onChange={(e) => update({ author: e.target.value })} />
-          <span className="text-muted-foreground">결재선</span>
-          <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
-        </div>
-        <ApprovalTemplatePanel fields={fields} />
-        {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
-          <style>{DOC_CSS}</style>
-          {el}
+        {view === 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <Input className="h-8 w-36" placeholder="기안부서" value={header.dept} onChange={(e) => update({ dept: e.target.value })} />
+            <Input className="h-8 w-28" placeholder="기안자" value={header.author} onChange={(e) => update({ author: e.target.value })} />
+            <span className="text-muted-foreground">결재선</span>
+            <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
+          </div>
+        )}
+        <TemplateBar t={t} />
+        {view === 0 && saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
+        <div className="relative min-h-0 flex-1">
+          <div className="h-full max-h-[62vh] overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+            <style>{DOC_CSS}</style>
+            {view === 0 ? el : <TemplateEditor t={t} fields={fields} />}
+          </div>
+          {hasTpl && view === 0 && (
+            <button type="button" className={`${arrow} -right-5`} title="회사 양식 페이지로" onClick={() => setPage(1)}>
+              <ChevronRight className="size-5" />
+            </button>
+          )}
+          {hasTpl && view === 1 && (
+            <button type="button" className={`${arrow} -left-5`} title="기본 품의서로" onClick={() => setPage(0)}>
+              <ChevronLeft className="size-5" />
+            </button>
+          )}
+          {hasTpl && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background/90 px-3 py-0.5 text-[11px] text-muted-foreground shadow">{view === 0 ? '기본 양식' : '회사 양식'} · {view + 1} / 2</div>}
         </div>
       </DialogContent>
     </Dialog>
