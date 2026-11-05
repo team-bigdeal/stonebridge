@@ -18,7 +18,8 @@ const STATUS_TONE: Record<VendorStatus, 'ok' | 'warn' | 'bad' | 'muted' | 'prima
   needs_user: 'warn',
   parsing: 'primary',
   done: 'ok',
-  failed: 'bad'
+  failed: 'bad',
+  stopped: 'muted'
 };
 
 export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: string; className?: string }) {
