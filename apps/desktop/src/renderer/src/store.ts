@@ -244,7 +244,7 @@ export const useStore = create<State>((set, get) => ({
 
 export const VENDOR_DOT: Record<VendorId, string> = { A: 'bg-va', B: 'bg-vb', C: 'bg-vc' };
 export const VENDOR_TEXT: Record<VendorId, string> = { A: 'text-va', B: 'text-vb', C: 'text-vc' };
-export const ANGLE_LABEL: Record<VendorId, string> = { A: '전문 업체·공식몰', B: '쇼핑몰·오픈마켓', C: '시공·설치 업체' };
+export const ANGLE_LABEL: Record<VendorId, string> = { A: '전문 업체·공식몰', B: '견적 계산·견적서 사이트', C: '시공·설치 업체' };
 
 export const STATUS_LABEL: Record<VendorStatus, string> = {
   idle: '대기',
