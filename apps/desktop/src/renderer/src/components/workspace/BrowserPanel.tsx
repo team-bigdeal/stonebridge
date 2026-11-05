@@ -1,4 +1,5 @@
-import { ArrowLeft, ExternalLink, FileText, Maximize2, Play, RefreshCw, Replace, ShieldAlert, SkipForward, Square } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Columns3, ExternalLink, PanelLeft, FileText, Maximize2, Play, RefreshCw, Replace, ShieldAlert, SkipForward, Square } from 'lucide-react';
 import type { Slot, VendorId, VendorStatus } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,7 +23,7 @@ const STATUS_TONE: Record<VendorStatus, 'ok' | 'warn' | 'bad' | 'muted' | 'prima
   stopped: 'muted'
 };
 
-export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: string; className?: string }) {
+export function BrowserPanel({ slot, title, className, frameClassName, compact = false }: { slot: Slot; title?: string; className?: string; frameClassName?: string; compact?: boolean }) {
   const api = useApi();
   const { browsers, vendorStatus, vendors, quotes, set, scoped } = useRunStore();
   const b = browsers[slot];
@@ -95,10 +96,11 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
       )}
 
       <div className="overflow-hidden rounded-lg bg-background">
-        <LiveFrame slot={slot} />
+        {/* 한 화면 안에 보이도록 높이를 화면 높이에 맞춰 제한한다 (넘치면 가로로 넓어짐) */}
+        <LiveFrame slot={slot} still={compact} className={cn('max-h-[calc(100vh-360px)]', frameClassName)} />
       </div>
 
-      <Steps slot={slot} />
+      {!compact && <Steps slot={slot} />}
       {vid && (hasDoc || status === 'failed' || status === 'stopped') && (
         <div className="flex flex-wrap gap-2">
           {hasDoc && (
@@ -123,25 +125,90 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
   );
 }
 
-/** 이번 검색에 쓰는 브라우저를 나란히 (지정 업체·URL이 1~2곳이면 그만큼만) */
+type GridLayout = 'focus' | 'grid';
+const LAYOUT_KEY = 'doldari.browserLayout';
+const loadLayout = (): GridLayout => {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'grid' ? 'grid' : 'focus';
+  } catch {
+    return 'focus';
+  }
+};
+
+/**
+ * 이번 검색에 쓰는 브라우저들.
+ * - 크게 보기(기본): 고른 브라우저 하나를 화면 높이에 맞춰 크게, 나머지는 오른쪽에 작게 (누르면 바꿔 봄)
+ * - 나란히: 같은 크기로 나란히
+ * 브라우저가 1개면 그 하나를 화면에 맞춰 크게 보여 준다.
+ */
 export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] }) {
   const api = useApi();
   const { vendorStatus, scoped } = useRunStore();
   const running = !scoped && slots.some((id) => vendorStatus[id] === 'browsing');
+  const [layout, setLayout] = useState<GridLayout>(loadLayout);
+  const [focus, setFocus] = useState<VendorId>(slots[0]);
+  const main = slots.includes(focus) ? focus : slots[0];
+  const others = slots.filter((id) => id !== main);
+  const choose = (l: GridLayout) => {
+    setLayout(l);
+    try {
+      localStorage.setItem(LAYOUT_KEY, l);
+    } catch {
+      /* 무시 */
+    }
+  };
   return (
     <div className="space-y-3">
-      {running && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {slots.length > 1 && (
+          <div className="flex rounded-lg bg-muted p-0.5 text-[13px] font-medium">
+            {(['focus', 'grid'] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => choose(l)}
+                className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors', layout === l ? 'bg-white text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
+              >
+                {l === 'focus' ? <PanelLeft className="size-3.5" /> : <Columns3 className="size-3.5" />}
+                {l === 'focus' ? '크게 보기' : '나란히'}
+              </button>
+            ))}
+          </div>
+        )}
+        {running && (
           <Button size="sm" variant="outline" onClick={() => api.stop()} title="탐색을 멈추고 지금까지 모은 견적으로 비교해요">
             <Square className="size-3.5" /> 멈추기
           </Button>
+        )}
+      </div>
+      {slots.length === 1 ? (
+        <BrowserPanel slot={slots[0]} frameClassName="max-h-[calc(100vh-300px)]" />
+      ) : layout === 'focus' ? (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,22%)]">
+          <BrowserPanel key={main} slot={main} frameClassName="max-h-[calc(100vh-300px)]" />
+          <div className="flex flex-col gap-5">
+            {others.map((id) => (
+              <div key={id} className="relative">
+                <BrowserPanel slot={id} compact />
+                {/* 작은 화면을 누르면 크게 바꿔 본다 (작은 카드 안 브라우저는 조작하지 않고 고르기만) */}
+                <button
+                  type="button"
+                  onClick={() => setFocus(id)}
+                  className="absolute inset-0 z-10 rounded-lg ring-primary/0 transition hover:bg-primary/5 hover:ring-2 hover:ring-primary/40"
+                  title="크게 보기"
+                  aria-label={`브라우저 ${id} 크게 보기`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className={cn('grid grid-cols-1 gap-5', slots.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+          {slots.map((id) => (
+            <BrowserPanel key={id} slot={id} />
+          ))}
         </div>
       )}
-      <div className={cn('grid grid-cols-1 gap-5', slots.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-        {slots.map((id) => (
-          <BrowserPanel key={id} slot={id} />
-        ))}
-      </div>
     </div>
   );
 }

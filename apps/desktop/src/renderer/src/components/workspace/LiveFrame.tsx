@@ -26,14 +26,15 @@ export const pushCursor = (c: { slot: Slot; x: number; y: number; click?: boolea
  * - 내장 브라우저: 실제 브라우저 뷰가 이 자리에 겹쳐 뜬다 (사용자가 그대로 클릭·입력). 카드가 화면 밖이면 마지막 화면 이미지.
  * - Aside: 탭 화면 이미지 + 앱 레이어 커서. 클릭·스크롤·타이핑은 그 탭으로 전달.
  */
-export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; className?: string; priority?: number }) {
+export function LiveFrame({ slot, className, priority = 1, still = false }: { slot: Slot; className?: string; priority?: number; still?: boolean }) {
   const backend = useStore((s) => s.backend);
   const scope = useContext(RunContext);
   const liveFrame = useFrames((s) => s.frames[slot]);
   // 이전 검색 카드는 그때 저장된 화면
   const frame = scope ? scope.frames[slot] : liveFrame;
   const ref = useRef<HTMLDivElement>(null);
-  const replay = useStore((s) => Boolean(s.replay)) || Boolean(scope);
+  // still: 실제 뷰를 붙이지 않고 2초마다 찍는 화면만 (크게 보기 옆의 작은 화면)
+  const replay = useStore((s) => Boolean(s.replay)) || Boolean(scope) || still;
   const embedded = backend === 'electron' && !replay;
   const shown = useShownViews((s) => Boolean(s.shown[slot]));
 
@@ -46,7 +47,7 @@ export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; class
     // 지난 견적: 저장된 마지막 화면만
     return (
       <div className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
-        {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : <div className="flex h-full items-center justify-center text-xs text-muted-foreground">저장된 화면이 없어요</div>}
+        {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : still ? <Placeholder /> : <div className="flex h-full items-center justify-center text-xs text-muted-foreground">저장된 화면이 없어요</div>}
       </div>
     );
   }

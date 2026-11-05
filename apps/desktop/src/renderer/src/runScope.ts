@@ -38,7 +38,7 @@ const BLOCKED_MSG = '이전 검색 카드는 보기 전용이에요. 지금 검�
 const blockedApi = Object.fromEntries(
   Object.entries(api).map(([k, fn]) => [
     k,
-    typeof fn === 'function' && /^(sendChat|uploadFile|sendMail|openMailApp|pasteReply|draftOrder|draftQuestion|retry|replace|skip|resume|browserInput|browserBack|startSearch|revise|stop)$/.test(k)
+    typeof fn === 'function' && /^(sendChat|uploadFile|sendMail|openMailApp|pasteReply|draftOrder|draftQuestion|retry|replace|skip|resume|browserInput|browserBack|startSearch|revise|stop|messageSent|pasteMessage|openSms|openOrder)$/.test(k)
       ? () => {
           useStore.getState().handle({ type: 'notice', at: new Date().toISOString(), message: BLOCKED_MSG });
           return Promise.resolve(null);

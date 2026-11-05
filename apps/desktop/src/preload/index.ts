@@ -34,6 +34,9 @@ const api = {
   sendMail: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:send', draft),
   openMailApp: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:external', draft),
   pasteReply: (vendorId: VendorId, kind: MailKind, text: string) => ipcRenderer.invoke('mail:pasteReply', vendorId, kind, text),
+  messageSent: (vendorId: VendorId) => ipcRenderer.invoke('message:sent', vendorId),
+  pasteMessage: (vendorId: VendorId, text: string) => ipcRenderer.invoke('message:paste', vendorId, text),
+  openSms: (vendorId: VendorId, body: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('message:sms', vendorId, body),
   draftOrder: (id: VendorId) => ipcRenderer.invoke('draft:order', id),
   draftQuestion: (id: VendorId) => ipcRenderer.invoke('draft:question', id),
   retry: (id: VendorId) => ipcRenderer.invoke('agent:retry', id),
@@ -54,7 +57,10 @@ const api = {
   templateFill: (values: Record<string, string>): Promise<TemplateFillResult> => ipcRenderer.invoke('template:fill', values),
   browserInput: (input: BrowserInput) => ipcRenderer.invoke('browser:input', input),
   browserBack: (slot: Slot) => ipcRenderer.invoke('browser:back', slot),
-  openExternal: (url: string) => ipcRenderer.invoke('browser:openExternal', url)
+  openExternal: (url: string) => ipcRenderer.invoke('browser:openExternal', url),
+  /** 추천 업체의 주문 페이지를 그 업체 브라우저에 연다 (주문·결제는 사용자가 직접) */
+  openOrder: (id: VendorId) => ipcRenderer.invoke('order:open', id) as Promise<{ ok: boolean; url?: string; message: string }>,
+  toggleFullScreen: () => ipcRenderer.invoke('window:fullscreen') as Promise<boolean>
 };
 
 export type DoldariApi = typeof api;

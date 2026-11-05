@@ -36,6 +36,8 @@ function createWindow() {
   });
   mainWindow = win;
   bindWindow(win);
+  // 시연용: 화면을 꽉 채워 연다 (에이전트 브라우저를 크게 보여 주려고)
+  win.maximize();
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else win.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -75,12 +77,21 @@ function registerIpc() {
     return publicConfig();
   });
   ipcMain.handle('chat:send', (_e, text: string) => flow.onChat(text));
+  ipcMain.handle('order:open', (_e, id: VendorId) => flow.openOrderPage(id));
+  ipcMain.handle('window:fullscreen', () => {
+    if (!mainWindow) return false;
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    return !mainWindow.isFullScreen();
+  });
   ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
   ipcMain.handle('flow:revise', () => flow.revise());
   ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));
   ipcMain.handle('mail:external', (_e, draft: MailDraft) => flow.onMailExternal(draft));
   ipcMain.handle('mail:pasteReply', (_e, vendorId: VendorId, kind: MailKind, text: string) => flow.onPasteReply(vendorId, kind, text));
+  ipcMain.handle('message:sent', (_e, vendorId: VendorId) => flow.onMessageSent(vendorId));
+  ipcMain.handle('message:paste', (_e, vendorId: VendorId, text: string) => flow.onPasteMessage(vendorId, text));
+  ipcMain.handle('message:sms', (_e, vendorId: VendorId, body: string) => flow.onOpenSms(vendorId, body));
   ipcMain.handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
   ipcMain.handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
   ipcMain.handle('agent:retry', (_e, id: VendorId) => flow.retry(id));

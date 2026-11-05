@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
 import type { HistoryEventPayload, HistoryRecord, HistorySummary, Quote, QuoteOriginal, Requirements, SessionSnapshot, VendorId, VendorInfo } from '@shared/types';
 import { confirmedSum, recommend } from '@shared/quote';
+import { scrubContacts } from '@shared/privacy';
 import { emit } from './events';
 
 const MAX_ORIGINALS = 4;
@@ -52,7 +53,8 @@ export function saveRecord(requirements: Requirements, vendors: VendorInfo[], qu
   try {
     fs.mkdirSync(dir(), { recursive: true });
     const file = path.join(dir(), `${record.id}.json`);
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify(record));
+    // 업체 전화번호·메일 주소는 가린 값만 디스크에 남긴다
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(scrubContacts(record)));
     fs.renameSync(`${file}.tmp`, file);
     emit('history', { payload: { id: record.id, kind: 'saved' } satisfies HistoryEventPayload });
   } catch (e) {
@@ -117,7 +119,7 @@ export function saveSession(id: string, snap: SessionSnapshot) {
   if (!safeId(id) || !fs.existsSync(path.join(dir(), `${id}.json`))) return false;
   try {
     const file = path.join(dir(), `${id}.session.json`);
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify(snap));
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(scrubContacts(snap)));
     fs.renameSync(`${file}.tmp`, file);
     return true;
   } catch (e) {

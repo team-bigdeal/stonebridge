@@ -214,7 +214,9 @@ function CheckPill({ c, title }: { c: Check; title: string }) {
 
 export function Recommend() {
   const api = useApi();
-  const { quotes, requirements, vendorStatus } = useRunStore();
+  const { quotes, requirements, vendorStatus, vendors, backend, set, scoped } = useRunStore();
+  const [opening, setOpening] = useState(false);
+  const [orderMsg, setOrderMsg] = useState('');
   if (!requirements?.deadline || requirements.budgetMax === undefined) return null;
   const req = requirements as Requirements;
   const rec = recommend(quotes, req);
@@ -253,11 +255,46 @@ export function Recommend() {
         <ol className="list-decimal space-y-3 pl-6 text-[16px] font-medium leading-normal text-ink">
           {rec.reasons.map((r) => <li key={r}>{r}</li>)}
         </ol>
-        {pick && (
-          <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(pick.vendorId)}>
-            주문 문의 작성 <ChevronRight className="size-4" />
-          </Button>
-        )}
+        {pick && (() => {
+          // 견적을 받은 상품 페이지 (없으면 업체 주소)
+          const src = pick.listedPrice.source;
+          const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : vendors.find((v) => v.id === pick.vendorId)?.url;
+          const openHere = async () => {
+            setOpening(true);
+            try {
+              const r = await api.openOrder(pick.vendorId);
+              if (r) {
+                setOrderMsg(r.message);
+                // 내장 브라우저면 크게 띄워 바로 확인하고 주문할 수 있게
+                if (r.ok && backend === 'electron') set({ expanded: pick.vendorId });
+              }
+            } finally {
+              setOpening(false);
+            }
+          };
+          return (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {pick.channel === 'web' && url && !scoped && (
+                  <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={opening} onClick={() => void openHere()}>
+                    <img src={cartIcon} alt="" className="size-4 brightness-0 invert" /> 주문 페이지 열기
+                  </Button>
+                )}
+                {url && (
+                  <Button variant="outline" className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => void window.doldari.openExternal(url)} title="로그인·결제 정보가 있는 내 브라우저에서 주문">
+                    <ExternalLink className="size-4" /> 내 브라우저로 열기
+                  </Button>
+                )}
+                <Button variant="secondary" className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(pick.vendorId)}>
+                  주문 문의 작성 <ChevronRight className="size-4" />
+                </Button>
+              </div>
+              <p className="text-[13px] text-muted-foreground">
+                {orderMsg ? `${orderMsg} ` : ''}옵션·수량이 견적과 같은지 확인하고 주문·결제는 직접 해 주세요. 돌다리는 주문 버튼을 누르지 않아요.
+              </p>
+            </div>
+          );
+        })()}
       </div>
       {questions.length > 0 && (
         <div className="rounded-lg bg-row-alt p-6">

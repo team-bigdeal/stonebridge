@@ -7,6 +7,7 @@
     "postinstall": "npm --prefix apps/desktop install && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch{}\"",
     "dev": "npm --prefix apps/desktop run dev",
     "build": "npm --prefix apps/desktop run build",
+    "dist": "npm --prefix apps/desktop run dist",
     "typecheck": "npm --prefix apps/desktop run typecheck",
     "mock": "node test/mock-vendors/serve.mjs"
   }

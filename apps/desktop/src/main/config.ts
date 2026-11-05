@@ -6,6 +6,9 @@ import dotenv from 'dotenv';
 import type { AppConfig, SettingsInput } from '@shared/types';
 import { getBackend } from './browser';
 
+// 빌드한 앱(이름 "돌다리")도 개발 때와 같은 데이터 폴더를 써서 견적 히스토리·설정을 같이 본다
+if (app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'doldari-desktop'));
+
 /** 설정 파일: 개발 중엔 레포 루트 .env, 패키징 후엔 사용자 데이터 폴더 */
 const repoRoot = path.resolve(__dirname, '../../../..');
 export const envFile = fs.existsSync(path.join(repoRoot, 'package.json'))
