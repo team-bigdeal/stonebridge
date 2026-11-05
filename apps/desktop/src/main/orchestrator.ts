@@ -20,7 +20,7 @@ import { sizeScanStarted, startSizeScan, stopSizeScan } from './sizes';
 import { boardFor, noteVerdict, noteVisit, resetShared, siteKey } from './agent/shared';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
 import type { PickedVendor, ToolName } from './agent/tools';
-import { formMessage, orderDraft, questionDraft, requestDraft } from './drafts';
+import { formMessage, orderDraft, parseContact, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
 import { watchReply, type IncomingReply } from './channels/mail-poll';
 import { extractQuote } from './channels/extract';
@@ -308,6 +308,9 @@ function dropVendor(slot: VendorId) {
   clearOriginals(slot);
 }
 
+/** 사용자가 바로 연락할 수 있는 대안인지 (메일은 메일 주소, 문자·카톡은 전화번호나 메신저 링크) */
+const reachable = (fb: Fallback) => (fb.channel === 'mail' ? Boolean(fb.email) : Boolean(parseContact(fb.contact).phone || parseContact(fb.contact).chatUrl));
+
 /** 남은 대안 중 가장 나은 것: 메일 주소를 아는 곳 → 메일 → 파일 */
 function bestFallback(slot: VendorId): Fallback | undefined {
   const list = fallbacks.get(slot) ?? [];
@@ -414,6 +417,15 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
         const where = v ? v.name : `브라우저 ${slot} (${outcome.url ? new URL(outcome.url).host : '검색 중'})`;
         say(`${where}: ${reason}. 화면에서 직접 해결한 뒤 "해결했어요, 계속"을 누르거나, "건너뛰기"를 눌러 다음 업체로 넘어가세요.`);
         void refreshState(slot);
+        return;
+      }
+      // 웹에만 의지하지 않는다: 메일 주소·전화번호·메신저 링크처럼 바로 연락할 수 있으면 다른 사이트를 더 찾지 않고 그 업체로 문의
+      if (fb && reachable(fb)) {
+        // 연락처가 적힌 화면을 원본으로 남겨 둔다
+        void captureWeb(slot, await driver.url(), true);
+        await useFallback(slot, fb, false);
+        void refreshState(slot);
+        maybeOpenGate();
         return;
       }
       const left = mode === 'hunt' && (tries.get(slot) ?? 0) < MAX_TRIES;
