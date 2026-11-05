@@ -1468,6 +1468,16 @@ export async function newChat(): Promise<{ sid: string }> {
   return { sid };
 }
 
+/** 화면을 다시 불러왔을 때: 화면이 세션들을 잊으므로 다른 세션은 기록을 남기고 멈춘 뒤 없애고, 보던 세션은 새로 시작한다 */
+export async function resetEverything() {
+  for (const sid of sessions()) {
+    if (sid === focusedSid()) continue;
+    await withSession(sid, () => reset());
+    disposeSession(sid);
+  }
+  await reset();
+}
+
 /** 히스토리 기록이 지워지면 그 기록을 돌리던 다른 세션도 멈추고 없앤다 */
 export async function endSessionOf(recordId: string) {
   const sid = sessionOf(recordId);

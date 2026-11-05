@@ -17,14 +17,17 @@ function on<T>(channel: string, cb: (v: T) => void) {
 
 const api = {
   config: (): Promise<AppConfig> => ipcRenderer.invoke('app:config'),
-  reset: () => ipcRenderer.invoke('app:reset'),
+  /** 새 견적: 진행 중인 견적은 계속 두고 새 세션을 연다 */
+  reset: (): Promise<{ sid: string }> => ipcRenderer.invoke('app:reset'),
+  /** 화면이 볼 견적 세션을 바꾼다 */
+  focusSession: (sid: string): Promise<boolean> => ipcRenderer.invoke('session:focus', sid),
   historyList: (): Promise<HistorySummary[]> => ipcRenderer.invoke('history:list'),
   historyGet: (id: string): Promise<HistoryRecord | null> => ipcRenderer.invoke('history:get', id),
   historyDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('history:delete', id),
   historySaveSession: (id: string, snap: SessionSnapshot): Promise<boolean> => ipcRenderer.invoke('history:saveSession', id, snap),
   historyGetSession: (id: string): Promise<SessionSnapshot | null> => ipcRenderer.invoke('history:getSession', id),
   /** 지난 견적을 지금 견적으로 되살려 이어서 하기 */
-  historyResume: (id: string): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('history:resume', id),
+  historyResume: (id: string): Promise<{ ok: boolean; message?: string; sid?: string }> => ipcRenderer.invoke('history:resume', id),
   saveSettings: (input: SettingsInput): Promise<{ ok: boolean; error?: string; config?: AppConfig }> => ipcRenderer.invoke('settings:save', input),
   clearApiKey: (): Promise<AppConfig> => ipcRenderer.invoke('settings:clearKey'),
   /** 브라우저에서 Google 로그인을 마칠 때까지 기다린다 (토큰은 main에만 있고 여기로 오지 않음) */

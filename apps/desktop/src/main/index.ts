@@ -19,6 +19,7 @@ import type { FieldDef } from '@shared/template';
 import { deleteRecord, getRecord, getSession, listRecords, saveSession } from './history';
 import { cancelGoogleLogin, connectGoogle, disconnectGoogle } from './channels/google-auth';
 import { resumePolling } from './channels/mail-poll';
+import { focusedSid, withSession } from './session';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -62,7 +63,7 @@ function createWindow() {
   // 진행 중인 에이전트는 멈추고, 지난 검색은 히스토리에 남는다. 처음 불러올 때는 그대로 둔다
   let loaded = false;
   win.webContents.on('did-finish-load', () => {
-    if (loaded) void flow.reset().catch((e) => console.log(`[reload] 초기화 실패: ${e instanceof Error ? e.message : String(e)}`));
+    if (loaded) void flow.resetEverything().catch((e) => console.log(`[reload] 초기화 실패: ${e instanceof Error ? e.message : String(e)}`));
     loaded = true;
   });
 
@@ -114,16 +115,24 @@ function limitZoom(win: BrowserWindow) {
   wc.on('zoom-changed', (_e, dir) => apply(wc.getZoomFactor() + (dir === 'in' ? ZOOM.step : -ZOOM.step)));
 }
 
+/** 화면에서 온 조작은 화면이 보고 있는 세션에서 실행한다 (처리 도중 화면이 다른 세션으로 바뀌어도 그 세션에서 끝까지) */
+const handle = (channel: string, fn: (e: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown) =>
+  ipcMain.handle(channel, (e, ...args) => withSession(focusedSid(), () => fn(e, ...args)));
+
 function registerIpc() {
-  ipcMain.handle('app:config', () => publicConfig());
-  ipcMain.handle('app:reset', () => flow.reset());
-  ipcMain.handle('history:list', () => listRecords());
-  ipcMain.handle('history:get', (_e, id: string) => getRecord(String(id)));
-  ipcMain.handle('history:delete', (_e, id: string) => deleteRecord(String(id)));
-  ipcMain.handle('history:saveSession', (_e, id: string, snap: SessionSnapshot) => saveSession(String(id), snap));
-  ipcMain.handle('history:getSession', (_e, id: string) => getSession(String(id)));
-  ipcMain.handle('history:resume', (_e, id: string) => flow.resumeHistory(String(id)));
-  ipcMain.handle('settings:save', async (_e, input: SettingsInput) => {
+  handle('app:config', () => publicConfig());
+  handle('app:reset', () => flow.newChat());
+  handle('session:focus', (_e, sid: string) => flow.focusSession(String(sid)));
+  handle('history:list', () => listRecords());
+  handle('history:get', (_e, id: string) => getRecord(String(id)));
+  handle('history:delete', async (_e, id: string) => {
+    await flow.endSessionOf(String(id));
+    return deleteRecord(String(id));
+  });
+  handle('history:saveSession', (_e, id: string, snap: SessionSnapshot) => saveSession(String(id), snap));
+  handle('history:getSession', (_e, id: string) => getSession(String(id)));
+  handle('history:resume', (_e, id: string) => flow.resumeHistory(String(id)));
+  handle('settings:save', async (_e, input: SettingsInput) => {
     const key = input.ANTHROPIC_API_KEY?.trim();
     if (key) {
       const err = await verifyApiKey(key, input.ANTHROPIC_MODEL?.trim() || config.model);
@@ -137,11 +146,11 @@ function registerIpc() {
     resumePolling();
     return { ok: true, config: publicConfig() };
   });
-  ipcMain.handle('settings:clearKey', () => {
+  handle('settings:clearKey', () => {
     clearApiKey();
     return publicConfig();
   });
-  ipcMain.handle('google:connect', async () => {
+  handle('google:connect', async () => {
     try {
       await connectGoogle();
       // 브라우저에서 로그인을 마치면 앱으로 돌아온다
@@ -155,52 +164,52 @@ function registerIpc() {
       return { ok: false, error: e instanceof Error ? e.message : String(e), config: publicConfig() };
     }
   });
-  ipcMain.handle('google:cancel', () => cancelGoogleLogin());
-  ipcMain.handle('google:disconnect', async () => {
+  handle('google:cancel', () => cancelGoogleLogin());
+  handle('google:disconnect', async () => {
     await disconnectGoogle();
     return publicConfig();
   });
-  ipcMain.handle('chat:send', (_e, text: string) => flow.onChat(text));
-  ipcMain.handle('order:open', (_e, id: VendorId) => flow.openOrderPage(id));
-  ipcMain.handle('window:fullscreen', () => {
+  handle('chat:send', (_e, text: string) => flow.onChat(text));
+  handle('order:open', (_e, id: VendorId) => flow.openOrderPage(id));
+  handle('window:fullscreen', () => {
     if (!mainWindow) return false;
     mainWindow.setFullScreen(!mainWindow.isFullScreen());
     return !mainWindow.isFullScreen();
   });
-  ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
-  ipcMain.handle('req:item', (_e, item: string) => flow.onItemChange(item));
-  ipcMain.handle('req:edit', (_e, patch: Partial<Requirements>) => flow.editRequirements(patch ?? {}));
-  ipcMain.handle('flow:revise', () => flow.revise());
-  ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
-  ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));
-  ipcMain.handle('mail:external', (_e, draft: MailDraft) => flow.onMailExternal(draft));
-  ipcMain.handle('mail:pasteReply', (_e, vendorId: VendorId, kind: MailKind, text: string) => flow.onPasteReply(vendorId, kind, text));
-  ipcMain.handle('message:sent', (_e, vendorId: VendorId) => flow.onMessageSent(vendorId));
-  ipcMain.handle('message:paste', (_e, vendorId: VendorId, text: string) => flow.onPasteMessage(vendorId, text));
-  ipcMain.handle('message:sms', (_e, vendorId: VendorId, body: string) => flow.onOpenSms(vendorId, body));
-  ipcMain.handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
-  ipcMain.handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
-  ipcMain.handle('agent:retry', (_e, id: VendorId) => flow.retry(id));
-  ipcMain.handle('agent:stop', () => flow.stop());
-  ipcMain.handle('agent:replace', (_e, id: VendorId) => flow.replace(id));
-  ipcMain.handle('agent:skip', (_e, id: VendorId) => flow.skip(id));
+  handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
+  handle('req:item', (_e, item: string) => flow.onItemChange(item));
+  handle('req:edit', (_e, patch: Partial<Requirements>) => flow.editRequirements(patch ?? {}));
+  handle('flow:revise', () => flow.revise());
+  handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
+  handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));
+  handle('mail:external', (_e, draft: MailDraft) => flow.onMailExternal(draft));
+  handle('mail:pasteReply', (_e, vendorId: VendorId, kind: MailKind, text: string) => flow.onPasteReply(vendorId, kind, text));
+  handle('message:sent', (_e, vendorId: VendorId) => flow.onMessageSent(vendorId));
+  handle('message:paste', (_e, vendorId: VendorId, text: string) => flow.onPasteMessage(vendorId, text));
+  handle('message:sms', (_e, vendorId: VendorId, body: string) => flow.onOpenSms(vendorId, body));
+  handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
+  handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
+  handle('agent:retry', (_e, id: VendorId) => flow.retry(id));
+  handle('agent:stop', () => flow.stop());
+  handle('agent:replace', (_e, id: VendorId) => flow.replace(id));
+  handle('agent:skip', (_e, id: VendorId) => flow.skip(id));
   ipcMain.on('browser:bounds', (e, slot: Slot, rect: { x: number; y: number; width: number; height: number } | null) =>
     setViewBounds(slot, rect, e.sender.getZoomFactor())
   );
-  ipcMain.handle('browser:login', (_e, url: string) => openLoginWindow(url));
-  ipcMain.handle('agent:resume', (_e, slot: Slot) => flow.resume(slot));
-  ipcMain.handle('report:pdf', (_e, html: string, name: string) => (mainWindow ? flow.onSavePdf(mainWindow, html, name) : null));
-  ipcMain.handle('file:savePdf', (_e, data: Uint8Array, name: string) => (mainWindow ? savePdfFile(mainWindow, data, name) : null));
-  ipcMain.handle('report:xlsx', (_e, payload: XlsxPayload) => (mainWindow ? exportXlsx(mainWindow, payload) : null));
-  ipcMain.handle('approval:polish', (_e, input: PolishInput) => polishApproval(input));
-  ipcMain.handle('template:get', () => loadTemplate());
-  ipcMain.handle('template:analyze', (_e, file: { name: string; data: Uint8Array }, fields: FieldDef[]) => analyzeTemplate(file, fields));
-  ipcMain.handle('template:mapping', (_e, mapping: Record<string, string | null>) => saveMapping(mapping));
-  ipcMain.handle('template:clear', () => clearTemplate());
-  ipcMain.handle('template:preview', (_e, values: Record<string, string>) => previewTemplate(values));
-  ipcMain.handle('template:fill', (_e, values: Record<string, string>) => (mainWindow ? fillTemplate(mainWindow, values) : { ok: false, error: '창이 없어요.' }));
-  ipcMain.handle('browser:back', (_e, slot: Slot) => goBack(slot));
-  ipcMain.handle('browser:openExternal', (_e, url: string) => {
+  handle('browser:login', (_e, url: string) => openLoginWindow(url));
+  handle('agent:resume', (_e, slot: Slot) => flow.resume(slot));
+  handle('report:pdf', (_e, html: string, name: string) => (mainWindow ? flow.onSavePdf(mainWindow, html, name) : null));
+  handle('file:savePdf', (_e, data: Uint8Array, name: string) => (mainWindow ? savePdfFile(mainWindow, data, name) : null));
+  handle('report:xlsx', (_e, payload: XlsxPayload) => (mainWindow ? exportXlsx(mainWindow, payload) : null));
+  handle('approval:polish', (_e, input: PolishInput) => polishApproval(input));
+  handle('template:get', () => loadTemplate());
+  handle('template:analyze', (_e, file: { name: string; data: Uint8Array }, fields: FieldDef[]) => analyzeTemplate(file, fields));
+  handle('template:mapping', (_e, mapping: Record<string, string | null>) => saveMapping(mapping));
+  handle('template:clear', () => clearTemplate());
+  handle('template:preview', (_e, values: Record<string, string>) => previewTemplate(values));
+  handle('template:fill', (_e, values: Record<string, string>) => (mainWindow ? fillTemplate(mainWindow, values) : { ok: false, error: '창이 없어요.' }));
+  handle('browser:back', (_e, slot: Slot) => goBack(slot));
+  handle('browser:openExternal', (_e, url: string) => {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
   });
 }
