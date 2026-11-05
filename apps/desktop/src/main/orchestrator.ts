@@ -27,7 +27,7 @@ import { appendToInbox, cancelAllWatches, cancelWatch, checkNow, isWatching, wat
 import { demoReply, demoReplyMessage } from './channels/demo-mail';
 import { extractQuote } from './channels/extract';
 import { fillLeadTimeFromText } from './quote/normalize';
-import { parseQuoteFile } from './channels/file-parse';
+import { parseQuoteFile, quoteFileBlock } from './channels/file-parse';
 import { getVendor, listVendors, replaceVendor, setVendorEmail, setVendors, vendorName } from './vendors';
 import { savePdf } from './report';
 
@@ -823,7 +823,10 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
   setVendorStatus(slot, 'parsing');
   say(`${vendorName(slot)}에서 회신이 왔어요. 견적서 양식으로 정리할게요.`);
   try {
-    const pdfs = r.attachments.filter((a) => a.contentType === 'application/pdf');
+    // 첨부 중 견적서로 볼 PDF·사진만 (명함 vcf 같은 글 첨부는 뺀다)
+    const files = r.attachments
+      .map((a) => quoteFileBlock({ name: a.filename, mime: a.contentType, data: a.content }))
+      .filter((b) => b !== null && b.type !== 'text');
     const { fields, meta } = await extractQuote({
       vendorId: slot,
       requirements,
@@ -831,7 +834,7 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
       ref: r.messageId,
       channel: 'mail',
       content: [
-        ...pdfs.map((a) => ({ type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: a.content.toString('base64') } })),
+        ...files,
         { type: 'text', text: `제목: ${r.subject}\n\n${r.text}` }
       ]
     });
