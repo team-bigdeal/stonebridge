@@ -2,10 +2,11 @@
 // 요구 조건 → 브라우저 3개가 동시에 각자 업체를 찾아 견적 수집(가격 없으면 메일/파일) → 업체별 통일 견적서 → 비교·추천 → 작성 → 통합 견적서
 import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
-import type { FieldKey, MailDraft, MailKind, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
+import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
+import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend } from '@shared/quote';
-import { hasApiKey, imapConfigured, sleep } from './config';
+import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
@@ -22,7 +23,8 @@ import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSys
 import type { PickedVendor, ToolName } from './agent/tools';
 import { formMessage, messageDraft, orderDraft, parseContact, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
-import { watchReply, type IncomingReply } from './channels/mail-poll';
+import { appendToInbox, cancelAllWatches, cancelWatch, checkNow, isWatching, watchReply, type IncomingReply } from './channels/mail-poll';
+import { demoReply, demoReplyMessage } from './channels/demo-mail';
 import { extractQuote } from './channels/extract';
 import { fillLeadTimeFromText } from './quote/normalize';
 import { parseQuoteFile } from './channels/file-parse';
@@ -730,14 +732,69 @@ function afterSent(draft: MailDraft) {
 
 export async function onMailSend(draft: MailDraft) {
   if (!draft.to.trim()) return { ok: false, error: '받는 사람 메일 주소를 넣어 주세요.' };
+  // 보내는 동안 새 견적·조건 변경이 일어나면 이 메일의 회신을 새 검색에 섞지 않는다
+  const gen = generation;
+  const full: MailDraft = { ...drafts.get(draft.id), ...draft };
+  let sent: MailRecord;
   try {
-    await sendMail({ ...drafts.get(draft.id), ...draft });
+    sent = await sendMail(full);
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }
   drafts.delete(draft.id);
+  if (gen !== generation) return { ok: true, imap: false };
   afterSent(draft);
-  return { ok: true, imap: imapConfigured() };
+  const demo = isDemoAddress(draft.to);
+  if (demo) scheduleDemoReply(full, sent);
+  return { ok: true, imap: imapConfigured() || demo };
+}
+
+/** 받은편지함에 넣은 시연 회신을 이 시간 안에 못 읽으면 바로 반영한다 */
+const DEMO_IMAP_WATCHDOG_MS = 30_000;
+
+/** 시연용 주소(.test)로 보낸 메일: 잠시 뒤 목업 업체가 답장한 것처럼 회신을 넣는다.
+ *  메일 계정이 있으면 진짜 받은편지함에 넣어 평소처럼 IMAP으로 읽게 하고, 없으면 바로 회신으로 처리한다 */
+function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
+  if (!requirements) return;
+  const reply = demoReply(draft, requirements, vendorName(draft.vendorId));
+  if (!reply) return;
+  const gen = generation;
+  const tag = subjectTag(draft);
+  const inject = () =>
+    handleReply(draft.vendorId, draft.kind, {
+      vendorId: draft.vendorId,
+      tag,
+      messageId: `<demo-${randomUUID()}@doldari.local>`,
+      from: `${reply.fromName} <${draft.to}>`,
+      subject: `Re: ${sent.subject}`,
+      text: reply.text,
+      attachments: []
+    });
+  setTimeout(() => {
+    if (gen !== generation) return cancelWatch(tag);
+    void (async () => {
+      // 보낼 때 IMAP으로 회신을 기다리기 시작한 경우에만 받은편지함 경로를 쓴다 (그 사이 계정 연결이 바뀌어도 회신이 묻히지 않게)
+      if (isWatching(tag) && imapConfigured()) {
+        try {
+          await appendToInbox(await demoReplyMessage({ vendorAddress: draft.to, fromName: reply.fromName, to: mailUser(), subject: sent.subject, inReplyTo: sent.id, text: reply.text }));
+          checkNow();
+          // 폴링이 끝내 못 읽으면 기다림을 거두고 바로 반영한다
+          setTimeout(() => {
+            if (gen !== generation || !isWatching(tag)) return;
+            cancelWatch(tag);
+            void inject().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
+          }, DEMO_IMAP_WATCHDOG_MS);
+          return;
+        } catch (e) {
+          notice(`받은편지함에 시연용 회신을 넣지 못해 바로 반영할게요: ${errMsg(e)}`, draft.vendorId);
+        }
+      }
+      // 기다리던 IMAP 회신을 거두고 바로 반영한다
+      cancelWatch(tag);
+      if (gen !== generation) return;
+      await inject();
+    })().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
+  }, DEMO_REPLY_DELAY_MS);
 }
 
 export async function onMailExternal(draft: MailDraft) {
@@ -985,6 +1042,8 @@ function clearRun() {
   reportShown = false;
   drafts.clear();
   messages.clear();
+  // 이전 검색의 메일 회신은 더 기다리지 않는다 (남겨 두면 IMAP 폴링이 계속 돈다)
+  cancelAllWatches();
   banned.clear();
   captured.clear();
   verified.clear();

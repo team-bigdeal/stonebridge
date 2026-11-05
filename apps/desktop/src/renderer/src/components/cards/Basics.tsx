@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, FlaskConical, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
 import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
+import { isDemoAddress } from '@shared/mail';
 import { won } from '@shared/quote';
 import { maskEmail, maskPhone, maskText } from '@shared/privacy';
 import { Button } from '@/components/ui/button';
@@ -232,7 +233,12 @@ export function MailCard({ draft }: { draft: MailDraft }) {
   const [replied, setReplied] = useState(false);
   const [showTo, setShowTo] = useState(!draft.to);
   const vendor = vendors.find((v) => v.id === draft.vendorId);
-  const done =(r: { ok: boolean; error?: string; imap?: boolean }) => {
+  // 이전 검색 카드(보기 전용)에서는 API가 null을 돌려준다
+  const done = (r: { ok: boolean; error?: string; imap?: boolean } | null) => {
+    if (!r) {
+      setState('draft');
+      return;
+    }
     if (r.ok) {
       setState('sent');
       setImap(Boolean(r.imap));
@@ -242,6 +248,9 @@ export function MailCard({ draft }: { draft: MailDraft }) {
     }
   };
   const locked = state !== 'draft';
+  // 시연용 주소(.test)는 메일 계정이 없어도 보내기를 누를 수 있다 (실제 발송 없이 회신만 흉내)
+  const demo = isDemoAddress(edit.to);
+  const canSend = Boolean(config?.smtpConfigured) || demo;
   // 디자인 29:174: 흰 카드, 칸마다 아래 줄, 근거는 회색 상자, 버튼은 외곽선 + 연파랑
   const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 disabled:opacity-100';
   return (
@@ -274,6 +283,12 @@ export function MailCard({ draft }: { draft: MailDraft }) {
             <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
           )}
         </Field>
+        {demo && state !== 'sent' && (
+          <p className="flex items-center gap-1.5 px-2 text-[13px] font-medium text-primary">
+            <FlaskConical className="size-4 shrink-0" />
+            시연용 주소(.test)예요. 보내면 잠시 뒤 시연용 업체 회신이 자동으로 와요.
+          </p>
+        )}
         <Field label="제목">
           <Input disabled={locked} value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} className={cn(bare, 'text-[16px] font-semibold text-ink md:text-[16px]')} />
         </Field>
@@ -302,16 +317,18 @@ export function MailCard({ draft }: { draft: MailDraft }) {
           <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={state === 'sending'} onClick={async () => done(await api.openMailApp(edit))}>
             메일 앱으로 열기
           </Button>
-          {config?.smtpConfigured && (
+          {canSend && (
             <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" disabled={state === 'sending'} onClick={async () => { setState('sending'); setError(''); done(await api.sendMail(edit)); }}>
               <Send className="size-4" /> {state === 'sending' ? '보내는 중…' : '승인하고 보내기'}
             </Button>
           )}
           {config?.smtpConfigured ? (
-            <span className="text-[13px] text-muted-foreground">{config.smtpUser}에서 보내요</span>
+            <span className="text-[13px] text-muted-foreground">{config.mailUser}에서 보내요</span>
+          ) : demo ? (
+            <span className="text-[13px] text-muted-foreground">메일 계정이 없어 실제로는 보내지 않고 시연만 해요</span>
           ) : (
             <button onClick={() => set({ settingsOpen: true })} className="text-[13px] text-muted-foreground underline-offset-2 hover:text-ink hover:underline">
-              Gmail을 연결하면 앱에서 바로 보낼 수 있어요
+              Google 계정을 연결하면 앱에서 바로 보낼 수 있어요
             </button>
           )}
         </div>
