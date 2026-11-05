@@ -582,6 +582,11 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return onQuotePdf(slot, file);
         },
         engine: () => engines.get(slot) ?? 'naver',
+        // 정한 업체 사이트에 연결이 안 되면 바로 끝낸다 (후보를 고르는 중이면 다른 후보로 넘어가게 둔다)
+        stopOnNavFail: (u) => {
+          const own = getVendor(slot);
+          return mode === 'collect' && Boolean(own) && hostKey(u) === hostKey(own!.url);
+        },
         missingOnDone: () => {
           if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
           const want: [FieldKey, string][] = [['shippingFee', '배송비'], ['leadTimeDays', '납기']];
@@ -596,6 +601,10 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
     const hasPrice = v ? quoteStore.hasListedPrice(slot) : false;
     if (v && hasPrice) {
       setVendorStatus(slot, 'done');
+    } else if (v && outcome.kind === 'unreachable') {
+      // 접속이 안 되는 주소: 빈 화면을 "내용 없음"으로 보지 않고, 다른 사이트를 찾으러 가지도 않고 알린다 (다시 시도·다른 업체로 버튼)
+      setVendorStatus(slot, 'failed');
+      say(`${v.name}: 사이트에 연결하지 못했어요 (주소를 확인해 주세요). 주소를 고쳐 다시 알려 주시거나 카드의 "다시 시도"·"다른 업체로"를 눌러 주세요.`);
     } else {
       // 웹 견적 실패: 대안으로 기록해 두고, 시도 횟수가 남았으면 다른 사이트부터
       const fb: Fallback | null =

@@ -2,6 +2,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { QuoteMeta, ReportedFields, Slot } from '@shared/types';
 import type { BrowserDriver } from '../browser/driver';
+import { NavError } from '../cdp/actions';
 import * as pageTools from '../browser/page';
 import type { Engine } from '../browser/page';
 import type { PdfFile } from '../browser/pdf';
@@ -106,6 +107,8 @@ export type AgentOutcome =
   | { kind: 'switch'; channel: 'mail' | 'file'; contact?: string; reason: string }
   | { kind: 'user'; reason: string; blocked?: boolean; url?: string }
   | { kind: 'handoff'; reason: string }
+  /** 정한 업체 사이트에 연결하지 못함 */
+  | { kind: 'unreachable'; url: string; reason: string }
   | { kind: 'incomplete' };
 
 export interface ToolContext {
@@ -140,6 +143,8 @@ export interface ToolContext {
   onVisit?: (url: string, title: string) => string | null;
   /** 다른 브라우저들이 본 사이트·판단 메모 (검색 결과 아래에 붙임) */
   board?: () => string;
+  /** 이 주소에 연결하지 못하면 탐색을 바로 끝낸다 (이미 정한 업체 사이트. 후보를 고르는 중에는 다른 후보로 넘어가게 두지 않음) */
+  stopOnNavFail?: (url: string) => boolean;
   /** 사이즈 조사: 찾은 사이즈 보고 */
   onSizes?: (sizes: { label: string; widthMm: number; heightMm: number; vendor: string; url: string; note?: string }[]) => number;
 }
@@ -199,8 +204,16 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
     switch (name) {
       case 'search_web':
         return { text: await pageTools.searchWeb(d, String(input.query), ctx.engine?.() ?? 'naver') };
-      case 'navigate':
-        return { text: await d.navigate(String(input.url)) };
+      case 'navigate': {
+        const url = String(input.url);
+        try {
+          return { text: await d.navigate(url) };
+        } catch (e) {
+          // 정한 업체 사이트에 연결이 안 되면 빈 화면을 더 헤매지 않고 바로 끝낸다
+          if (e instanceof NavError && ctx.stopOnNavFail?.(url)) return { text: e.message, isError: true, outcome: { kind: 'unreachable', url, reason: e.message } };
+          throw e;
+        }
+      }
       case 'snapshot':
         return { text: await d.snapshot() };
       case 'read_text':

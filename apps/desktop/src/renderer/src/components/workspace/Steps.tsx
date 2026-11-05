@@ -8,8 +8,8 @@ import { useRunSel } from '@/runScope';
 /** 끝난 브라우저는 마지막 작업 대신 마무리 한 줄을 보여 준다 ("견적 정보 보고 중"이 완료 옆에 남지 않게) */
 const FINAL: Partial<Record<VendorStatus, { text: string; dot: string }>> = {
   done: { text: '견적 확인을 마쳤어요', dot: 'bg-ok' },
-  failed: { text: '견적을 받지 못하고 탐색을 마쳤어요', dot: 'bg-destructive' },
-  stopped: { text: '멈췄어요 · "이어서 하기"로 계속할 수 있어요', dot: 'bg-muted-foreground/50' }
+  failed: { text: '견적을 받지 못했어요', dot: 'bg-destructive' },
+  stopped: { text: '탐색을 멈췄어요', dot: 'bg-muted-foreground/50' }
 };
 
 /** 에이전트 작업 기록: 지금 하는 일 한 줄 + 펼치면 전체 기록 (history=false면 한 줄만) */
@@ -18,7 +18,8 @@ export function Steps({ slot, defaultOpen = false, history = true }: { slot: Slo
   const status = useRunSel((s) => (slot === 'search' ? undefined : s.vendorStatus[slot]));
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1];
-  const final = status ? FINAL[status] : undefined;
+  // 실패로 끝났고 마지막 작업이 오류면 그 이유를 같이 보여 준다 (예: 사이트에 연결하지 못함)
+  const final = status === 'failed' && last.status === 'error' && last.detail ? { text: `탐색 실패 · ${last.detail}`, dot: 'bg-destructive' } : status ? FINAL[status] : undefined;
   const running = !final && last.status === 'running';
   return (
     <div className="space-y-2">

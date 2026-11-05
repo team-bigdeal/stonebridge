@@ -5,6 +5,11 @@ import { SUBMIT_CHECK } from '../browser/guard';
 import { CdpSession, waitForLoad } from './session';
 
 export class ToolError extends Error {}
+/** 사이트에 연결하지 못함 (주소 오류·서버 꺼짐·인터넷 끊김). 차단 화면과 달리 사람이 해결할 화면도 없다 */
+export class NavError extends ToolError {}
+
+/** 연결 단계에서 실패한 이동 (다운로드로 끝나는 ERR_ABORTED 같은 것은 빼고) */
+const NET_FAIL = /ERR_(CONNECTION|NAME|ADDRESS|INTERNET|NETWORK|TIMED_OUT|EMPTY_RESPONSE|SSL|CERT|TUNNEL|PROXY)/;
 
 /** 누르기 전에 제출·결제 버튼인지 확인한다. 확인하지 못하면 누르지 않는다 */
 async function assertNotSubmit(cdp: CdpSession, id: number, sid?: string) {
@@ -58,7 +63,8 @@ function assertUnlocked(cdp: CdpSession) {
 
 export async function navigate(cdp: CdpSession, url: string) {
   if (!/^https?:\/\//.test(url)) throw new ToolError('http(s) URL만 열 수 있습니다.');
-  await cdp.send('Page.navigate', { url });
+  const res = await cdp.send<{ errorText?: string }>('Page.navigate', { url });
+  if (res?.errorText && NET_FAIL.test(res.errorText)) throw new NavError(`사이트에 연결하지 못했습니다 (${res.errorText}). 주소가 맞는지, 사이트가 열려 있는지 확인이 필요합니다.`);
   await waitForLoad(cdp.wc);
   return `이동 완료: ${cdp.url()}`;
 }
