@@ -96,5 +96,20 @@
 .no-drag { -webkit-app-region: no-drag; }
 .flash { animation: flash 1.4s ease-out; }
 @keyframes flash { 0% { background: oklch(0.66 0.14 255 / 0.28); } 100% { background: transparent; } }
+/* 앱 전체 스크롤바: 얇은 둥근 막대 + 투명한 길. 기본(OS) 스크롤바 대신 어디서나 같은 모양.
+   (외부 사이트를 띄우는 내장 브라우저 화면에는 적용하지 않는다) */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--muted-foreground) 28%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  min-height: 32px;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: color-mix(in oklch, var(--muted-foreground) 50%, transparent); }
+*::-webkit-scrollbar-thumb:active { background-color: color-mix(in oklch, var(--primary) 70%, transparent); }
+*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+/* 예전 클래스 호환 (전역과 같은 모양, 조금 더 얇게) */
 .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
-.scroll-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
