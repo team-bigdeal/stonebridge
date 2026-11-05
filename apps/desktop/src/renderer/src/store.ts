@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import type {
   AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryEventPayload, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
-  Requirements, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
+  Requirements, RunSummary, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
 } from '@shared/types';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
@@ -12,6 +12,8 @@ interface State {
   config: AppConfig | null;
   stage: Stage;
   requirements: Partial<Requirements> | null;
+  /** 지금 조건으로 검색을 시작할 수 있는지 (인터뷰가 판단) */
+  reqReady: boolean;
   timeline: TimelineItem[];
   busy: boolean;
   quotes: Partial<Record<VendorId, Quote>>;
@@ -64,6 +66,7 @@ export function saveSidebar(open: boolean) {
 const initial = () => ({
   stage: 'interview' as Stage,
   requirements: null,
+  reqReady: false,
   timeline: [
     { id: 'hello', kind: 'assistant', text: '안녕하세요, 돌다리예요. 어떤 견적이 필요하세요?\n말씀해 주시면 웹에서 업체를 찾아 직접 사이트를 돌아보고, 숨은 비용까지 더한 견적을 비교해 드릴게요.' }
   ] as TimelineItem[],
@@ -130,6 +133,27 @@ export const useStore = create<State>((set, get) => ({
       case 'requirements':
         set({ requirements: ev.payload as Partial<Requirements> });
         break;
+      case 'requirements_ready':
+        set({ reqReady: Boolean(ev.payload) });
+        break;
+      case 'revised': {
+        // 이전 검색 화면(브라우저·비교·메일 카드)은 지우고 대화와 요약 기록만 남긴다
+        const keep = s.timeline.filter((t) => t.kind === 'user' || t.kind === 'assistant' || t.kind === 'history');
+        set({
+          timeline: [...keep, { id: crypto.randomUUID(), kind: 'history', summary: ev.payload as RunSummary }],
+          quotes: {},
+          flash: null,
+          vendors: [],
+          vendorStatus: {},
+          steps: {},
+          browsers: {},
+          sources: [],
+          originals: {},
+          expanded: null,
+          viewer: null
+        });
+        break;
+      }
       case 'vendors': {
         const next = ev.payload as VendorInfo[];
         // 업체가 바뀐 자리는 이전 업체의 원본을 비운다

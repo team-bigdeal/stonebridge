@@ -1,7 +1,7 @@
 // Electron main: 창, IPC
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import type { BrowserInput, MailDraft, MailKind, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
+import type { BrowserInput, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
 import { clearApiKey, config, publicConfig, saveSettings } from './config';
 import { verifyApiKey } from './agent/claude';
 import { bindWindow } from './events';
@@ -69,6 +69,8 @@ function registerIpc() {
     return publicConfig();
   });
   ipcMain.handle('chat:send', (_e, text: string) => flow.onChat(text));
+  ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
+  ipcMain.handle('flow:revise', () => flow.revise());
   ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));
   ipcMain.handle('mail:external', (_e, draft: MailDraft) => flow.onMailExternal(draft));

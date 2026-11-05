@@ -1,6 +1,6 @@
 // renderer에 노출하는 안전한 API (API 키 등 비밀값은 노출하지 않는다)
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, SessionSnapshot, MailDraft, MailKind, SettingsInput, Slot, VendorId } from '../shared/types';
+import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
 
 type MailResult = { ok: boolean; error?: string; imap?: boolean };
 
@@ -25,6 +25,8 @@ const api = {
   onEvent: (cb: (ev: AgentEvent) => void) => on('agent:event', cb),
   onFrame: (cb: (f: { slot: Slot; data: string }) => void) => on('browser:frame', cb),
   sendChat: (text: string) => ipcRenderer.invoke('chat:send', text),
+  startSearch: (patch: Partial<Requirements>) => ipcRenderer.invoke('flow:start', patch),
+  revise: () => ipcRenderer.invoke('flow:revise'),
   uploadFile: (vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => ipcRenderer.invoke('file:upload', vendorId, file),
   sendMail: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:send', draft),
   openMailApp: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:external', draft),
