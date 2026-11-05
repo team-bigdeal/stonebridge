@@ -821,6 +821,8 @@ export async function revise(fromChat = false) {
     reasons: rec.reasons,
     at: new Date().toISOString()
   };
+  // renderer가 이 시점 화면(단계·업체·견적)을 이전 검색으로 얼려 두므로, 상태를 비우기 전에 먼저 알린다
+  emit('revised', { payload: summary });
   // 탐색 중인 브라우저 정리는 시간이 걸리므로 기다리지 않는다 (시작 버튼이 startSearch에서 잠깐 기다림)
   void clearRun();
   requirements = null;
@@ -829,7 +831,6 @@ export async function revise(fromChat = false) {
     interview.apply(req);
     interview.reopen();
   }
-  emit('revised', { payload: summary });
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: { ready: true, asking: false } });
