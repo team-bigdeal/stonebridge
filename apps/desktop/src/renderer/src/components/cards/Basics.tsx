@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, ChevronDown, Copy, ExternalLink, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
+import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
 import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
 import { won } from '@shared/quote';
+import { maskEmail, maskPhone, maskText } from '@shared/privacy';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
@@ -214,8 +215,9 @@ export function MailCard({ draft }: { draft: MailDraft }) {
   const [imap, setImap] = useState(false);
   const [reply, setReply] = useState('');
   const [replied, setReplied] = useState(false);
+  const [showTo, setShowTo] = useState(!draft.to);
   const vendor = vendors.find((v) => v.id === draft.vendorId);
-  const done = (r: { ok: boolean; error?: string; imap?: boolean }) => {
+  const done =(r: { ok: boolean; error?: string; imap?: boolean }) => {
     if (r.ok) {
       setState('sent');
       setImap(Boolean(r.imap));
@@ -247,7 +249,15 @@ export function MailCard({ draft }: { draft: MailDraft }) {
 
       <div className="flex flex-col gap-3">
         <Field label="받는 사람">
-          <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
+          {/* 업체 메일 주소는 기본으로 가린다. 비어 있으면 바로 입력할 수 있게 입력칸을 보여 준다 */}
+          {edit.to && !showTo ? (
+            <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+              {maskEmail(edit.to)}
+              <RevealButton shown={false} onToggle={() => setShowTo(true)} />
+            </span>
+          ) : (
+            <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
+          )}
         </Field>
         <Field label="제목">
           <Input disabled={locked} value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} className={cn(bare, 'text-[16px] font-semibold text-ink md:text-[16px]')} />
@@ -318,6 +328,7 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
   const [error, setError] = useState('');
   const [reply, setReply] = useState('');
   const [replied, setReplied] = useState(false);
+  const [showContact, setShowContact] = useState(false);
   const vendor = vendors.find((v) => v.id === draft.vendorId);
   const chatLabel = draft.chatUrl?.includes('talk.naver.com') ? '네이버 톡톡 열기' : '카카오톡 열기';
   const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0';
@@ -346,7 +357,12 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
 
       <div className="flex flex-col gap-3">
         <Field label="연락처">
-          <span className="text-[14px] font-medium text-ink">{[draft.phone && formatPhone(draft.phone), draft.chatUrl].filter(Boolean).join(' · ') || draft.contact || '사이트에서 찾지 못했어요'}</span>
+          <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+            {/* 업체 연락처는 기본으로 가리고, 볼 때만 펼친다 (복사·문자 앱 열기는 원래 번호로) */}
+            {[draft.phone && (showContact ? formatPhone(draft.phone) : maskPhone(draft.phone)), draft.chatUrl].filter(Boolean).join(' · ') ||
+              (draft.contact ? (showContact ? draft.contact : maskText(draft.contact)) : '사이트에서 찾지 못했어요')}
+            {(draft.phone || draft.contact) && <RevealButton shown={showContact} onToggle={() => setShowContact(!showContact)} />}
+          </span>
         </Field>
         <div className="border-b border-line px-2 pb-5">
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} className={cn(bare, 'min-h-40 text-[14px] font-medium leading-[1.6] text-ink md:text-[14px]')} />
@@ -405,6 +421,14 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
 
 /** 01012345678 → 010-1234-5678 */
 const formatPhone = (p: string) => p.replace(/^(02|0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+
+function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-ink">
+      {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />} {shown ? '가리기' : '보기'}
+    </button>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
