@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useStore } from '@/store';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
-import { MailCard, RequirementsCard, UploadCard } from './cards/Basics';
+import { HistoryCard, MailCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
 
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation) */
@@ -102,5 +102,7 @@ function Item({ item }: { item: TimelineItem }) {
       return <Wide><DocsCard /></Wide>;
     case 'report':
       return <Wide><div className="max-w-[1100px]"><ReportCard /></div></Wide>;
+    case 'history':
+      return <Wide><div className="max-w-[1100px]"><HistoryCard summary={item.summary} /></div></Wide>;
   }
 }
