@@ -122,9 +122,14 @@ export function QuoteDocument({ doc, req, channel }: { doc: QuoteDoc; req: Requi
         </tbody>
       </table>
 
-      {doc.missing.length > 0 && (
+      {doc.missingCost.length > 0 && (
         <div className="dl-warn">
-          <b>확인이 필요한 항목:</b> {doc.missing.join(', ')} — 원본 견적에 없어 합계에 반영하지 못했습니다.
+          <b>합계에 빠진 금액:</b> {doc.missingCost.join(', ')} — 원본 견적에 없어 합계에 반영하지 못했습니다.
+        </div>
+      )}
+      {doc.missingInfo.length > 0 && (
+        <div className="dl-warn">
+          <b>업체 확인 필요:</b> {doc.missingInfo.join(', ')} — 원본 견적에 없습니다. 합계에는 영향이 없습니다.
         </div>
       )}
       <div className="dl-notes">

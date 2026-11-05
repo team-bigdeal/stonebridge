@@ -32,6 +32,8 @@ export interface Requirements {
   deadline: string; // ISO date
   needInstall: boolean;
   minWarrantyMonths: number;
+  /** 배송이 필요한지 (방문 수령·현장 서비스면 false → 배송비를 묻지 않음). 없으면 필요로 본다 */
+  needDelivery?: boolean;
   region?: string;
   notes?: string;
 }

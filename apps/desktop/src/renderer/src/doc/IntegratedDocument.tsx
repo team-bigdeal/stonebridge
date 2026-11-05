@@ -30,7 +30,7 @@ export function IntegratedDocument({ quotes, req, urls }: { quotes: Partial<Reco
           <tr>
             <th>요구 조건</th>
             <td>
-              수량 {req.quantity}개 · 예산 {won(req.budgetMax)} 이하 · {req.deadline}까지 · 설치 {req.needInstall ? '필요' : '불필요'} · A/S {req.minWarrantyMonths > 0 ? `${req.minWarrantyMonths}개월 이상` : '불필요'}{req.region ? ` · ${req.region}` : ''}
+              수량 {req.quantity}개 · 예산 {won(req.budgetMax)} 이하 · {req.deadline}까지 · 설치 {req.needInstall ? '필요' : '불필요'} · A/S {req.minWarrantyMonths > 0 ? `${req.minWarrantyMonths}개월 이상` : '불필요'}{req.needDelivery === false ? ' · 배송 불필요' : ''}{req.region ? ` · ${req.region}` : ''}
             </td>
           </tr>
         </tbody>
@@ -76,16 +76,21 @@ export function IntegratedDocument({ quotes, req, urls }: { quotes: Partial<Reco
               {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['install']) === 0 ? '포함' : n(sumKind(d, ['install']))))}
             </tr>
           )}
-          <tr>
-            <th>배송비</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['shipping']) === 0 ? '무료' : n(sumKind(d, ['shipping']))))}
-          </tr>
-          <tr>
-            <th>A/S</th>
-            {docs.map(({ q }) =>
-              cell(q.vendorId, `${q.warrantyMonths.value === null ? '?' : `${q.warrantyMonths.value}개월`}${q.warrantyExtraFee.value ? ` (+${n(q.warrantyExtraFee.value)})` : ''}`, false)
-            )}
-          </tr>
+          {req.needDelivery !== false && (
+            <tr>
+              <th>배송비</th>
+              {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['shipping']) === 0 ? '무료' : n(sumKind(d, ['shipping']))))}
+            </tr>
+          )}
+          {/* A/S가 필요 없는 품목(인쇄물·소모품 등)은 행을 빼서 "?"가 남지 않게 */}
+          {req.minWarrantyMonths > 0 && (
+            <tr>
+              <th>A/S</th>
+              {docs.map(({ q }) =>
+                cell(q.vendorId, `${q.warrantyMonths.value === null ? '?' : `${q.warrantyMonths.value}개월`}${q.warrantyExtraFee.value ? ` (+${n(q.warrantyExtraFee.value)})` : ''}`, false)
+              )}
+            </tr>
+          )}
           <tr>
             <th>추가 비용</th>
             {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['extra']) ? n(sumKind(d, ['extra'])) : '—'))}
