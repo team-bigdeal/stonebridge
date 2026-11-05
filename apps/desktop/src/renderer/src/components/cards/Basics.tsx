@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, ChevronDown, History, Mail, Paperclip, Search, Send } from 'lucide-react';
-import type { MailDraft, Requirements, RunSummary, VendorId } from '@shared/types';
+import { Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, History, Mail, MessageCircle, Paperclip, Search, Send, Smartphone } from 'lucide-react';
+import type { MailDraft, MessageDraft, Requirements, RunSummary, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
 import { won } from '@shared/quote';
+import { maskEmail, maskPhone, maskText } from '@shared/privacy';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
@@ -214,8 +215,9 @@ export function MailCard({ draft }: { draft: MailDraft }) {
   const [imap, setImap] = useState(false);
   const [reply, setReply] = useState('');
   const [replied, setReplied] = useState(false);
+  const [showTo, setShowTo] = useState(!draft.to);
   const vendor = vendors.find((v) => v.id === draft.vendorId);
-  const done = (r: { ok: boolean; error?: string; imap?: boolean }) => {
+  const done =(r: { ok: boolean; error?: string; imap?: boolean }) => {
     if (r.ok) {
       setState('sent');
       setImap(Boolean(r.imap));
@@ -247,7 +249,15 @@ export function MailCard({ draft }: { draft: MailDraft }) {
 
       <div className="flex flex-col gap-3">
         <Field label="받는 사람">
-          <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
+          {/* 업체 메일 주소는 기본으로 가린다. 비어 있으면 바로 입력할 수 있게 입력칸을 보여 준다 */}
+          {edit.to && !showTo ? (
+            <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+              {maskEmail(edit.to)}
+              <RevealButton shown={false} onToggle={() => setShowTo(true)} />
+            </span>
+          ) : (
+            <Input disabled={locked} value={edit.to} placeholder="메일 주소" onChange={(e) => setEdit({ ...edit, to: e.target.value })} className={cn(bare, 'text-[14px] font-medium text-ink md:text-[14px]')} />
+          )}
         </Field>
         <Field label="제목">
           <Input disabled={locked} value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} className={cn(bare, 'text-[16px] font-semibold text-ink md:text-[16px]')} />
@@ -305,6 +315,118 @@ export function MailCard({ draft }: { draft: MailDraft }) {
         <p className="text-[13px] text-muted-foreground">회신을 견적에 반영했어요.</p>
       ) : null}
     </div>
+  );
+}
+
+/** 문자·카톡 문의: 초안을 복사하거나 앱을 열어 사용자가 직접 보내고, 받은 견적서·답장을 같은 카드에 넣는다 */
+export function MessageCard({ draft }: { draft: MessageDraft }) {
+  const api = useApi();
+  const { vendors } = useRunStore();
+  const [body, setBody] = useState(draft.body);
+  const [sent, setSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+  const [reply, setReply] = useState('');
+  const [replied, setReplied] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const vendor = vendors.find((v) => v.id === draft.vendorId);
+  const chatLabel = draft.chatUrl?.includes('talk.naver.com') ? '네이버 톡톡 열기' : '카카오톡 열기';
+  const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0';
+  const copy = async () => {
+    await navigator.clipboard.writeText(body);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-white p-5">
+      <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
+        <div className="flex min-w-0 flex-col gap-3 leading-normal">
+          <p className="flex items-center gap-2 text-[19px] font-semibold text-ink">
+            <MessageCircle className="size-5 shrink-0 text-muted-foreground" />
+            {vendor ? `${vendor.name}에 보낼 문자·카톡 문의` : '문자·카톡 문의'}
+          </p>
+          <p className="text-[14px] font-medium text-muted-foreground">초안을 복사하거나 앱을 열어 직접 보내 주세요. 돌다리가 대신 보내지는 않아요.</p>
+        </div>
+        <div className="flex shrink-0 items-center rounded-lg bg-muted p-1">
+          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'text-muted-foreground' : 'bg-white text-black')}>보내기 전</span>
+          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'bg-white text-ok' : 'text-muted-foreground')}>
+            {sent && <Check className="size-4" />} 보냄
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <Field label="연락처">
+          <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+            {/* 업체 연락처는 기본으로 가리고, 볼 때만 펼친다 (복사·문자 앱 열기는 원래 번호로) */}
+            {[draft.phone && (showContact ? formatPhone(draft.phone) : maskPhone(draft.phone)), draft.chatUrl].filter(Boolean).join(' · ') ||
+              (draft.contact ? (showContact ? draft.contact : maskText(draft.contact)) : '사이트에서 찾지 못했어요')}
+            {(draft.phone || draft.contact) && <RevealButton shown={showContact} onToggle={() => setShowContact(!showContact)} />}
+          </span>
+        </Field>
+        <div className="border-b border-line px-2 pb-5">
+          <Textarea value={body} onChange={(e) => setBody(e.target.value)} className={cn(bare, 'min-h-40 text-[14px] font-medium leading-[1.6] text-ink md:text-[14px]')} />
+        </div>
+      </div>
+
+      {error && <div className="rounded-lg bg-destructive/10 px-4 py-2.5 text-[13px] text-destructive">{error}</div>}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => void copy()}>
+          {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? '복사했어요' : '초안 복사'}
+        </Button>
+        {draft.chatUrl && (
+          <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => api.openExternal(draft.chatUrl!)}>
+            <ExternalLink className="size-4" /> {chatLabel}
+          </Button>
+        )}
+        {draft.phone && (
+          <Button
+            variant="outline"
+            className="h-auto px-4 py-2.5 text-[14px]"
+            onClick={async () => {
+              setError('');
+              const r = await api.openSms(draft.vendorId, body);
+              if (r && !r.ok) setError(r.error ?? '문자 앱을 열 수 없어요.');
+            }}
+          >
+            <Smartphone className="size-4" /> 문자 앱으로 열기
+          </Button>
+        )}
+        {!sent && (
+          <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" onClick={async () => { setSent(true); await api.messageSent(draft.vendorId); }}>
+            <Send className="size-4" /> 보냈어요
+          </Button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <div className="text-[14px] font-semibold text-ink">받은 견적서</div>
+        <p className="text-[13px] text-muted-foreground">업체가 보낸 견적서 PDF·사진을 올리거나, 글로 받은 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교해요.</p>
+        <UploadCard vendorId={draft.vendorId} />
+        {replied ? (
+          <p className="text-[13px] text-muted-foreground">답장을 견적에 반영했어요.</p>
+        ) : (
+          <>
+            <Textarea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="카톡·문자로 받은 답장 붙여넣기" className="h-24 text-[14px] md:text-[14px]" />
+            <Button variant="secondary" className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={!reply.trim()} onClick={async () => { setReplied(true); await api.pasteMessage(draft.vendorId, reply); }}>
+              답장을 견적에 반영
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 01012345678 → 010-1234-5678 */
+const formatPhone = (p: string) => p.replace(/^(02|0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+
+function RevealButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-ink">
+      {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />} {shown ? '가리기' : '보기'}
+    </button>
   );
 }
 

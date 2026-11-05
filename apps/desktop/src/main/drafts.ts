@@ -1,6 +1,6 @@
 // 메일 초안: 견적 요청 / 확인 질문 / 주문 문의
 import { randomUUID } from 'node:crypto';
-import type { MailDraft, Quote, Requirements, VendorId } from '@shared/types';
+import type { MailDraft, MessageDraft, Quote, Requirements, VendorId } from '@shared/types';
 import { confirmQuestions, confirmedSum, won } from '@shared/quote';
 import { getVendor, vendorName } from './vendors';
 
@@ -60,6 +60,26 @@ export function orderDraft(vendorId: VendorId, quotes: Partial<Record<VendorId, 
     `[주문 문의] ${r.item} ${r.quantity}개 진행 요청`,
     `안녕하세요, ${companyName(vendorId)} 담당자님.\n\n견적 주신 조건(확인된 총액 ${won(confirmedSum(q, r))})으로 주문을 진행하고 싶습니다.\n\n${reqLines(r)}\n${pending ? `\n진행 전 확인 부탁드립니다:\n${pending.lines.map((l) => `- ${l}`).join('\n')}\n` : ''}\n결제 방법과 일정 안내 부탁드립니다.\n\n감사합니다.\n돌다리 사용자 드림`
   );
+}
+
+/** 사이트에 적힌 연락 방법에서 전화번호(숫자만)와 메신저 링크를 꺼낸다 */
+export function parseContact(contact = '') {
+  // 국내 번호(0으로 시작)와 +82 표기를 모두 0으로 시작하는 숫자로
+  const m = contact.match(/(?:\+82[-\s]?0?|0)(\d{1,2})[-.\s]?(\d{3,4})[-.\s]?(\d{4})/);
+  const phone = m ? `0${m[1]}${m[2]}${m[3]}` : undefined;
+  const chatUrl = contact.match(/https?:\/\/(?:pf\.kakao\.com|open\.kakao\.com|talk\.naver\.com)\/[^\s)'"<>]+/)?.[0];
+  return { phone, chatUrl };
+}
+
+/** 문자·카톡용 견적 요청 (메일보다 짧게, 견적서는 PDF로 받기) */
+export function messageDraft(vendorId: VendorId, r: Requirements, contact?: string): MessageDraft {
+  return {
+    id: randomUUID(),
+    vendorId,
+    contact,
+    ...parseContact(contact),
+    body: `안녕하세요, 홈페이지 보고 견적 문의드립니다.\n\n${reqLines(r)}\n\n제품가·배송비·설치비·A/S·납기가 들어간 견적서를 PDF로 보내 주실 수 있을까요? 감사합니다.`
+  };
 }
 
 /** 폼 채널(A)용 문의 내용 */

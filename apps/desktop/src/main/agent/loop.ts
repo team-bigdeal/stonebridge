@@ -2,6 +2,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config';
 import { step } from '../events';
+import { maskText } from '@shared/privacy';
 import { claude } from './claude';
 import { runTool, TOOL_DEFS, type AgentOutcome, type ToolContext, type ToolName } from './tools';
 
@@ -65,7 +66,7 @@ export async function runAgent(ctx: ToolContext, task: AgentTask): Promise<Agent
       const done = step(ctx.slot, TOOL_LABEL[use.name as ToolName] ?? use.name, input?.intent || use.name);
       const r = await runTool(ctx, use.name, input);
       done(r.isError ? 'error' : 'done', r.isError ? r.text.slice(0, 160) : undefined);
-      if (r.isError) console.log(`[tool-error] ${ctx.slot} ${use.name}: ${r.text.slice(0, 300)}`);
+      if (r.isError) console.log(`[tool-error] ${ctx.slot} ${use.name}: ${maskText(r.text.slice(0, 300))}`);
       results.push({ type: 'tool_result', tool_use_id: use.id, content: r.text, is_error: r.isError });
       outcome ??= r.outcome;
     }

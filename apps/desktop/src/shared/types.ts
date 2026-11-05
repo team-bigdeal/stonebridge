@@ -182,6 +182,19 @@ export interface MailDraft {
   sent?: 'smtp' | 'external';
 }
 
+/** 문자·카카오톡으로 보낼 견적 요청 초안 (사용자가 복사하거나 앱을 열어 직접 보낸다) */
+export interface MessageDraft {
+  id: string;
+  vendorId: VendorId;
+  body: string;
+  /** 숫자만 (문자 앱 열기용) */
+  phone?: string;
+  /** 카카오톡 채널·오픈채팅·네이버 톡톡 링크 */
+  chatUrl?: string;
+  /** 사이트에 적힌 연락 방법 원문 */
+  contact?: string;
+}
+
 export interface MailRecord {
   id: string;
   direction: 'out' | 'in';
@@ -224,7 +237,7 @@ export type TimelineItem =
   | { id: string; kind: 'search' }
   | { id: string; kind: 'vendors'; slots?: VendorId[] }
   | { id: string; kind: 'mail'; draft: MailDraft }
-  | { id: string; kind: 'upload'; vendorId: VendorId }
+  | { id: string; kind: 'upload'; vendorId: VendorId; message?: MessageDraft }
   | { id: string; kind: 'compare' }
   | { id: string; kind: 'browser'; slot: Slot; title: string }
   | { id: string; kind: 'docs' }
