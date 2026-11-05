@@ -106,6 +106,8 @@ export async function onChat(text: string) {
         timeline({ kind: 'requirements' });
       }
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
+      // "웹에서 찾아줘"처럼 업체를 새로 찾아 달라고 하면, 앞서 붙여 넣은 업체 주소만 보지 않게 비운다
+      if (!/https?:\/\//.test(text) && SEARCH_AGAIN.test(text)) givenUrls = [];
       // "시작" 같은 말은 카드의 시작 버튼과 같게 처리한다 (인터뷰로 넘기면 같은 안내만 반복됨)
       if (START_WORDS.test(text.trim()) && interview.req.item) {
         await startSearch({});
@@ -134,6 +136,20 @@ export async function onChat(text: string) {
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
     const urls = text.match(/https?:\/\/[^\s)]+/g);
+    // 검색이 끝난 뒤 "웹에서 견적 나오는 곳으로 찾아줘"·"다른 곳 찾아줘" 같은 말은 조건 변경이 아니라 업체를 새로 찾아 달라는 요청:
+    // 조건은 그대로 두고, 앞서 준 업체 주소 대신 웹에서 다시 찾는다 (그 말은 업체 찾기 메모로 넘긴다)
+    if (!urls && requirements && interview && SEARCH_AGAIN.test(text)) {
+      const req = requirements;
+      await revise(true);
+      givenUrls = [];
+      // 앞서 준 업체(주소·이름)로만 받던 제한도 푼다: 브라우저 3개가 웹에서 새로 찾는다
+      interview.apply({ ...req, vendors: [], onlyVendors: false, notes: [req.notes, `업체 찾기 요청: ${text.trim().slice(0, 100)}`].filter(Boolean).join(' / ') });
+      say('조건은 그대로 두고, 웹에서 견적이 나오는 업체를 새로 찾아볼게요. 이전 결과는 위에 남겨 두었어요.');
+      // 이전 검색의 늦게 온 이벤트가 단계를 비교로 되돌려 놓을 수 있어 요구 조건 단계로 맞춘 뒤 시작한다
+      setStage('interview', true);
+      await startSearch({});
+      return;
+    }
     if (urls && requirements) {
       for (const url of urls.slice(0, 3)) {
         const slot = VENDOR_IDS.find((id) => !getVendor(id) || ['failed', 'needs_user'].includes(getVendorStatus(id)));
@@ -183,6 +199,10 @@ const START_WORDS = new RegExp(
   String.raw`^(?:(?:지금\s*)?(?:바로\s*)?(?:다시\s*)?(?:계속\s*|이어서\s*)?(?:이\s*조건으로\s*|이대로\s*|그대로\s*)?(?:검색|찾기)?\s*(?:시작|검색|찾아|진행|계속|이어서|재개)(?:\s*(?:해\s*주세요|해\s*줘|해|하자|할게|합시다|줘|봐\s*줘|봐))?|(?:이대로|그대로)\s*(?:해\s*주세요|해\s*줘|해|가자|가|ㄱ+)?|ㄱㄱ+|고고|go|start)\s*[.!~ㅎ]*$`,
   'i'
 );
+
+/** 업체를 (다시) 찾아 달라는 말: "웹에서 찾아줘", "다른 곳 찾아봐", "견적 나오는 곳으로 검색해줘" 등.
+ *  수량·예산 같은 조건이 섞인 말은 조건 변경으로 보도록, 숫자가 들어 있으면 맞지 않는다 */
+const SEARCH_AGAIN = /^(?!.*\d)(?=.*(찾아|검색|알아봐|뒤져|서치))(?=.*(웹|사이트|인터넷|온라인|다른\s*(곳|업체|데)|새로|더|견적\s*(이\s*)?(나오|내주|계산|되)|업체)).{2,80}$/;
 
 /** 채팅으로 진행 중인 탐색을 멈추라는 짧은 말 ("멈춰", "그만", "검색 중지", "잠깐" 등). 다른 뜻이 섞인 말은 전체 일치가 아니라 맞지 않는다 */
 const STOP_WORDS = new RegExp(
@@ -313,7 +333,10 @@ async function siteName(url: string): Promise<string> {
   })();
   if (!/^(localhost|127\.0\.0\.1)(:|$)/.test(host)) return host;
   try {
-    const html = await (await fetch(url, { signal: AbortSignal.timeout(2000) })).text();
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    // 차단·오류 화면의 제목("보안 확인" 등)을 업체 이름으로 쓰지 않는다
+    if (!res.ok) return host;
+    const html = await res.text();
     const title = /<title>([^<]+)<\/title>/i.exec(html)?.[1]?.split(/\s[-|·:]\s/)[0]?.trim();
     return title || host;
   } catch {
@@ -468,7 +491,10 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           : null;
       if (fb) fallbacks.set(slot, [...(fallbacks.get(slot) ?? []), fb]);
       const reason = outcome.kind === 'switch' || outcome.kind === 'user' ? clause(outcome.reason) : '가격 정보를 찾지 못함';
-      if (outcome.kind === 'user') {
+      // 확인할 수 없는 사이트(차단·로그인·조작 불가 등)는 기다리지 않고 건너뛰어 다른 사이트에서 다시 찾는다.
+      // 더 시도할 수 없을 때만 사용자에게 넘긴다
+      const canRetry = (tries.get(slot) ?? 0) < MAX_TRIES;
+      if (outcome.kind === 'user' && !canRetry) {
         // 418·CAPTCHA·로그인 등 사람이 해야 하는 화면: 멈추고 넘긴다 (해결하면 계속, 건너뛰면 다음 업체)
         handoffMode.set(slot, { mode, url: outcome.url });
         setVendorStatus(slot, 'needs_user');
@@ -479,7 +505,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
         return;
       }
       // 웹에만 의지하지 않는다: 메일 주소·전화번호·메신저 링크처럼 바로 연락할 수 있으면 다른 사이트를 더 찾지 않고 그 업체로 문의
-      if (fb && reachable(fb)) {
+      if (outcome.kind !== 'user' && fb && reachable(fb)) {
         // 연락처가 적힌 화면을 원본으로 남겨 둔다
         void captureWeb(slot, await driver.url(), true);
         await useFallback(slot, fb, false);
@@ -487,15 +513,21 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
         maybeOpenGate();
         return;
       }
-      const left = mode === 'hunt' && (tries.get(slot) ?? 0) < MAX_TRIES;
-      if (left) {
+      // 사용자가 준 주소·이름으로 지정한 업체여도 견적을 확인할 수 없으면 다른 사이트를 찾는다
+      if (canRetry) {
+        targets.delete(slot);
         if (v) {
           banned.add(hostKey(v.url));
           noteVerdict(slot, v.url, `${v.name}: 웹 견적 안 됨 (${reason})`);
           triedNames.set(slot, [...(triedNames.get(slot) ?? []), `${v.name}(${reason})`]);
           if (fb) void captureWeb(slot, await driver.url(), true);
-          say(`브라우저 ${slot}: ${v.name}는 웹에서 바로 견적을 낼 수 없어요 (${reason}). 다른 사이트를 찾아볼게요 (${(tries.get(slot) ?? 0) + 1}/${MAX_TRIES}).`);
+          say(`브라우저 ${slot}: ${v.name}에서는 견적을 확인할 수 없어요 (${reason}). 건너뛰고 다른 사이트를 찾아볼게요 (${(tries.get(slot) ?? 0) + 1}/${MAX_TRIES}).`);
           dropVendor(slot);
+        } else if (outcome.kind === 'user') {
+          // 업체를 고르기 전 검색 단계에서 막힌 경우: 다음 검색 엔진으로
+          const host = outcome.url ? hostKey(outcome.url) : '';
+          if (host) banned.add(host);
+          say(`브라우저 ${slot}: ${reason}. 건너뛰고 다른 곳에서 다시 찾아볼게요 (${(tries.get(slot) ?? 0) + 1}/${MAX_TRIES}).`);
         }
         await setHandoff(slot, undefined);
         void hunt(slot, gen);
