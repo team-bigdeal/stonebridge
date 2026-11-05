@@ -116,6 +116,15 @@ export async function moveCursor(cdp: CdpSession, x: number, y: number) {
   await cursorTo(cdp.slot, x, y, v.w, v.h);
 }
 
+/** 실제로 누르지 않고 커서만 요소로 옮겨 누르는 모습을 보여 준다 (값을 스크립트로 바꾸는 네이티브 <select> 등) */
+export async function pointAt(cdp: CdpSession, backendNodeId: number, sid?: string) {
+  const { x, y } = await centerOf(cdp, backendNodeId, sid).catch(() => ({ x: NaN, y: NaN }));
+  if (!Number.isFinite(x)) return;
+  await moveCursor(cdp, x, y);
+  const v = await viewport(cdp);
+  await cursorTo(cdp.slot, x, y, v.w, v.h, true);
+}
+
 async function mouseClick(cdp: CdpSession, x: number, y: number) {
   await moveCursor(cdp, x, y);
   const v = await viewport(cdp);

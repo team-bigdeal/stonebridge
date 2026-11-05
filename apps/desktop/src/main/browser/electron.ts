@@ -138,6 +138,8 @@ const CURSOR_HTML = `<!doctype html><html><body style="margin:0;overflow:hidden;
 <script>window.ring=()=>{const r=document.getElementById('r');r.animate([{transform:'scale(1)',opacity:1},{transform:'scale(3.2)',opacity:0}],{duration:450,easing:'ease-out'})}</script>
 </body></html>`;
 const CURSOR_BOX = 64;
+/** 커서를 마지막 자리에 남겨 두는 시간 (움직일 때마다 다시 잼) */
+const CURSOR_HOLD_MS = 10_000;
 /** 페이지는 항상 이 너비(CSS px)로 배치한다. 카드가 작으면 축소해서 보여 줘 데스크톱 화면 비율을 유지하고,
  *  카드가 보이든 숨든 같은 배치라 에이전트가 읽는 화면도 같다 */
 const LAYOUT_WIDTH = 1100;
@@ -277,9 +279,9 @@ export class ElectronDriver implements BrowserDriver {
     this.cursorView.setBounds({ x, y, width: CURSOR_BOX, height: CURSOR_BOX });
     this.cursorView.setVisible(true);
     if (click) void this.cursorView.webContents.executeJavaScript('window.ring && window.ring()').catch(() => undefined);
-    // 잠시 뒤 숨겨서 사용자의 클릭을 가리지 않게
+    // 탐색하는 동안은 마지막 자리에 남겨 두고(다음 동작까지 몇 초씩 걸림), 한동안 움직임이 없으면 숨겨 사용자의 클릭을 가리지 않게
     if (this.cursorTimer) clearTimeout(this.cursorTimer);
-    this.cursorTimer = setTimeout(() => this.cursorView.setVisible(false), 1800);
+    this.cursorTimer = setTimeout(() => this.cursorView.setVisible(false), CURSOR_HOLD_MS);
   }
 
   private adoptPopup(win: BrowserWindow) {
@@ -527,6 +529,8 @@ export class ElectronDriver implements BrowserDriver {
     const sid = this.cdp.refFrame.get(Number(String(ref).replace(/\D/g, '')));
     const native = await this.cdp.callOn<boolean>(id, `function () { return this.tagName === 'SELECT' || !!(this.querySelector && this.querySelector('select')); }`, sid);
     if (!native) return act.selectCustom(this.cdp, Number(String(ref).replace(/\D/g, '')), option);
+    // 값은 스크립트로 바꾸지만 커서는 그 칸으로 가서 누르는 모습을 보여 준다
+    await act.pointAt(this.cdp, id, sid);
     const r = await this.cdp.callOn<{ ok: boolean; options: string[] }>(
       id,
       `function () {

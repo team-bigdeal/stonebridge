@@ -22,7 +22,8 @@ interface Cursor {
 export const useCursors = create<{ cursors: Partial<Record<Slot, Cursor>> }>(() => ({ cursors: {} }));
 export const pushCursor = (c: { slot: Slot; x: number; y: number; click?: boolean }) =>
   useCursors.setState((s) => ({ cursors: { ...s.cursors, [c.slot]: { x: c.x, y: c.y, click: c.click, at: Date.now() } } }));
-const CURSOR_MS = 1800;
+/** 탐색 중이 아니면 이 시간 뒤 커서를 숨긴다. 탐색 중이면 다음 동작까지 마지막 자리에 남겨 둔다 */
+const CURSOR_MS = 10_000;
 /**
  * 브라우저 화면: 내장 브라우저 뷰가 이 자리에 겹쳐 뜬다 (사용자가 그대로 클릭·입력).
  * 카드가 화면 밖이거나 지난 견적이면 마지막 화면 이미지.
@@ -37,6 +38,8 @@ export function LiveFrame({ slot, className, priority = 1, still = false }: { sl
   const past = useStore((s) => Boolean(s.replay)) || Boolean(scope);
   const replay = past || still;
   const shown = useShownViews((s) => Boolean(s.shown[slot]));
+  // 이미 페이지를 연 브라우저면 화면 이미지가 오기 전이라도 "여는 중" 대신 빈 페이지로 둔다 (스크롤로 잠깐 뗄 때 깜빡이지 않게)
+  const hasPage = useStore((s) => /^https?:/.test(s.browsers[slot]?.url ?? ''));
 
   useEffect(() => {
     if (replay || !ref.current) return;
@@ -54,7 +57,7 @@ export function LiveFrame({ slot, className, priority = 1, still = false }: { sl
   }
   return (
     <div ref={ref} className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
-      {shown ? null : frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top opacity-80" /> : <Placeholder />}
+      {shown ? null : frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : hasPage ? <div className="h-full w-full bg-white" /> : <Placeholder />}
       {!shown && frame && <CursorDot slot={slot} />}
     </div>
   );
@@ -63,13 +66,14 @@ export function LiveFrame({ slot, className, priority = 1, still = false }: { sl
 /** 화면 이미지 위 에이전트 커서: 이동은 부드럽게, 클릭은 퍼지는 원. 잠시 뒤 사라진다 */
 function CursorDot({ slot }: { slot: Slot }) {
   const cursor = useCursors((s) => s.cursors[slot]);
+  const browsing = useStore((s) => slot !== 'search' && (s.vendorStatus[slot] === 'browsing' || s.vendorStatus[slot] === 'parsing'));
   const [, tick] = useState(0);
   useEffect(() => {
     if (!cursor) return;
     const t = setTimeout(() => tick((n) => n + 1), CURSOR_MS + 50);
     return () => clearTimeout(t);
   }, [cursor]);
-  if (!cursor || Date.now() - cursor.at > CURSOR_MS) return null;
+  if (!cursor || (!browsing && Date.now() - cursor.at > CURSOR_MS)) return null;
   return (
     <div className="pointer-events-none absolute z-10 transition-all duration-300 ease-out" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }}>
       <span className="absolute -left-2.5 -top-2.5 block size-5 rounded-full border-[3px] border-white bg-blue-500 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
