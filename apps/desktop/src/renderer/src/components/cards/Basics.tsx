@@ -115,7 +115,7 @@ function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; read
             <span className="text-[12px] text-muted-foreground">설치</span>
             <div className="mt-1 flex gap-1">
               {[true, false].map((on) => (
-                <Button key={String(on)} type="button" size="sm" variant={needInstall === on ? 'secondary' : 'ghost'} className={cn('h-8 flex-1 text-[13px]', needInstall === on && 'ring-1 ring-border')} onClick={() => setInstall(on)}>
+                <Button key={String(on)} type="button" size="sm" variant={needInstall === on ? 'secondary' : 'outline'} className={cn('h-8 flex-1 text-[13px]', needInstall === on && 'ring-1 ring-muted-foreground/40')} onClick={() => setInstall(on)}>
                   {on ? '필요' : '필요 없음'}
                 </Button>
               ))}
