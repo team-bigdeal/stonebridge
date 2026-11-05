@@ -40,14 +40,14 @@ export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; class
   if (replay) {
     // 지난 견적: 저장된 마지막 화면만
     return (
-      <div className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-black/40 ring-1 ring-border', className)}>
-        {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : <div className="flex h-full items-center justify-center text-xs text-muted-foreground">저장된 화면 없음</div>}
+      <div className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
+        {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : <div className="flex h-full items-center justify-center text-xs text-muted-foreground">저장된 화면이 없어요</div>}
       </div>
     );
   }
   if (embedded) {
     return (
-      <div ref={ref} className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-black/40 ring-1 ring-border', className)}>
+      <div ref={ref} className={cn('relative aspect-[16/10] w-full overflow-hidden rounded-lg bg-muted/40 ring-1 ring-border', className)}>
         {shown ? null : frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top opacity-80" /> : <Placeholder />}
       </div>
     );
@@ -58,8 +58,8 @@ export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; class
 function Placeholder() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
-      <span className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      브라우저 준비 중
+      <span className="size-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+      브라우저를 여는 중
     </div>
   );
 }
@@ -99,7 +99,7 @@ function ImageFrame({ slot, className, frame }: { slot: Slot; className?: string
         const text = e.clipboardData.getData('text');
         if (text) void api.browserInput({ slot, type: 'text', text });
       }}
-      className={cn('relative aspect-[16/10] w-full cursor-pointer overflow-hidden rounded-lg bg-black/40 outline-none ring-1 transition', focused ? 'ring-primary' : 'ring-border', className)}
+      className={cn('relative aspect-[16/10] w-full cursor-pointer overflow-hidden rounded-lg bg-muted/40 outline-none ring-1 transition', focused ? 'ring-primary' : 'ring-border', className)}
     >
       {frame ? <img src={frame} alt="" draggable={false} className="h-full w-full select-none object-cover object-top" /> : <Placeholder />}
       {showCursor && (
@@ -107,12 +107,12 @@ function ImageFrame({ slot, className, frame }: { slot: Slot; className?: string
           className="pointer-events-none absolute transition-all duration-300 ease-out"
           style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%` }}
         >
-          <span className="absolute -left-2.5 -top-2.5 block size-5 rounded-full border-[3px] border-white bg-primary shadow-lg" />
+          <span className="absolute -left-2 -top-2 block size-4 rounded-full border-2 border-white bg-primary shadow-md" />
           {cursor.click && <span key={cursor.at} className="absolute -left-2 -top-2 block size-4 animate-ping rounded-full border-[3px] border-primary" />}
-          <span className="absolute left-3 top-3 rounded bg-primary px-1 text-[10px] font-bold text-primary-foreground">AI</span>
+          <span className="absolute left-3 top-3 whitespace-nowrap rounded bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">돌다리</span>
         </div>
       )}
-      {focused && <div className="pointer-events-none absolute right-2 top-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">직접 조작 중</div>}
+      {focused && <div className="pointer-events-none absolute right-2 top-2 rounded-md bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground ring-1 ring-border">직접 조작 중 · 바깥을 누르면 끝나요</div>}
     </div>
   );
 }

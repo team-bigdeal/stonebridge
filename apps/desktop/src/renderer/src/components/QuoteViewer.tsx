@@ -3,7 +3,7 @@ import { Download, ExternalLink } from 'lucide-react';
 import type { Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/store';
 import { QuoteDocument } from '@/doc/QuoteDocument';
@@ -29,13 +29,16 @@ export function QuoteViewer() {
       <Dialog open onOpenChange={(o) => !o && close()}>
         <DialogContent className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]">
           <DialogHeader className="flex-row items-center gap-3">
-            <DialogTitle>통합 견적서</DialogTitle>
-            <Button size="sm" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `통합견적서_${req.item}`)) ?? '')}>
+            <div className="min-w-0 space-y-1">
+              <DialogTitle>통합 견적서</DialogTitle>
+              <DialogDescription>{req.item} · 업체별 견적을 같은 기준으로 한 장에 모았어요</DialogDescription>
+            </div>
+            <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `통합견적서_${req.item}`)) ?? '')}>
               <Download className="size-4" /> PDF 저장
             </Button>
           </DialogHeader>
-          {saved && <div className="text-xs text-muted-foreground">저장됨: {saved}</div>}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-200 p-4">
+          {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
             <style>{DOC_CSS}</style>
             {el}
           </div>
@@ -53,23 +56,26 @@ export function QuoteViewer() {
     <Dialog open onOpenChange={(o) => !o && close()}>
       <DialogContent className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]">
         <DialogHeader className="flex-row items-center gap-3">
-          <DialogTitle>{viewer.id} 업체 견적서 · {q.vendorName}</DialogTitle>
-          <Button size="sm" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `견적서_${viewer.id}_${q.vendorName}`)) ?? '')}>
+          <div className="min-w-0 space-y-1">
+            <DialogTitle className="truncate">{q.vendorName}</DialogTitle>
+            <DialogDescription>{viewer.id} 업체 견적서 · 통일 양식과 받은 원본을 나란히 볼 수 있어요</DialogDescription>
+          </div>
+          <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `견적서_${viewer.id}_${q.vendorName}`)) ?? '')}>
             <Download className="size-4" /> PDF 저장
           </Button>
         </DialogHeader>
-        {saved && <div className="text-xs text-muted-foreground">저장됨: {saved}</div>}
+        {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
         <Tabs defaultValue="doc" className="min-h-0 flex-1">
           <TabsList>
             <TabsTrigger value="doc">통일 양식</TabsTrigger>
-            <TabsTrigger value="orig">원본 ({origs.length})</TabsTrigger>
+            <TabsTrigger value="orig">받은 원본 {origs.length > 0 && <span className="tabular-nums text-muted-foreground">{origs.length}</span>}</TabsTrigger>
           </TabsList>
-          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-neutral-200 p-4">
+          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
             <style>{DOC_CSS}</style>
             {el}
           </TabsContent>
           <TabsContent value="orig" className="min-h-0 space-y-3 overflow-y-auto">
-            {origs.length === 0 && <div className="p-6 text-sm text-muted-foreground">아직 보관된 원본이 없어요.</div>}
+            {origs.length === 0 && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">아직 보관한 원본이 없어요. 웹 화면, 메일 회신, 올린 파일이 여기에 쌓여요.</div>}
             {[...origs].reverse().map((o) => (
               <div key={o.id} className="rounded-lg border bg-card p-3">
                 <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">

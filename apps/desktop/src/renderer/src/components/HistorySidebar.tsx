@@ -3,6 +3,7 @@ import { ArrowLeft, History, Trash2 } from 'lucide-react';
 import type { HistorySummary } from '@shared/types';
 import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
+import { Pill } from './cards/Section';
 import { exitReplay, openReplay } from '@/replay';
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
@@ -22,12 +23,12 @@ export function HistorySidebar() {
   if (!sidebarOpen) return null;
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
-      <div className="flex h-10 items-center gap-2 px-3 text-[12px] font-semibold text-muted-foreground">
-        <History className="size-3.5" /> 히스토리
-        {list && list.length > 0 && <span className="font-normal">{list.length}</span>}
+      <div className="flex h-11 items-center gap-2 px-4 text-[13px] font-medium">
+        <History className="size-4 text-muted-foreground" /> 지난 견적
+        {list && list.length > 0 && <span className="tabular-nums text-muted-foreground">{list.length}</span>}
       </div>
       {replay && (
-        <button type="button" onClick={exitReplay} className="mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-primary/50 bg-primary/10 px-2.5 py-1.5 text-[12px] font-semibold text-primary hover:bg-primary/20">
+        <button type="button" onClick={exitReplay} className="mx-2 mb-2 flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-2 text-[12px] font-medium hover:bg-accent">
           <ArrowLeft className="size-3.5" /> 현재 견적으로 돌아가기
         </button>
       )}
@@ -46,7 +47,7 @@ export function HistorySidebar() {
                   onClick={() => void openReplay(h.id)}
                 >
                   <div className="truncate pr-6 text-[13px] font-medium">
-                    {h.id === liveId && <span className="mr-1 rounded bg-primary/20 px-1 text-[10px] font-semibold text-primary">진행 중</span>}
+                    {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
                     {h.item}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -59,7 +60,7 @@ export function HistorySidebar() {
                   {h.best && (
                     <div className="mt-0.5 truncate text-[11px]">
                       <span className="text-muted-foreground">추천 {h.best.name} </span>
-                      <span className="font-semibold text-primary">{won(h.best.total)}</span>
+                      <span className="font-medium tabular-nums text-foreground">{won(h.best.total)}</span>
                     </div>
                   )}
                 </button>
