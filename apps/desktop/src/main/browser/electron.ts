@@ -10,8 +10,10 @@ import { CdpSession } from '../cdp/session';
 import * as act from '../cdp/actions';
 import { takeSnapshot } from '../cdp/snapshot';
 import { getWindow, send } from '../events';
+import { quoteRequesterName, sleep } from '../config';
 import { onCursor } from './cursor';
 import { type BrowserDriver, ToolError } from './driver';
+import { looksLikeQuote, QUOTE_FORM_CHECK, QUOTE_ISSUE_RE, type QuoteFormCheck } from './guard';
 import { checkPdf, MAX_PDF_BYTES, pdfName, showingPdf, type PdfFile } from './pdf';
 
 export const BROWSER_PARTITION = 'persist:doldari-browser';
@@ -93,9 +95,34 @@ const isQuoteDocText = (text: string) => {
 
 async function assertQuoteDoc(wc: WebContents, extra = '') {
   const text = (await wc.executeJavaScript(VISIBLE_TEXT).catch(() => '')) + '\n' + extra;
-  const doc = isQuoteDocText(text);
+  // 견적서 양식 글자에 금액·품목표까지 있어야 견적서로 본다 (견적서 출력 양식·빈 화면 제외)
+  const doc = isQuoteDocText(text) && looksLikeQuote(text);
   if (!doc) throw new ToolError('지금 화면은 견적서가 아닙니다 (상품 페이지를 PDF로 저장하지 않습니다). "견적서 출력" 버튼을 눌러 견적서 화면·창이 열렸을 때만 save_page_pdf를 쓰세요. 견적서를 받을 수 없으면 페이지의 가격으로 report_quote 하세요.');
 }
+
+/** 사이트의 인쇄 요청(window.print)은 인쇄 창을 띄우지 않고 표시만 남긴다. 그 화면을 printToPDF로 저장한다 */
+const PRINT_HOOK = 'window.print = function () { window.__doldariPrint = Date.now(); };';
+const PRINT_HOOK_ALL = `(() => { const hook = (w) => { try { w.print = function () { w.__doldariPrint = Date.now(); }; } catch (e) {} }; hook(window); for (const f of document.querySelectorAll('iframe')) hook(f.contentWindow); return true; })()`;
+const PRINTED = `(() => { if (window.__doldariPrint) return true; for (const f of document.querySelectorAll('iframe')) { try { if (f.contentWindow.__doldariPrint) return true; } catch (e) {} } return false; })()`;
+
+/** 신청자명을 넣고 누른 뒤 지금 화면이 견적서인지 (양식이 아직 떠 있으면 아니다).
+ *  navigated: 다른 화면으로 넘어감, printed: 사이트가 인쇄하려 함 */
+function quoteReady(s: { text: string; formShown: boolean; printed: boolean }, navigated: boolean) {
+  if (!looksLikeQuote(s.text)) return false;
+  return s.printed || (!s.formShown && navigated) || ((!s.formShown || navigated) && isQuoteDocText(s.text));
+}
+
+/** 팝업 페이지 안에서 실행. 페이지가 멈춰도 기다리기만 하지 않게 응답이 없거나 실패하면 null */
+const jsIn = <T,>(wc: WebContents, code: string, ms = 4000) =>
+  Promise.race([wc.executeJavaScript(code).catch(() => null) as Promise<T | null>, sleep(ms).then(() => null)]);
+
+const safeDecode = (u: string) => {
+  try {
+    return decodeURIComponent(u);
+  } catch {
+    return u;
+  }
+};
 
 export interface Rect {
   x: number;
@@ -259,8 +286,18 @@ export class ElectronDriver implements BrowserDriver {
     pwc.on('will-navigate', (e, url) => {
       if (!/^(https?|about):/.test(url)) e.preventDefault();
     });
-    // window.print()가 인쇄 대화상자를 띄우지 않게
-    pwc.on('dom-ready', () => void pwc.executeJavaScript('window.print = () => {};').catch(() => undefined));
+    // window.print()가 인쇄 대화상자를 띄우지 않게 (인쇄하려 했다는 표시만 남긴다).
+    // 다음 문서(양식 → 견적서)부터는 문서가 시작될 때 바꾼다: dom-ready는 load 때 부르는 print보다 늦을 수 있다
+    pwc.on('dom-ready', () => void pwc.executeJavaScript(PRINT_HOOK).catch(() => undefined));
+    try {
+      pwc.debugger.attach('1.3');
+      void pwc.debugger
+        .sendCommand('Page.enable')
+        .then(() => pwc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: PRINT_HOOK }))
+        .catch(() => undefined);
+    } catch {
+      /* 붙지 못하면 dom-ready 때만 바꾼다 */
+    }
     const timer = setTimeout(() => this.closePopup(), POPUP_TTL);
     this.popup = { win, at: Date.now(), timer };
     win.on('closed', () => {
@@ -295,14 +332,145 @@ export class ElectronDriver implements BrowserDriver {
     await new Promise((r) => setTimeout(r, 1500));
     try {
       const pwc = win.webContents;
+      // 견적서가 아니라 신청자명만 묻는 견적서 출력 양식이면 이름을 넣고 다음을 눌러 나온 견적서를 받는다 (대구판촉물)
+      const text = (await jsIn<string>(pwc, VISIBLE_TEXT)) ?? '';
+      if (!(isQuoteDocText(text) && looksLikeQuote(text))) {
+        const trigger = act.recentTrigger(this.cdp);
+        const form = await jsIn<QuoteFormCheck>(pwc, `(${QUOTE_FORM_CHECK})(document, ${JSON.stringify(trigger)})`);
+        if (form?.ok) return await this.submitPopupForm(win, trigger);
+        if (form?.found && form.context) throw new ToolError(act.quoteFormRefusal(form));
+      }
       await assertQuoteDoc(pwc);
-      const data = await pwc.printToPDF({ printBackground: true, pageSize: 'A4' });
-      // 빈 창에 써 넣은 견적서는 주소가 about:blank라 원래 페이지 주소를 출처로 남긴다
-      const url = /^https?:/.test(pwc.getURL()) ? pwc.getURL() : this.view.webContents.getURL();
-      return checkPdf(Buffer.from(data), url, pdfName('', pwc.getTitle() || `${new URL(url).hostname.replace(/^www\./, '')} 견적서`));
+      return await this.savePopup(win);
     } finally {
       if (this.popup?.win === win) this.closePopup();
     }
+  }
+
+  private async savePopup(win: BrowserWindow): Promise<PdfFile> {
+    const pwc = win.webContents;
+    const data = await pwc.printToPDF({ printBackground: true, pageSize: 'A4' });
+    // 빈 창에 써 넣은 견적서는 주소가 about:blank라 원래 페이지 주소를 출처로 남긴다
+    const url = /^https?:/.test(pwc.getURL()) ? pwc.getURL() : this.view.webContents.getURL();
+    return checkPdf(Buffer.from(data), url, pdfName('', pwc.getTitle() || `${new URL(url).hostname.replace(/^www\./, '')} 견적서`));
+  }
+
+  /** 팝업(보이지 않는 창)의 견적서 신청자명 양식: 이름을 넣고 다음을 눌러 나온 견적서(PDF·인쇄용 화면)를 받는다.
+   *  팝업은 커서·스냅샷이 없어 페이지 안에서 넣고 누르되, 누르기 직전에 같은 판정을 다시 한다 */
+  private async submitPopupForm(win: BrowserWindow, trigger: string): Promise<PdfFile> {
+    const pwc = win.webContents;
+    const before = pwc.getURL();
+    const name = quoteRequesterName();
+    const got = new Promise<DownloadResult>((resolve) => downloadWaiters.set(pwc.id, resolve));
+    const js = <T,>(code: string) => jsIn<T>(pwc, code);
+    try {
+      const q = await js<QuoteFormCheck>(`(() => {
+        const check = ${QUOTE_FORM_CHECK};
+        const trigger = ${JSON.stringify(trigger)};
+        const r = check(document, trigger);
+        if (!r.ok) return r;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        for (const e of document.querySelectorAll('[data-doldari-qname]')) {
+          e.focus();
+          setter.call(e, ${JSON.stringify(name)});
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+          e.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        const b = document.querySelector('[data-doldari-qnext]');
+        const again = b ? check(b, trigger) : r;
+        if (!b || !again.ok) return Object.assign({}, again, { ok: false });
+        ${PRINT_HOOK}
+        b.click();
+        return again;
+      })()`);
+      if (!q?.ok) throw new ToolError(act.quoteFormRefusal(q));
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const r = await Promise.race([got, sleep(500).then(() => null)]);
+        if (r) {
+          if ('error' in r) throw new ToolError(r.error);
+          return r;
+        }
+        if (win.isDestroyed()) throw new ToolError('견적서 창이 닫혀 견적서를 받지 못했습니다.');
+        if (pwc.isLoading()) continue;
+        const s = await js<{ text: string; formShown: boolean; printed: boolean; pdf: boolean }>(
+          `(() => { const f = (${QUOTE_FORM_CHECK})(document, ''); return { text: ${VISIBLE_TEXT}, formShown: f.found && !!f.context, printed: !!window.__doldariPrint, pdf: document.contentType === 'application/pdf' }; })()`
+        );
+        if (!s) continue;
+        if (s.pdf && /^https?:/.test(pwc.getURL())) return this.fetchPdf(pwc.getURL());
+        if (quoteReady(s, pwc.getURL() !== before)) {
+          await sleep(800);
+          return await this.savePopup(win);
+        }
+      }
+      throw new ToolError(`견적서 창에 신청자명("${name}")을 넣고 "${q.button}"을 눌렀지만 견적서가 나오지 않았습니다. 견적서를 받을 수 없으면 페이지의 가격으로 report_quote 하세요.`);
+    } finally {
+      downloadWaiters.delete(pwc.id);
+    }
+  }
+
+  /** 본문(모달·같은 출처 iframe 포함)의 견적서 신청자명 양식: 이름을 넣고 다음을 눌러 나온 견적서를 받는다 */
+  private async submitViewForm(ref?: number): Promise<PdfFile> {
+    const wc = this.view.webContents;
+    const trigger = act.recentTrigger(this.cdp);
+    const before = wc.getURL();
+    const start = Date.now();
+    const name = quoteRequesterName();
+    const got = new Promise<DownloadResult>((resolve) => downloadWaiters.set(wc.id, resolve));
+    // 다음을 누른 뒤 열리는 견적서 화면이 인쇄 창을 띄우려 해도 막고 표시만 남긴다
+    const hook = await this.cdp.send<{ identifier: string }>('Page.addScriptToEvaluateOnNewDocument', { source: PRINT_HOOK }).catch(() => null);
+    try {
+      await this.cdp.evaluate(PRINT_HOOK_ALL).catch(() => undefined);
+      const q = await act.submitQuoteForm(this.cdp, name, trigger, ref);
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const r = await Promise.race([got, sleep(500).then(() => null)]);
+        if (r) {
+          if ('error' in r) throw new ToolError(r.error);
+          return r;
+        }
+        if (wc.isDestroyed()) break;
+        if (wc.isLoading()) continue;
+        const navigated = wc.getURL() !== before;
+        const pdfUrl = navigated ? await showingPdf(this) : null;
+        if (pdfUrl) return this.fetchPdf(pdfUrl);
+        const popup = await this.readyPopup(start);
+        if (popup) return this.printPopup(popup);
+        const page = await this.cdp.evaluate<{ text: string; printed: boolean }>(`({ text: ${VISIBLE_TEXT}, printed: ${PRINTED} })`).catch(() => null);
+        if (!page) continue;
+        const frames = (await this.frameTexts().catch(() => [])).map((f) => f.text).join('\n');
+        const form = await act.findQuoteForm(this.cdp, trigger).catch(() => null);
+        if (quoteReady({ text: `${page.text}\n${frames}`, printed: page.printed, formShown: Boolean(form?.found && form.context) }, navigated)) {
+          await sleep(800);
+          const data = await wc.printToPDF({ printBackground: true, pageSize: 'A4' });
+          return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서'));
+        }
+      }
+      throw new ToolError(`신청자명("${name}")을 넣고 "${q.button}"을 눌렀지만 견적서가 나오지 않았습니다. snapshot으로 화면을 확인하고, 인쇄용 견적서 화면이 보이면 save_page_pdf로 저장하세요.`);
+    } finally {
+      downloadWaiters.delete(wc.id);
+      if (hook?.identifier) void this.cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: hook.identifier }).catch(() => undefined);
+    }
+  }
+
+  /** quote_name_form 도구: 팝업이나 화면의 견적서 신청자명 양식에 이름을 넣고 다음을 눌러 견적서를 받는다 */
+  async submitQuoteForm(target: { ref?: string } = {}): Promise<PdfFile> {
+    const ref = target.ref ? Number(String(target.ref).replace(/\D/g, '')) : undefined;
+    // 견적서 출력 버튼이 보이지 않는 팝업 창을 열었으면 그 창의 양식
+    const popup = ref ? null : await this.readyPopup();
+    if (popup) return this.printPopup(popup);
+    return this.submitViewForm(ref);
+  }
+
+  /** 지금 화면이 견적서 출력 양식(신청자명 입력 등)이거나 아직 견적서가 뜨지 않은 견적서 출력 화면인지 (원본으로 남기지 않는다) */
+  async quoteFormScreen(): Promise<boolean> {
+    if (this.view.webContents.isDestroyed()) return false;
+    const form = await act.findQuoteForm(this.cdp).catch(() => null);
+    if (form?.found && form.context) return true;
+    const page = await this.cdp.evaluate<{ title: string; url: string; text: string }>(`({ title: document.title, url: location.href, text: ${VISIBLE_TEXT} })`).catch(() => null);
+    if (!page) return false;
+    const issuing = QUOTE_ISSUE_RE.test(page.title) && /estimat|print|quot|견적/i.test(safeDecode(page.url));
+    return issuing && !looksLikeQuote(page.text);
   }
 
   get locked() {
@@ -341,7 +509,7 @@ export class ElectronDriver implements BrowserDriver {
     const r = await act.click(this.cdp, Number(String(ref).replace(/\D/g, '')));
     // 클릭으로 견적서 팝업이 떴으면 알려 준다 (팝업은 보이지 않는 창이라 snapshot에는 안 나온다)
     for (let i = 0; i < 6 && this.popup && this.popup.at >= start && !(await this.readyPopup(start)); i++) await new Promise((res) => setTimeout(res, 500));
-    if (this.popup && this.popup.at >= start) return `${r}\n새 창(팝업)이 열렸습니다: ${this.popup.win.webContents.getURL() || '불러오는 중'}. 견적서 팝업이면 save_page_pdf로 그 창을 PDF로 저장하세요.`;
+    if (this.popup && this.popup.at >= start) return `${r}\n새 창(팝업)이 열렸습니다: ${this.popup.win.webContents.getURL() || '불러오는 중'}. 견적서 팝업이면 save_page_pdf로 그 창을 PDF로 저장하세요 (신청자명만 묻는 견적서 출력 창이면 설정한 신청자명을 넣고 다음을 눌러 받습니다).`;
     return r;
   }
   fill(ref: string, text: string) {
@@ -435,6 +603,7 @@ export class ElectronDriver implements BrowserDriver {
     const before = wc.getURL();
     const start = Date.now();
     const got = new Promise<DownloadResult>((resolve) => downloadWaiters.set(wc.id, resolve));
+    let refused: QuoteFormCheck | null = null;
     try {
       await act.click(this.cdp, refNum);
       const deadline = Date.now() + 20000;
@@ -454,7 +623,14 @@ export class ElectronDriver implements BrowserDriver {
           await new Promise((r) => setTimeout(r, 800));
           return this.printPdf();
         }
+        // 견적서 대신 신청자명만 묻는 모달·화면이 뜨면 설정한 이름을 넣고 다음을 눌러 받는다 (다른 개인정보를 물으면 넣지 않음)
+        if (Date.now() - start > 1500 && !wc.isLoading()) {
+          const form = await act.findQuoteForm(this.cdp).catch(() => null);
+          if (form?.ok) return this.submitViewForm();
+          if (form?.found && form.context) refused = form;
+        }
       }
+      if (refused) throw new ToolError(act.quoteFormRefusal(refused));
       throw new ToolError('버튼을 눌렀지만 PDF가 내려오지 않았습니다. 인쇄용 견적서 화면이 열렸다면 save_page_pdf로 그 화면을 PDF로 저장하세요.');
     } finally {
       downloadWaiters.delete(wc.id);
@@ -468,6 +644,13 @@ export class ElectronDriver implements BrowserDriver {
     const wc = this.view.webContents;
     if (wc.isDestroyed() || !/^https?:/.test(wc.getURL())) throw new ToolError('저장할 페이지가 없습니다.');
     const frames = (await this.frameTexts().catch(() => [])).map((f) => f.text).join('\n');
+    // 견적서가 아니라 신청자명만 묻는 견적서 출력 양식이면 이름을 넣고 다음을 눌러 나온 견적서를 받는다
+    const text = `${await wc.executeJavaScript(VISIBLE_TEXT).catch(() => '')}\n${frames}`;
+    if (!(isQuoteDocText(text) && looksLikeQuote(text))) {
+      const form = await act.findQuoteForm(this.cdp).catch(() => null);
+      if (form?.ok) return this.submitViewForm();
+      if (form?.found && form.context) throw new ToolError(act.quoteFormRefusal(form));
+    }
     await assertQuoteDoc(wc, frames);
     const data = await wc.printToPDF({ printBackground: true, pageSize: 'A4' });
     return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서 화면'));

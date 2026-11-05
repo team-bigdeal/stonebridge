@@ -1,7 +1,7 @@
 // 브라우저 조작: navigate / click / fill / expand_all / handoff. 커서 애니메이션과 금지 규칙 포함.
 import { sleep } from '../config';
 import { cursorTo } from '../browser/cursor';
-import { SUBMIT_CHECK } from '../browser/guard';
+import { QUOTE_FORM_CHECK, QUOTE_ISSUE_RE, SUBMIT_CHECK, type QuoteFormCheck } from '../browser/guard';
 import { CdpSession, waitForLoad } from './session';
 
 export class ToolError extends Error {}
@@ -15,8 +15,76 @@ const NET_FAIL = /ERR_(CONNECTION|NAME|ADDRESS|INTERNET|NETWORK|TIMED_OUT|EMPTY_
 async function assertNotSubmit(cdp: CdpSession, id: number, sid?: string) {
   const info = await cdp.callOn<{ isSubmit: boolean; text: string }>(id, `function () { return (${SUBMIT_CHECK})(this); }`, sid);
   if (!info || typeof info.isSubmit !== 'boolean') throw new ToolError('누를 요소를 확인하지 못했습니다. snapshot을 다시 찍어 최신 ref를 사용하세요.');
-  if (info.isSubmit) throw new ToolError(`"${info.text}"는 제출·결제 버튼이라 클릭이 금지되어 있습니다. 폼 작성을 마쳤다면 handoff 도구로 사용자에게 넘기세요.`);
+  if (info.isSubmit) {
+    // 견적서 신청자명 양식의 다음 버튼이어도 click으로는 누르지 않는다 (이름을 넣고 누르는 전용 도구로 안내)
+    const q = await checkQuoteButton(cdp, id, recentTrigger(cdp), sid).catch(() => null);
+    if (q?.ok) throw new ToolError(`"${info.text}"는 견적서 신청자명 양식의 버튼입니다. click 대신 quote_name_form 도구로 신청자명을 넣고 눌러 견적서를 받으세요.`);
+    throw new ToolError(`"${info.text}"는 제출·결제 버튼이라 클릭이 금지되어 있습니다. 폼 작성을 마쳤다면 handoff 도구로 사용자에게 넘기세요.`);
+  }
   return info;
+}
+
+/** 최근(3분 안)에 누른 견적서 출력·인쇄 버튼 글자. 견적서 출력 창을 연 버튼이라 그 창의 맥락으로 쓴다 */
+export const recentTrigger = (cdp: CdpSession) =>
+  cdp.lastClick && Date.now() - cdp.lastClick.at < 180_000 && QUOTE_ISSUE_RE.test(cdp.lastClick.text) ? cdp.lastClick.text : '';
+
+/** 본문과 같은 출처 iframe(모달 안 견적서 창 등)의 문서들 */
+const DOCS_EXPR = `(() => { const docs = [document]; for (const f of document.querySelectorAll('iframe')) { try { if (f.contentDocument && f.contentDocument.body) docs.push(f.contentDocument); } catch (e) {} } return docs; })()`;
+
+/** 그 버튼이 견적서 신청자명 양식의 다음·확인 버튼인지 (양식 모양까지) */
+function checkQuoteButton(cdp: CdpSession, id: number, trigger: string, sid?: string) {
+  return cdp.callOn<QuoteFormCheck>(id, `function () { return (${QUOTE_FORM_CHECK})(this, ${JSON.stringify(trigger)}); }`, sid);
+}
+
+/** 화면(본문·같은 출처 iframe)에서 견적서 신청자명 양식을 찾는다. 통과한 양식의 칸·버튼에 표시가 붙는다 */
+export function findQuoteForm(cdp: CdpSession, trigger = recentTrigger(cdp)) {
+  return cdp.evaluate<QuoteFormCheck>(`(() => {
+    const check = ${QUOTE_FORM_CHECK};
+    const docs = ${DOCS_EXPR};
+    for (const d of docs) d.querySelectorAll('[data-doldari-qname], [data-doldari-qnext]').forEach((e) => { e.removeAttribute('data-doldari-qname'); e.removeAttribute('data-doldari-qnext'); });
+    let best = null;
+    for (const d of docs) {
+      const r = check(d, ${JSON.stringify(trigger)});
+      if (r.ok) return r;
+      if (r.found && (!best || (r.context && !best.context))) best = r;
+    }
+    return best || { found: false, ok: false, reason: '신청자명 양식이 없습니다', button: '', fields: [], context: '' };
+  })()`);
+}
+
+/** 양식을 받지 않는 이유 (에이전트에게 보여 줄 말) */
+export function quoteFormRefusal(q?: QuoteFormCheck | null) {
+  if (q?.found && q.context) return `견적서 출력 양식: ${q.reason}. 개인정보는 넣지 않으니 이 견적서는 받지 않습니다. 화면의 가격으로 report_quote 하거나, 사람이 직접 해야 하면 request_user로 넘기세요.`;
+  return `지금 화면에 신청자명만 묻는 견적서 출력 양식이 없습니다 (${q?.reason || '확인하지 못함'}). snapshot으로 화면을 다시 확인하세요.`;
+}
+
+/** 판정 함수가 표시해 둔 요소들 → backendNodeId */
+async function markedNodes(cdp: CdpSession, attr: string, sid?: string): Promise<number[]> {
+  const out: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { result } = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression: `${DOCS_EXPR}.flatMap((d) => [...d.querySelectorAll('[${attr}]')])[${i}] || null` }, sid);
+    if (!result?.objectId) break;
+    const { node: n } = await cdp.send<{ node: { backendNodeId: number } }>('DOM.describeNode', { objectId: result.objectId }, sid);
+    out.push(n.backendNodeId);
+  }
+  return out;
+}
+
+/** 견적서 신청자명 양식: 이름 칸에 name을 넣고 다음·확인 버튼을 누른다 (SUBMIT_CHECK의 좁은 예외).
+ *  이름 칸만 있는 견적서 출력 창인지 누르기 직전에 다시 확인하고, 아니면 누르지 않는다 */
+export async function submitQuoteForm(cdp: CdpSession, name: string, trigger: string, ref?: number): Promise<QuoteFormCheck> {
+  assertUnlocked(cdp);
+  const sid = ref ? cdp.refFrame.get(ref) : undefined;
+  const q = ref ? await checkQuoteButton(cdp, node(cdp, ref), trigger, sid) : await findQuoteForm(cdp, trigger);
+  if (!q?.ok) throw new ToolError(quoteFormRefusal(q));
+  for (const id of await markedNodes(cdp, 'data-doldari-qname', sid)) await typeInto(cdp, id, name, sid);
+  const [btn] = await markedNodes(cdp, 'data-doldari-qnext', sid);
+  if (!btn) throw new ToolError('견적서 양식의 다음·확인 버튼을 찾지 못했습니다. snapshot을 다시 찍으세요.');
+  const again = await checkQuoteButton(cdp, btn, trigger, sid);
+  if (!again?.ok) throw new ToolError(quoteFormRefusal(again));
+  const { x, y } = await centerOf(cdp, btn, sid);
+  await mouseClick(cdp, x, y);
+  return again;
 }
 
 function node(cdp: CdpSession, ref: number): number {
@@ -76,6 +144,7 @@ export async function click(cdp: CdpSession, ref: number) {
   const info = await assertNotSubmit(cdp, id, sid);
   const { x, y } = await centerOf(cdp, id, sid);
   await mouseClick(cdp, x, y);
+  cdp.lastClick = { text: info.text, at: Date.now() };
   await sleep(300);
   await waitForLoad(cdp.wc);
   return `클릭 완료 ("${info.text}"). 현재 URL: ${cdp.url()}`;
@@ -84,7 +153,12 @@ export async function click(cdp: CdpSession, ref: number) {
 export async function fill(cdp: CdpSession, ref: number, text: string) {
   assertUnlocked(cdp);
   const id = node(cdp, ref);
-  const sid = cdp.refFrame.get(ref);
+  await typeInto(cdp, id, text, cdp.refFrame.get(ref));
+  return `입력 완료: "${text.slice(0, 40)}${text.length > 40 ? '…' : ''}"`;
+}
+
+/** 입력칸을 눌러 기존 값을 지우고 text를 타이핑한다 */
+async function typeInto(cdp: CdpSession, id: number, text: string, sid?: string) {
   const { x, y } = await centerOf(cdp, id, sid);
   await mouseClick(cdp, x, y);
   await cdp.send('DOM.focus', { backendNodeId: id }, sid);
@@ -95,7 +169,6 @@ export async function fill(cdp: CdpSession, ref: number, text: string) {
     await cdp.send('Input.insertText', { text: text.slice(i, i + step) });
     await sleep(22);
   }
-  return `입력 완료: "${text.slice(0, 40)}${text.length > 40 ? '…' : ''}"`;
 }
 
 export function handoff(cdp: CdpSession, reason: string) {

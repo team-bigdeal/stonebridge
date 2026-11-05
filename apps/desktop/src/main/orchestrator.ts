@@ -84,8 +84,8 @@ const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
 /** 같은 업체 판단 키: 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인 (dev.·shop.·m. 하위 도메인도 같은 업체) */
 const hostKey = siteKey;
 
-const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
-const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'report_quote', 'switch_channel', 'request_user'];
+const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'quote_name_form', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
+const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'download_quote_pdf', 'save_page_pdf', 'quote_name_form', 'report_quote', 'switch_channel', 'request_user'];
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
@@ -679,8 +679,10 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
 /** 견적 정보가 있던 화면을 원본으로 보관 */
 async function captureWeb(slot: VendorId, url: string, force = false) {
   if (!url || (!force && captured.has(`${slot}|${url}`))) return;
-  captured.add(`${slot}|${url}`);
   const driver = getDriver(slot);
+  // 견적서 출력 양식(신청자명 입력 등)·아직 견적서가 안 뜬 화면은 원본으로 남기지 않는다 (견적서가 뜬 뒤 다시 남김)
+  if (await driver.quoteFormScreen?.().catch(() => false)) return;
+  captured.add(`${slot}|${url}`);
   const buf = await driver.screenshot().catch(() => null);
   const original: QuoteOriginal = {
     id: randomUUID(),

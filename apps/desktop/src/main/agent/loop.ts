@@ -28,6 +28,7 @@ const TOOL_LABEL: Partial<Record<ToolName, string>> = {
   find_in_page: '페이지에서 찾기',
   download_quote_pdf: '가견적서 받기',
   save_page_pdf: '견적서 화면 저장',
+  quote_name_form: '견적서 신청자명 넣기',
   report_quote: '견적 기록',
   select_vendors: '업체 확정',
   claim_vendor: '업체 확정',

@@ -44,10 +44,10 @@ function fromEnv() {
 export const config = fromEnv();
 
 const SETTING_KEYS = [
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'DEMO_MAIL_TO'
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'DEMO_MAIL_TO', 'QUOTE_REQUESTER_NAME'
 ] as const;
 /** 빈 문자열로 저장하면 "끔"이 되는 키 (나머지는 빈 값이면 변경 안 함) */
-const CLEARABLE = new Set<string>(['DEMO_MAIL_TO']);
+const CLEARABLE = new Set<string>(['DEMO_MAIL_TO', 'QUOTE_REQUESTER_NAME']);
 
 /** 시연 모드 받는 사람. 실제 업체에 잘못 가지 않도록 시연용 주소(.test)만 쓴다 */
 export function demoMailTo(): string {
@@ -60,6 +60,10 @@ export function themeMode(): ThemeMode {
   const v = env.THEME?.trim();
   return v === 'light' || v === 'dark' ? v : 'system';
 }
+
+export const DEFAULT_REQUESTER_NAME = '돌다리 사용자';
+/** 견적서 출력 창이 신청자명만 물을 때 넣는 이름 (설정 → 견적서). 비어 있으면 기본값 */
+export const quoteRequesterName = () => (env.QUOTE_REQUESTER_NAME?.trim() || DEFAULT_REQUESTER_NAME).slice(0, 40);
 
 /** dotenv가 그대로 읽는 모양으로 감싼다. dotenv는 따옴표 안의 \·"를 풀지 않으므로 값에 없는 따옴표를 고른다. 못 감싸면 null */
 const quote = (v: string) => {
@@ -137,7 +141,8 @@ export function publicConfig(): AppConfig {
     mailUser: mailUser(),
     googleUser: googleAccount(),
     googleClient: googleClientConfigured(),
-    demoMailTo: demoMailTo()
+    demoMailTo: demoMailTo(),
+    quoteRequesterName: env.QUOTE_REQUESTER_NAME?.trim() ?? ''
   };
 }
 
