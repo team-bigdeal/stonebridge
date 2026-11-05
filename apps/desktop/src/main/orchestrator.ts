@@ -114,8 +114,8 @@ export async function onChat(text: string) {
       }
       return;
     }
-    // 비교·추천 이후 채팅으로 조건을 바꾸면 조건 변경 흐름으로 (바뀐 게 없으면 안내만)
-    if (interview && requirements && ['compare', 'questions', 'draft'].includes(getStage())) {
+    // 검색 중이든 비교 이후든 채팅으로 조건을 바꾸면 조건 변경 흐름으로 (바뀐 게 없으면 안내만)
+    if (interview && requirements) {
       interview.apply(requirements);
       interview.reopen();
       // 메모(notes)는 일반 질문에도 채워질 수 있어 조건 변경 판단에서 뺀다
@@ -123,7 +123,9 @@ export async function onChat(text: string) {
       const before = snapshot();
       const { question } = await interview.next(text);
       if (snapshot() !== before) {
+        const wasSearching = ['search', 'collect'].includes(getStage());
         await revise(true);
+        if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 이전 검색 요약으로 남겨 두었어요.');
         say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
         return;
       }
@@ -789,7 +791,7 @@ export async function reset() {
 
 /** fromChat: 채팅으로 이미 새 조건을 받아 둔 경우 (이전 조건으로 덮어쓰지 않고 안내는 호출한 쪽이 함) */
 export async function revise(fromChat = false) {
-  if (!interview || !requirements || !['compare', 'questions', 'draft'].includes(getStage())) return;
+  if (!interview || !requirements || getStage() === 'interview') return;
   const req = requirements;
   const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
   const rec = recommend(quoteStore.quotes, req);
