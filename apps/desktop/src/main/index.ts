@@ -1,6 +1,7 @@
 // Electron main: 창, IPC
 import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
+import { savePdfFile } from './report';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
@@ -43,9 +44,7 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       sandbox: true,
-      nodeIntegration: false,
-      // 받은 견적서 PDF를 앱 안에서 보여 주는 Chromium 내장 PDF 뷰어 (앱 창에만, 외부 사이트 뷰에는 켜지 않음)
-      plugins: true
+      nodeIntegration: false
     }
   });
   mainWindow = win;
@@ -191,6 +190,7 @@ function registerIpc() {
   ipcMain.handle('browser:login', (_e, url: string) => openLoginWindow(url));
   ipcMain.handle('agent:resume', (_e, slot: Slot) => flow.resume(slot));
   ipcMain.handle('report:pdf', (_e, html: string, name: string) => (mainWindow ? flow.onSavePdf(mainWindow, html, name) : null));
+  ipcMain.handle('file:savePdf', (_e, data: Uint8Array, name: string) => (mainWindow ? savePdfFile(mainWindow, data, name) : null));
   ipcMain.handle('report:xlsx', (_e, payload: XlsxPayload) => (mainWindow ? exportXlsx(mainWindow, payload) : null));
   ipcMain.handle('approval:polish', (_e, input: PolishInput) => polishApproval(input));
   ipcMain.handle('template:get', () => loadTemplate());

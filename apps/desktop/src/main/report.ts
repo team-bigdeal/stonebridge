@@ -19,10 +19,20 @@ function printSession() {
   return printSes;
 }
 
+const pdfName = (fileName: string) => `${fileName.replace(/[\\/:*?"<>|\s]+/g, '_')}.pdf`;
+
+/** 받은 PDF 원본(메일 첨부·사이트 가견적서)을 받은 그대로 저장 */
+export async function savePdfFile(parent: Win, data: Uint8Array, fileName: string) {
+  const { filePath, canceled } = await dialog.showSaveDialog(parent, { title: 'PDF 저장', defaultPath: pdfName(fileName), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, data);
+  return filePath;
+}
+
 export async function savePdf(parent: Win, html: string, fileName: string) {
   const { filePath, canceled } = await dialog.showSaveDialog(parent, {
     title: '견적서 저장',
-    defaultPath: `${fileName.replace(/[\\/:*?"<>|\s]+/g, '_')}.pdf`,
+    defaultPath: pdfName(fileName),
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   });
   if (canceled || !filePath) return null;

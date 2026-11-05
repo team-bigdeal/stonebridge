@@ -30,6 +30,10 @@ interface DemoQuote {
 
 const round = (n: number, unit = 1000) => Math.max(unit, Math.round(n / unit) * unit);
 
+/** 품목에 맞는 수량 단위: 스티커·명함 같은 인쇄물은 매, 가전·기계는 대, 나머지는 개 */
+const unitOf = (item: string) =>
+  /스티커|라벨|씰|명함|전단|리플렛|포스터|인쇄/.test(item) ? '매' : /(청정|가습|제습|정수|세탁|건조|냉난방|온풍|선풍|청소|복합)기|냉장고|에어컨|컴퓨터|노트북|모니터|프린터|TV/i.test(item) ? '대' : '개';
+
 /** 목업 업체 B(라벨공방, quote@label-gongbang.test): 표시가는 가장 싸지만 칼선 제작비·배송비가 붙어 총액 순위가 내려간다
  *  (3000매: 제품 59,400원으로 표시가 최저 → 칼선 8,800원·배송비 4,000원이 더해져 총액 72,200원) */
 function labelGongbang(r: Requirements): DemoQuote {
@@ -94,7 +98,7 @@ const FOOTER = '※ 돌다리 시연용 자동 회신입니다. 실제 업체가
 function requestText(q: DemoQuote, r: Requirements) {
   const lines = [
     `- 품목: ${r.item}${q.spec ? ` (${q.spec})` : ''}`,
-    `- 수량: ${r.quantity.toLocaleString('ko-KR')}개`,
+    `- 수량: ${r.quantity.toLocaleString('ko-KR')}${unitOf(r.item)}`,
     `- 제품가: ${won(q.product)} (부가세 별도)`,
     q.install !== undefined ? `- 설치비: ${won(q.install)} (부가세 별도)` : '',
     ...q.extras.map((e) => `- ${e.name}: ${won(e.amount)} (부가세 별도)`),
@@ -106,7 +110,7 @@ function requestText(q: DemoQuote, r: Requirements) {
   ].filter(Boolean);
   return [
     `안녕하세요, ${q.company}입니다.`,
-    `문의 주신 ${r.item} ${r.quantity.toLocaleString('ko-KR')}개 견적 보내 드립니다.`,
+    `문의 주신 ${r.item} ${r.quantity.toLocaleString('ko-KR')}${unitOf(r.item)} 견적 보내 드립니다.`,
     '',
     '[견적 내용]',
     ...lines,
@@ -120,7 +124,7 @@ function requestText(q: DemoQuote, r: Requirements) {
 function answer(field: FieldKey, q: DemoQuote, r: Requirements): string {
   switch (field) {
     case 'listedPrice':
-      return `제품가는 ${r.quantity.toLocaleString('ko-KR')}개 기준 ${won(q.product)}(부가세 별도)입니다.`;
+      return `제품가는 ${r.quantity.toLocaleString('ko-KR')}${unitOf(r.item)} 기준 ${won(q.product)}(부가세 별도)입니다.`;
     case 'installFee':
       return q.install !== undefined ? `설치비는 ${won(q.install)}(부가세 별도)입니다.` : '설치는 따로 하지 않아 설치비는 없습니다.';
     case 'shippingFee':
@@ -155,7 +159,7 @@ function quoteHtml(q: DemoQuote, r: Requirements, to: string) {
   const today = localIsoDate(new Date());
   const unit = q.product / r.quantity;
   const rows = [
-    { name: r.item, spec: q.spec ?? '-', qty: `${num(r.quantity)}매`, unit: Number.isInteger(unit) ? num(unit) : '-', supply: q.product },
+    { name: r.item, spec: q.spec ?? '-', qty: `${num(r.quantity)}${unitOf(r.item)}`, unit: Number.isInteger(unit) ? num(unit) : '-', supply: q.product },
     ...(q.install !== undefined ? [{ name: '설치비', spec: '-', qty: '1식', unit: num(q.install), supply: q.install }] : []),
     ...q.extras.map((e) => ({ name: e.name, spec: '-', qty: '1식', unit: num(e.amount), supply: e.amount }))
   ];
@@ -234,7 +238,7 @@ export async function demoReply(draft: MailDraft, r: Requirements, company: stri
     const content = await quotePdf(quoteHtml(q, r, draft.to));
     const text = [
       `안녕하세요, ${q.company}입니다.`,
-      `문의 주신 ${r.item} ${r.quantity.toLocaleString('ko-KR')}개 견적서를 PDF로 첨부해 드립니다.`,
+      `문의 주신 ${r.item} ${r.quantity.toLocaleString('ko-KR')}${unitOf(r.item)} 견적서를 PDF로 첨부해 드립니다.`,
       '금액·납기·결제 조건은 첨부한 견적서를 확인해 주세요.',
       '',
       '감사합니다.',
