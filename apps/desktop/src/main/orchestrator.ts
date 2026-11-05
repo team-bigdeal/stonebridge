@@ -95,9 +95,9 @@ export async function onChat(text: string) {
       givenUrls = [...new Set([...givenUrls, ...(text.match(/https?:\/\/[^\s)]+/g) ?? [])])].slice(0, 3);
       const { question, ready } = await interview.next(text);
       emit('requirements', { payload: interview.req });
-      emit('requirements_ready', { payload: ready });
+      emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
-        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
+        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 아래 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
         return;
       }
       say(ready ? '요구 조건을 정리했어요. 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이대로 검색 시작"을 눌러 주세요.' : '어떤 품목의 견적이 필요한지 알려 주세요.');
@@ -126,8 +126,9 @@ export async function onChat(text: string) {
         const wasSearching = ['search', 'collect'].includes(getStage());
         // 화면은 revise가 바로 바꾸고, 브라우저 정리는 안내를 띄운 뒤 기다린다
         const revised = revise(true);
+        if (question) emit('requirements_ready', { payload: { ready: true, asking: true } });
         if (wasSearching) say('진행 중이던 검색은 멈췄어요. 지금까지 모은 결과는 이전 검색 요약으로 남겨 두었어요.');
-        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 카드의 "이대로 검색 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
+        say(question ? `조건을 바꿨어요. ${question}\n(답하지 않아도 아래 카드의 "지금 바로 시작"으로 바로 다시 검색할 수 있어요.)` : '바뀐 조건을 반영했어요. 카드에서 확인하고 "이대로 검색 시작"을 눌러 주세요.');
         await revised;
         return;
       }
@@ -163,7 +164,7 @@ export async function startSearch(patch: Partial<Requirements>) {
   }
   requirements = interview.result();
   emit('requirements', { payload: requirements });
-  emit('requirements_ready', { payload: false });
+  emit('requirements_ready', { payload: { ready: false, asking: false } });
   // 조건 변경 직후라면 이전 검색의 브라우저 정리가 끝난 뒤 시작
   await resetting;
   void (givenUrls.length ? startWithUrls(requirements, givenUrls) : startHunt(requirements));
@@ -832,7 +833,7 @@ export async function revise(fromChat = false) {
   emit('revised', { payload: summary });
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
-  emit('requirements_ready', { payload: true });
+  emit('requirements_ready', { payload: { ready: true, asking: false } });
   if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
   await cleared;
 }

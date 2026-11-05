@@ -19,9 +19,9 @@ const toNum = (s: string) => Number(s.replace(/[,\s원개월]/g, ''));
 const validNum = (k: EditKey, s: string) => Number.isInteger(toNum(s)) && toNum(s) >= (k === 'minWarrantyMonths' ? 0 : 1);
 
 export function RequirementsCard() {
-  const { requirements, stage, reqReady, busy } = useRunStore();
+  const { requirements, stage, reqReady, reqAsking, busy } = useRunStore();
   const r = requirements ?? {};
-  if (stage === 'interview') return <RequirementsEditor r={r} ready={reqReady} busy={busy} />;
+  if (stage === 'interview') return <RequirementsEditor r={r} ready={reqReady} asking={reqAsking} busy={busy} />;
   const items: [string, string | undefined][] = [
     ['품목', r.item],
     ['수량', r.quantity !== undefined ? `${r.quantity.toLocaleString('ko-KR')}개` : undefined],
@@ -56,7 +56,7 @@ export function RequirementsCard() {
 }
 
 /** 검색 전 확인: 값을 직접 고치고 사용자가 눌러야 검색 시작 */
-function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; ready: boolean; busy: boolean }) {
+function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: boolean; asking: boolean; busy: boolean }) {
   const api = useApi();
   // 입력 중인 문자열만 따로 들고 있다가 시작할 때 숫자로 바꾼다 (지운 칸이 원래 값으로 되돌아가지 않게)
   const [text, setText] = useState<Partial<Record<EditKey, string>>>({});
@@ -128,7 +128,7 @@ function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; read
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <Button size="sm" disabled={!canStart} onClick={() => void start()}>
-            <Search className="size-3.5" /> {starting ? '시작하는 중…' : '이 조건으로 찾기 시작'}
+            <Search className="size-3.5" /> {starting ? '시작하는 중…' : asking ? '지금 바로 시작' : '이 조건으로 찾기 시작'}
           </Button>
           <span className={cn('text-[12px]', invalid.length ? 'text-destructive' : 'text-muted-foreground')}>{help}</span>
         </div>
