@@ -34,7 +34,7 @@ function pick(slot: Slot) {
 
 function tick() {
   const st = useStore.getState();
-  const dialog = Boolean(st.viewer || st.settingsOpen);
+  const dialog = Boolean(st.viewer || st.settingsOpen || st.historyOpen);
   for (const slot of new Set<Slot>([...mounts.keys(), ...sent.keys()])) {
     const m = pick(slot);
     let rect: { x: number; y: number; width: number; height: number } | null = null;

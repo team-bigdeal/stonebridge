@@ -6,6 +6,7 @@ import { ExpandedBrowser, Notices, TopBar } from './components/Shell';
 import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
+import { HistoryDialog } from './components/HistoryDialog';
 
 export default function App() {
   const handle = useStore((s) => s.handle);
@@ -31,6 +32,7 @@ export default function App() {
           <Chat />
         </main>
         <ExpandedBrowser />
+        <HistoryDialog />
         <QuoteViewer />
         <SettingsModal />
         <Notices />

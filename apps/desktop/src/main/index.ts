@@ -8,6 +8,7 @@ import { bindWindow } from './events';
 import { closeAll, detectBackend, goBack, openLoginWindow, setViewBounds, switchBackend, userInput } from './browser';
 import { emit, getStage } from './events';
 import * as flow from './orchestrator';
+import { deleteRecord, getRecord, listRecords } from './history';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -42,6 +43,9 @@ function createWindow() {
 function registerIpc() {
   ipcMain.handle('app:config', () => publicConfig());
   ipcMain.handle('app:reset', () => flow.reset());
+  ipcMain.handle('history:list', () => listRecords());
+  ipcMain.handle('history:get', (_e, id: string) => getRecord(String(id)));
+  ipcMain.handle('history:delete', (_e, id: string) => deleteRecord(String(id)));
   ipcMain.handle('settings:save', async (_e, input: SettingsInput) => {
     const key = input.ANTHROPIC_API_KEY?.trim();
     if (key) {
