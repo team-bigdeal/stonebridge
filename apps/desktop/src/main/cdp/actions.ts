@@ -1,22 +1,18 @@
 // 브라우저 조작: navigate / click / fill / expand_all / handoff. 커서 애니메이션과 금지 규칙 포함.
 import { sleep } from '../config';
 import { cursorTo } from '../browser/cursor';
+import { SUBMIT_CHECK } from '../browser/guard';
 import { CdpSession, waitForLoad } from './session';
 
 export class ToolError extends Error {}
 
-const SUBMIT_CHECK = `function () {
-  const tag = this.tagName;
-  const type = (this.getAttribute && (this.getAttribute('type') || '')).toLowerCase();
-  const text = ((this.innerText || this.value || this.getAttribute('aria-label') || '') + '').trim();
-  const role = this.getAttribute && this.getAttribute('role');
-  const buttonLike = tag === 'BUTTON' || role === 'button' || (tag === 'INPUT' && (type === 'button' || type === 'submit'));
-  const calc = /계산|견적\\s*보기|견적\\s*확인|가격\\s*(확인|조회)|금액\\s*(확인|조회)|조회|적용|견적서\\s*(출력|다운|발행|인쇄|받기|보기|저장)|가견적|PDF|인쇄/i.test(text) && !/결제|구매|주문|장바구니|제출|전송|보내기/.test(text);
-  const isSubmit = !calc && ((tag === 'BUTTON' && (type === '' || type === 'submit') && !!this.form) ||
-    (tag === 'INPUT' && type === 'submit') ||
-    (buttonLike && /제출|보내기|전송|문의하기|결제|구매|주문하기|장바구니/.test(text)));
-  return { tag, type, text: text.slice(0, 40), isSubmit };
-}`;
+/** 누르기 전에 제출·결제 버튼인지 확인한다. 확인하지 못하면 누르지 않는다 */
+async function assertNotSubmit(cdp: CdpSession, id: number, sid?: string) {
+  const info = await cdp.callOn<{ isSubmit: boolean; text: string }>(id, `function () { return (${SUBMIT_CHECK})(this); }`, sid);
+  if (!info || typeof info.isSubmit !== 'boolean') throw new ToolError('누를 요소를 확인하지 못했습니다. snapshot을 다시 찍어 최신 ref를 사용하세요.');
+  if (info.isSubmit) throw new ToolError(`"${info.text}"는 제출·결제 버튼이라 클릭이 금지되어 있습니다. 폼 작성을 마쳤다면 handoff 도구로 사용자에게 넘기세요.`);
+  return info;
+}
 
 function node(cdp: CdpSession, ref: number): number {
   const id = cdp.refs.get(ref);
@@ -71,15 +67,12 @@ export async function click(cdp: CdpSession, ref: number) {
   assertUnlocked(cdp);
   const id = node(cdp, ref);
   const sid = cdp.refFrame.get(ref);
-  const info = await cdp.callOn<{ isSubmit: boolean; text: string }>(id, SUBMIT_CHECK, sid);
-  if (info?.isSubmit) {
-    throw new ToolError(`"${info.text}"는 제출 버튼이라 클릭이 금지되어 있습니다. 폼 작성을 마쳤다면 handoff 도구로 사용자에게 넘기세요.`);
-  }
+  const info = await assertNotSubmit(cdp, id, sid);
   const { x, y } = await centerOf(cdp, id, sid);
   await mouseClick(cdp, x, y);
   await sleep(300);
   await waitForLoad(cdp.wc);
-  return `클릭 완료 ("${info?.text ?? ''}"). 현재 URL: ${cdp.url()}`;
+  return `클릭 완료 ("${info.text}"). 현재 URL: ${cdp.url()}`;
 }
 
 export async function fill(cdp: CdpSession, ref: number, text: string) {
@@ -107,19 +100,24 @@ export function handoff(cdp: CdpSession, reason: string) {
 /** 옵션 글자 비교용: 공백·mm 제거, ×·*·X → x ("90mm * 50mm" = "90x50") */
 export const NORM_FN = `(s) => String(s || '').toLowerCase().replace(/\\s+/g, '').replace(/[×*✕]/g, 'x').replace(/mm/g, '').replace(/[()\\[\\]]/g, '')`;
 
-/** 페이지에서 지금 보이는 선택지 중 option과 맞는 것을 찾아 표시해 둔다 (커스텀 드롭다운의 펼쳐진 목록) */
-const PICK_FN = (option: string) => `(() => {
+/** 페이지에서 지금 보이는 선택지 중 option과 맞는 것을 찾아 표시해 둔다 (커스텀 드롭다운의 펼쳐진 목록).
+ *  controls: 드롭다운의 aria-controls·aria-owns id. 펼쳐진 목록 안 항목을 먼저 보고, 제출·결제 버튼은 후보에서 뺀다 */
+export const PICK_FN = (option: string, controls = '') => `(() => {
   const norm = ${NORM_FN};
   const want = norm(${JSON.stringify(option)});
+  const submitLike = (e) => { try { return (${SUBMIT_CHECK})(e).isSubmit; } catch { return true; } };
   document.querySelectorAll('[data-doldari-pick]').forEach((e) => e.removeAttribute('data-doldari-pick'));
   const sel = '[role=option],[role=menuitem],[role=menuitemradio],[role=radio],li,.v-list-item,[class*=option],[class*=item],a,button,label';
   const vis = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && r.bottom > 0 && r.top < innerHeight * 3; };
-  const cands = [...document.querySelectorAll(sel)].filter(vis).map((e) => ({ e, t: (e.innerText || e.textContent || '').trim() })).filter((c) => c.t && c.t.length < 80);
+  const cands = [...document.querySelectorAll(sel)].filter(vis).map((e) => ({ e, t: (e.innerText || e.textContent || '').trim() })).filter((c) => c.t && c.t.length < 80 && !submitLike(c.e));
   const score = (c) => { const n = norm(c.t); return n === want ? 3 : n.startsWith(want) ? 2 : n.includes(want) ? 1 : 0; };
+  // 펼쳐진 목록(aria-controls가 가리키는 곳, listbox·menu) 안에 맞는 항목이 있으면 그 안에서만 고른다
+  const boxes = [document.getElementById(${JSON.stringify(controls)}), ...document.querySelectorAll('[role=listbox],[role=menu]')].filter((b) => b && vis(b));
+  const matched = cands.filter((c) => score(c));
+  const inBox = matched.filter((c) => boxes.some((b) => b.contains(c.e)));
   let best = null;
-  for (const c of cands) {
+  for (const c of inBox.length ? inBox : matched) {
     const s = score(c);
-    if (!s) continue;
     // 점수가 같으면 더 작은(안쪽) 요소, 목록 항목(role=option 등)을 고른다
     const area = c.e.getBoundingClientRect().width * c.e.getBoundingClientRect().height;
     const listy = c.e.matches('[role=option],[role=menuitem],.v-list-item,li') ? 1 : 0;
@@ -159,13 +157,21 @@ export async function selectCustom(cdp: CdpSession, ref: number, option: string)
   assertUnlocked(cdp);
   const id = node(cdp, ref);
   const sid = cdp.refFrame.get(ref);
+  // 드롭다운이라며 제출·결제 버튼을 누르지 않게 먼저 확인한다
+  await assertNotSubmit(cdp, id, sid);
+  const controls = () =>
+    cdp
+      .callOn<string>(id, `function () { const e = this.closest && this.closest('[aria-controls],[aria-owns]'); return e ? (e.getAttribute('aria-controls') || e.getAttribute('aria-owns') || '').split(/\\s+/)[0] : ''; }`, sid)
+      .catch(() => '');
   // 이미 펼쳐 둔 목록에 있으면 바로 고르고, 없으면 드롭다운을 눌러 펼친다
-  let pick = await cdp.evaluate<{ found: string | null; shown?: string[] }>(PICK_FN(option), sid);
+  let pick = await cdp.evaluate<{ found: string | null; shown?: string[] }>(PICK_FN(option, await controls()), sid);
   if (!pick?.found) {
-    const { x, y } = await centerOf(cdp, await visibleTarget(cdp, id, sid), sid);
+    const target = await visibleTarget(cdp, id, sid);
+    if (target !== id) await assertNotSubmit(cdp, target, sid);
+    const { x, y } = await centerOf(cdp, target, sid);
     await mouseClick(cdp, x, y);
     await sleep(500);
-    pick = await cdp.evaluate<{ found: string | null; shown?: string[] }>(PICK_FN(option), sid);
+    pick = await cdp.evaluate<{ found: string | null; shown?: string[] }>(PICK_FN(option, await controls()), sid);
   }
   if (!pick?.found) {
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }).catch(() => undefined);
@@ -176,6 +182,7 @@ export async function selectCustom(cdp: CdpSession, ref: number, option: string)
   const { result } = await cdp.send<{ result: { objectId?: string } }>('Runtime.evaluate', { expression: `document.querySelector('[data-doldari-pick]')` }, sid);
   if (!result?.objectId) throw new ToolError('선택지를 다시 찾지 못했습니다. 다시 시도하세요.');
   const { node: picked } = await cdp.send<{ node: { backendNodeId: number } }>('DOM.describeNode', { objectId: result.objectId }, sid);
+  await assertNotSubmit(cdp, picked.backendNodeId, sid);
   const { x, y } = await centerOf(cdp, picked.backendNodeId, sid);
   await mouseClick(cdp, x, y);
   await sleep(800);

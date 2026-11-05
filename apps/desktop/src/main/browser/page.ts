@@ -1,6 +1,7 @@
 // 드라이버와 무관한 페이지 도구: 웹 검색, 본문 읽기, 차단 감지, 접힌 섹션 펼치기, handoff 배너
 import type { BrowserDriver } from './driver';
 import { cursorTo } from './cursor';
+import { SUBMIT_CHECK } from './guard';
 
 /** 검색 엔진. 한 곳이 막혀 사용자가 건너뛰면 다음 엔진을 쓴다 */
 export const ENGINES = {
@@ -207,7 +208,9 @@ export async function expandAll(d: BrowserDriver) {
   const opened: string[] = [];
   for (let i = 0; i < 12; i++) {
     const t = await d.evaluate<{ x: number; y: number; vw: number; vh: number; text: string } | null>(`(() => {
-      const el = [...document.querySelectorAll('details:not([open]) > summary, [aria-expanded="false"]')].find((e) => !e.dataset.dlTried && e.offsetParent !== null);
+      // 펼치기라도 제출·결제·장바구니 버튼은 누르지 않는다
+      const submitLike = (e) => { try { return (${SUBMIT_CHECK})(e).isSubmit; } catch { return true; } };
+      const el = [...document.querySelectorAll('details:not([open]) > summary, [aria-expanded="false"]')].find((e) => !e.dataset.dlTried && e.offsetParent !== null && !submitLike(e));
       if (!el) return null;
       el.dataset.dlTried = '1';
       el.scrollIntoView({ block: 'center' });
