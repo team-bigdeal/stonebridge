@@ -1,0 +1,13 @@
+<svg width="70" height="70" viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="70" height="70" rx="8" fill="#006BE7"/>
+<rect x="13" y="19" width="31" height="31" rx="15.5" fill="white"/>
+<rect x="23" y="15" width="30" height="31" rx="15" fill="white"/>
+<rect x="25" y="24" width="31" height="31" rx="15.5" fill="white"/>
+<ellipse cx="27.915" cy="36.4037" rx="1.57277" ry="1.52482" transform="rotate(-90 27.915 36.4037)" fill="#FFA4A4" fill-opacity="0.9"/>
+<ellipse cx="42.5531" cy="36.4037" rx="1.57277" ry="1.52482" transform="rotate(-90 42.5531 36.4037)" fill="#FFA4A4" fill-opacity="0.9"/>
+<ellipse cx="30.0497" cy="34.831" rx="1.52482" ry="2.20188" fill="black"/>
+<ellipse cx="40.4184" cy="34.831" rx="1.52482" ry="2.20188" fill="black"/>
+<rect x="33.0991" y="35.7747" width="4.2695" height="1.57277" rx="0.786385" fill="black"/>
+<ellipse cx="30.2021" cy="33.7301" rx="0.471831" ry="0.457447" transform="rotate(-90 30.2021 33.7301)" fill="white"/>
+<ellipse cx="40.266" cy="33.7301" rx="0.471831" ry="0.457447" transform="rotate(-90 40.266 33.7301)" fill="white"/>
+</svg>

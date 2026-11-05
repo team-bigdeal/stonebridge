@@ -41,7 +41,7 @@ export function QuoteViewer() {
             </Button>
           </DialogHeader>
           {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}
           </div>
@@ -73,7 +73,7 @@ export function QuoteViewer() {
             <TabsTrigger value="doc">통일 양식</TabsTrigger>
             <TabsTrigger value="orig">받은 원본 {origs.length > 0 && <span className="tabular-nums text-muted-foreground">{origs.length}</span>}</TabsTrigger>
           </TabsList>
-          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
+          <TabsContent value="doc" className="min-h-0 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}
           </TabsContent>
