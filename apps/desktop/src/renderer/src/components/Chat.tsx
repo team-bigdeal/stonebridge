@@ -264,8 +264,9 @@ function ItemBody({ item }: { item: TimelineItem }) {
     case 'requirements':
       return <Medium><RequirementsCard /></Medium>;
     case 'search':
-    case 'vendors':
       return <Wide><BrowserGrid /></Wide>;
+    case 'vendors':
+      return <Wide><BrowserGrid slots={item.slots} /></Wide>;
     case 'browser':
       return <Medium><BrowserPanel slot={item.slot} title={item.title} /></Medium>;
     case 'mail':

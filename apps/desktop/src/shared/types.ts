@@ -36,6 +36,10 @@ export interface Requirements {
   needDelivery?: boolean;
   region?: string;
   notes?: string;
+  /** 사용자가 이름으로 지정한 업체 (예: "와우프레스에서") */
+  vendors?: string[];
+  /** 지정한 업체에서만 받기 (true면 그 수만큼만 브라우저를 띄운다) */
+  onlyVendors?: boolean;
 }
 
 export type Channel = 'web' | 'mail' | 'file';
@@ -218,7 +222,7 @@ export type TimelineItem =
   | { id: string; kind: 'assistant'; text: string }
   | { id: string; kind: 'requirements' }
   | { id: string; kind: 'search' }
-  | { id: string; kind: 'vendors' }
+  | { id: string; kind: 'vendors'; slots?: VendorId[] }
   | { id: string; kind: 'mail'; draft: MailDraft }
   | { id: string; kind: 'upload'; vendorId: VendorId }
   | { id: string; kind: 'compare' }

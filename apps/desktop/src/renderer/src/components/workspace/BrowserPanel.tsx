@@ -123,11 +123,11 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
   );
 }
 
-/** 브라우저 3개를 나란히 */
-export function BrowserGrid() {
+/** 이번 검색에 쓰는 브라우저를 나란히 (지정 업체·URL이 1~2곳이면 그만큼만) */
+export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] }) {
   const api = useApi();
   const { vendorStatus, scoped } = useRunStore();
-  const running = !scoped && (['A', 'B', 'C'] as const).some((id) => vendorStatus[id] === 'browsing');
+  const running = !scoped && slots.some((id) => vendorStatus[id] === 'browsing');
   return (
     <div className="space-y-3">
       {running && (
@@ -137,8 +137,8 @@ export function BrowserGrid() {
           </Button>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {(['A', 'B', 'C'] as const).map((id) => (
+      <div className={cn('grid grid-cols-1 gap-5', slots.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+        {slots.map((id) => (
           <BrowserPanel key={id} slot={id} />
         ))}
       </div>
