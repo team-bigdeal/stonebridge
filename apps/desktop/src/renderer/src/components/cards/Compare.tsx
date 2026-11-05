@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
+import { FIELD_LABELS } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -212,7 +213,7 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
         {has ? (
           <div className="flex flex-col items-end gap-1">
             <span className="text-[14px] font-semibold"><CountUp value={confirmedSum(q, req)} /></span>
-            {q.missing.length > 0 && <Pill tone="warn" title={q.missing.join(', ')}>일부 미확인</Pill>}
+            {q.missing.length > 0 && <Unsettled q={q} />}
           </div>
         ) : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
       </td>
@@ -342,8 +343,8 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
           </div>
           <div className={cn('mt-1 text-[26px] font-bold leading-tight tabular-nums', cond?.budget === 'violate' ? 'text-destructive' : top ? 'text-primary' : 'text-ink')}>
             {total !== null ? <CountUp value={total} /> : settled ? <Pill tone="warn">미확인</Pill> : <Pending />}
-            {total !== null && q.missing.length > 0 && <Pill tone="warn" className="ml-2 align-middle" title={q.missing.join(', ')}>일부 미확인</Pill>}
           </div>
+          {total !== null && q.missing.length > 0 && <Unsettled q={q} className="mt-1.5" />}
         </div>
 
         {/* 항목 */}
@@ -389,6 +390,16 @@ const ROW_BTN = 'h-auto gap-1 border-muted-foreground px-2 py-1.5 text-[12px] fo
 
 const Pending = () => <span className="text-[12px] text-muted-foreground/50">확인 중</span>;
 
+/** 아직 다 확인되지 않은 견적의 합계 표시: 무엇을 몰라서인지 적는다 (배송비·납기를 모르는 업체가 다 확인된 업체보다 위에 올 수 있어서) */
+function Unsettled({ q, className }: { q: Quote; className?: string }) {
+  const labels = [...new Set(q.missing.map((k) => FIELD_LABELS[k as FieldKey] ?? k))].join('·');
+  return (
+    <Pill tone="warn" className={className} title={`${labels}을(를) 아직 몰라서 합계·순위가 바뀔 수 있어요`}>
+      미확정 — {labels} 확인 필요
+    </Pill>
+  );
+}
+
 function CheckPill({ c, title }: { c: Check; title: string }) {
   const map = { ok: ['충족', 'ok'], violate: ['안 맞음', 'bad'], unknown: ['확인 필요', 'warn'] } as const;
   return <Pill tone={map[c][1]} title={title || undefined}>{map[c][0]}</Pill>;
@@ -421,6 +432,7 @@ export function Recommend() {
                 <span className="flex items-center gap-2">
                   <span className="text-[17px] text-muted-foreground">합계</span>
                   <span className="text-[21px] tabular-nums text-ink">{won(confirmedSum(pick, req))}</span>
+                  {pick.missing.length > 0 && <Unsettled q={pick} />}
                 </span>
                 {pick.leadTimeDays.value !== null && (
                   <span className="flex items-center gap-2">
