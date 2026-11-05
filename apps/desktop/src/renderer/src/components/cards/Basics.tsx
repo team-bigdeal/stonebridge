@@ -130,7 +130,7 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
     );
   };
 
-  const help = !item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : invalid.length ? '숫자 칸을 확인해 주세요.' : ready ? '남은 질문에 답하지 않아도 지금 바로 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.';
+  const help = !item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : invalid.length ? '숫자 칸을 확인해 주세요.' : ready ? '질문에 다 답하지 않아도 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.';
   const keys: EditKey[] = ['item', 'quantity', 'budgetMax', 'deadline', 'minWarrantyMonths', 'region'];
   const filled = keys.filter((k) => shown(k).trim() !== '').length + (needInstall === undefined ? 0 : 1);
 
@@ -140,7 +140,6 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
         <div className="flex flex-wrap items-center gap-4">
           <h3 className="text-[16px] font-semibold text-ink">요구조건</h3>
           <Pill tone="primary" className="text-[13px]">{filled}/{keys.length + 1} 확인</Pill>
-          <span className="text-[13px] text-muted-foreground">대화로 채운 값이에요. 다르면 바로 고쳐 주세요.</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {field('item', '품목')}

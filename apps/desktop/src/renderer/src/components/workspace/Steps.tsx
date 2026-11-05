@@ -5,8 +5,8 @@ import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { useRunSel } from '@/runScope';
 
-/** 에이전트 작업 기록: 지금 하는 일 한 줄 + 펼치면 전체 기록 */
-export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?: boolean }) {
+/** 에이전트 작업 기록: 지금 하는 일 한 줄 + 펼치면 전체 기록 (history=false면 한 줄만) */
+export function Steps({ slot, defaultOpen = false, history = true }: { slot: Slot; defaultOpen?: boolean; history?: boolean }) {
   const steps = useRunSel((s) => s.steps[slot]) ?? [];
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1];
@@ -22,6 +22,7 @@ export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?:
         />
         <span className={cn('truncate', running ? 'text-ink' : 'text-muted-foreground')} title={last.intent}>{last.intent}</span>
       </div>
+      {history && (
       <Task defaultOpen={defaultOpen}>
         <TaskTrigger title="">
           <button className="group flex items-center gap-1 text-[13px] font-medium text-muted-foreground transition-colors hover:text-ink">
@@ -41,6 +42,7 @@ export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?:
           ))}
         </TaskContent>
       </Task>
+      )}
     </div>
   );
 }

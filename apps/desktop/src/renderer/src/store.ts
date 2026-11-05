@@ -105,7 +105,7 @@ const initial = () => ({
   reqReady: false,
   reqAsking: false,
   timeline: [
-    { id: 'hello', kind: 'assistant', text: '안녕하세요, 돌다리예요. 어떤 견적이 필요하세요?\n말씀해 주시면 웹에서 업체를 찾아 직접 사이트를 돌아보고, 숨은 비용까지 더한 견적을 비교해 드릴게요.' }
+    { id: 'hello', kind: 'assistant', text: '안녕하세요, 돌다리예요. 어떤 견적이 필요하세요?' }
   ] as TimelineItem[],
   busy: false,
   quotes: {},

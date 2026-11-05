@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, ImageOff, LayoutGrid, Package, SlidersHorizontal, Table2, X } from 'lucide-react';
+import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
@@ -12,10 +12,10 @@ import docIcon from '@/assets/figma/doc.svg';
 import cartIcon from '@/assets/figma/cart.svg';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
-import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources';
 import { CompareChart } from './CompareChart';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
+const TOTAL_HINT = '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.';
 
 type View = 'cards' | 'table' | 'chart';
 // 기본을 카드로 바꾸면서 키를 새로 씀 (예전에 저장된 '표'가 남지 않도록)
@@ -77,8 +77,14 @@ export function CompareCard() {
     <Card className="relative gap-4 py-4">
       <CardContent className="space-y-4 px-5">
         <SectionHead
-          title="견적 비교"
-          hint={view === 'cards' ? '싼 순서예요. 금액을 누르면 출처가 보여요.' : view === 'table' ? '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.' : '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.'}
+          title={
+            <span className="flex items-center gap-1.5">
+              견적 비교
+              {/* 합계 계산 방법은 아이콘에 마우스를 올리면 보임 */}
+              <span title={TOTAL_HINT} aria-label="합계 계산 방법" className="inline-flex cursor-help"><Info className="size-3.5 text-muted-foreground" /></span>
+            </span>
+          }
+          hint={view === 'chart' ? '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.' : undefined}
           right={<ViewToggle view={view} onChange={(v) => { setView(v); saveView(v); setPop(null); }} />}
         />
         {view === 'chart' ? (
@@ -427,14 +433,13 @@ export function Recommend() {
           </div>
         </div>
         <ol className="list-decimal space-y-3 pl-6 text-[16px] font-medium leading-normal text-ink">
-          {rec.reasons.map((r) => <li key={r}>{r}</li>)}
+          {/* 이유는 앞의 3개만 */}
+          {rec.reasons.slice(0, 3).map((r) => <li key={r}>{r}</li>)}
         </ol>
-        {pick && <OrderPicker defaultVendorId={pick.vendorId} req={req} />}
       </div>
       {questions.length > 0 && (
         <div className="rounded-lg bg-row-alt p-6">
           <div className="text-[16px] font-semibold text-ink">아직 모르는 항목</div>
-          <p className="mt-1 text-[13px] text-muted-foreground">업체에 물어보면 합계를 확정할 수 있어요.</p>
           <div className="mt-3 divide-y divide-line">
             {questions.map((q) => {
               const waiting = vendorStatus[q.vendorId] === 'waiting_reply';
@@ -463,7 +468,7 @@ export function DocsCard() {
   const list = rankQuotes(quotes, req).filter((id) => quotes[id]?.listedPrice.value !== null);
   return (
     <div className="space-y-3">
-      <SectionHead title="업체별 견적서" hint="업체마다 다른 견적을 같은 양식으로 정리했어요. 누르면 원본과 함께 볼 수 있어요." />
+      <SectionHead title="업체별 견적서" />
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:gap-10">
         {list.map((id, i) => {
           const doc = buildDoc(quotes[id]!, req, vendors.find((v) => v.id === id)?.url);
@@ -498,7 +503,6 @@ export function DocsCard() {
                 견적서 보기 <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </div>
             </button>
-            <QuoteSources q={quotes[id]!} />
             </div>
           );
         })}
@@ -508,9 +512,7 @@ export function DocsCard() {
 }
 
 export function ReportCard() {
-  const api = useApi();
-  const { set, quotes, busy, requirements } = useRunStore();
-  const count = Object.values(quotes).filter((q) => q && q.listedPrice.value !== null).length;
+  const { set, quotes, requirements } = useRunStore();
   const rec = requirements?.deadline && requirements.budgetMax !== undefined ? recommend(quotes, requirements as Requirements) : null;
   const pick = rec?.vendorId ? quotes[rec.vendorId] : null;
   return (
@@ -521,11 +523,7 @@ export function ReportCard() {
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[17px] font-semibold text-ink">통합 견적서가 준비됐어요</div>
-        <div className="mt-1 text-[14px] font-medium text-muted-foreground">업체 {count}곳의 공급가액·부가세·합계·조건과 추천 이유를 한 장에 정리했어요. PDF로 저장할 수 있어요.</div>
       </div>
-      <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={busy} onClick={() => void api.revise()}>
-        <SlidersHorizontal className="size-4" /> 조건 바꾸기
-      </Button>
       <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
       <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
     </div>
@@ -536,39 +534,6 @@ export function ReportCard() {
         </div>
       )}
     </Card>
-  );
-}
-
-/** 이 견적의 값들이 어느 페이지에서 왔는지 (AI Elements Sources). 웹 출처가 있을 때만 */
-function QuoteSources({ q }: { q: Quote }) {
-  const refs = new Map<string, string>();
-  for (const k of ['listedPrice', 'installFee', 'shippingFee', 'warrantyMonths', 'warrantyExtraFee', 'leadTimeDays'] as const) {
-    const src = q[k].source;
-    if (src?.channel === 'web' && /^https?:/.test(src.ref) && !refs.has(src.ref)) refs.set(src.ref, src.snippet);
-  }
-  if (refs.size === 0) return null;
-  const host = (u: string) => {
-    try {
-      return new URL(u).host.replace(/^www\./, '');
-    } catch {
-      return u;
-    }
-  };
-  return (
-    <Sources className="group/src mb-0 mt-3 border-t pt-3 text-muted-foreground">
-      <SourcesTrigger count={refs.size} className="text-[12px] hover:text-foreground">
-        <span>출처 {refs.size}곳</span>
-        <ChevronDown className="size-3.5 transition-transform duration-200 group-data-[state=open]/src:rotate-180" />
-      </SourcesTrigger>
-      <SourcesContent className="mt-2 w-full gap-1.5">
-        {[...refs].map(([ref, snippet]) => (
-          <Source key={ref} href={ref} title={host(ref)} className="block rounded-md px-2 py-1.5 text-[12px] hover:bg-muted">
-            <span className="block font-medium text-foreground">{host(ref)}</span>
-            {snippet && <span className="line-clamp-1 text-muted-foreground">“{snippet}”</span>}
-          </Source>
-        ))}
-      </SourcesContent>
-    </Sources>
   );
 }
 
@@ -591,7 +556,6 @@ function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req:
       <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-ink">
         <img src={cartIcon} alt="" className="size-5 dark:invert" />
         {q.vendorName}에 주문하기
-        <span className="text-[14px] font-medium text-muted-foreground">합계 {has(cur) ? won(confirmedSum(q, req)) : '미확인'}</span>
       </div>
       {ids.length > 1 && (
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="주문할 업체">
@@ -625,6 +589,10 @@ function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req:
   );
 }
 
+// 주문 버튼 안내는 마우스를 올리면 보이게
+const WEB_ORDER_NOTE = '옵션·수량이 견적과 같은지 확인하고 주문·결제는 직접 해 주세요. 돌다리는 주문 버튼을 누르지 않아요.';
+const MAIL_ORDER_NOTE = '견적 내용으로 주문 메일을 써 둘게요. 확인하고 보내기를 누르면 발송돼요.';
+
 /** 주문 버튼 묶음: 웹 견적이면 주문 페이지(앱 안 브라우저·내 브라우저), 메일·파일 견적이면 주문 메일.
  *  주문·결제 버튼은 사용자가 직접 누르고, 메일도 사용자가 확인하고 보낸다 */
 export function OrderActions({ vendorId }: { vendorId: VendorId }) {
@@ -654,7 +622,7 @@ export function OrderActions({ vendorId }: { vendorId: VendorId }) {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {web && !scoped && (
-          <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={opening} onClick={() => void openHere()}>
+          <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={opening} onClick={() => void openHere()} title={WEB_ORDER_NOTE}>
             <img src={cartIcon} alt="" className="size-4 brightness-0 invert" /> 주문 페이지 열기
           </Button>
         )}
@@ -664,15 +632,12 @@ export function OrderActions({ vendorId }: { vendorId: VendorId }) {
           </Button>
         )}
         {!scoped && (
-          <Button variant={web ? 'secondary' : 'default'} className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(vendorId)}>
+          <Button variant={web ? 'secondary' : 'default'} className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(vendorId)} title={web ? undefined : MAIL_ORDER_NOTE}>
             {web ? '주문 문의 폼·메일' : '주문 메일 쓰기'} <ChevronRight className="size-4" />
           </Button>
         )}
       </div>
-      <p className="text-[13px] text-muted-foreground">
-        {msg ? `${msg} ` : ''}
-        {web ? '옵션·수량이 견적과 같은지 확인하고 주문·결제는 직접 해 주세요. 돌다리는 주문 버튼을 누르지 않아요.' : '견적 내용으로 주문 메일을 써 둘게요. 확인하고 보내기를 누르면 발송돼요.'}
-      </p>
+      {msg && <p className="text-[12px] text-muted-foreground">{msg}</p>}
     </div>
   );
 }
