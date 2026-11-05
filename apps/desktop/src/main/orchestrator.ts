@@ -917,6 +917,35 @@ export async function onSavePdf(win: BrowserWindow, html: string, fileName: stri
 
 // ─── 작성: 주문 문의(폼 handoff 또는 메일) / 확인 질문 ─
 
+/** 추천 업체 주문 페이지 열기: 견적을 받은 상품 페이지를 그 업체 브라우저에 띄운다.
+ *  옵션을 맞춰 둔 화면이 그대로 있으면 이동하지 않는다. 주문·결제 버튼은 사용자가 직접 누른다 (돌다리는 누르지 않음) */
+export async function openOrderPage(slot: VendorId): Promise<{ ok: boolean; url?: string; message: string }> {
+  const v = getVendor(slot);
+  if (!v) return { ok: false, message: '업체 정보가 없어요.' };
+  const q = quoteStore.get(slot);
+  const src = q?.listedPrice.source;
+  const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : v.url;
+  try {
+    const d = getDriver(slot);
+    const now = await d.url().catch(() => '');
+    const same = (() => {
+      try {
+        const a = new URL(now);
+        const b = new URL(url);
+        return a.host === b.host && a.pathname === b.pathname;
+      } catch {
+        return false;
+      }
+    })();
+    if (!same) await d.navigate(url);
+    const spec = [requirements?.item, requirements?.quantity ? `${requirements.quantity.toLocaleString('ko-KR')}개` : ''].filter(Boolean).join(' · ');
+    say(`${v.name} 주문 페이지를 열었어요. 옵션과 수량(${spec})이 견적과 같은지 확인하고 직접 주문해 주세요. 주문·결제 버튼은 돌다리가 누르지 않아요.`);
+    return { ok: true, url, message: same ? '견적을 받은 화면 그대로예요.' : '주문 페이지로 이동했어요.' };
+  } catch (e) {
+    return { ok: false, url, message: `페이지를 열지 못했어요: ${errMsg(e)}` };
+  }
+}
+
 export async function onDraftOrder(slot: VendorId) {
   const v = getVendor(slot);
   if (!requirements || !v) return;

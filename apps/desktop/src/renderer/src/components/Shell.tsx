@@ -1,4 +1,4 @@
-import { Check, PanelLeft, RotateCcw, Settings, X } from 'lucide-react';
+import { Check, Maximize, PanelLeft, RotateCcw, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
@@ -56,6 +56,9 @@ export function TopBar() {
         {/* 브라우저·모델 상태는 설정 창 안에서 본다. API 키가 없을 때만 상단에 알린다 */}
         <Button variant="outline" size="sm" className="h-8 px-3 text-[13px]" onClick={() => void restart()}>
           <RotateCcw className="size-3.5" /> 새 견적 추가하기
+        </Button>
+        <Button variant="ghost" size="icon" title="전체 화면 (켜고 끄기)" aria-label="전체 화면" onClick={() => void window.doldari.toggleFullScreen()} className="size-auto p-2 text-muted-foreground hover:text-ink">
+          <Maximize className="size-4" />
         </Button>
         <Button
           variant="ghost"
@@ -121,8 +124,8 @@ export function ExpandedBrowser() {
   const vendor = expanded !== 'search' ? vendors.find((v) => v.id === expanded) : null;
   const close = () => set({ expanded: null });
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-black/50 p-6" onClick={close}>
-      <div className="mx-auto flex w-full max-w-[1700px] min-h-0 flex-1 flex-col gap-3 rounded-lg bg-background p-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex flex-col bg-black/50 p-3" onClick={close}>
+      <div className="flex w-full min-h-0 flex-1 flex-col gap-3 rounded-lg bg-background p-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 text-[14px]">
           {vendor && <span className={cn('size-2 rounded-full', VENDOR_DOT[vendor.id])} />}
           <span className="font-semibold">{vendor?.name ?? '웹 검색'}</span>
@@ -133,9 +136,9 @@ export function ExpandedBrowser() {
         </div>
         <div className="flex min-h-0 items-start gap-4">
           <div className="min-w-0 flex-1">
-            <LiveFrame slot={expanded} priority={2} />
+            <LiveFrame slot={expanded} priority={2} className="max-h-[calc(100vh-110px)]" />
           </div>
-          <aside className="scroll-thin max-h-[80vh] w-80 shrink-0 overflow-y-auto rounded-lg bg-card p-4">
+          <aside className="scroll-thin max-h-[calc(100vh-110px)] w-80 shrink-0 overflow-y-auto rounded-lg bg-card p-4">
             <div className="mb-2 text-[12px] font-semibold">진행 기록</div>
             <Steps slot={expanded} defaultOpen />
           </aside>
