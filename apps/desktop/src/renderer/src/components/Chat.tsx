@@ -21,10 +21,13 @@ const EXAMPLES = [
 
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation) */
 export function Chat() {
-  const { timeline, busy, stage, push, replay } = useStore();
+  const { timeline, busy, stage, push, replay, runOf } = useStore();
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fresh = timeline.length === 1 && stage === 'interview' && !replay;
+  // 요구 조건 단계에서는 지금 견적의 확인 카드를 최신 메시지 바로 아래에 둔다 (위로 밀려 안 보이지 않게).
+  // 조건을 바꾸기 전 검색의 카드(runOf)는 제자리에 둔다
+  const liveReq = stage === 'interview' && !replay ? timeline.find((t) => t.kind === 'requirements' && !runOf[t.id]) : undefined;
 
   async function send() {
     const t = text.trim();
@@ -38,9 +41,8 @@ export function Chat() {
     <div className="flex h-full min-h-0 flex-col">
       <Conversation className="min-h-0">
         <ConversationContent className="mx-auto w-full max-w-[1440px] gap-6 px-8 py-8">
-          {timeline.map((item) => (
-            <Item key={item.id} item={item} />
-          ))}
+          {timeline.map((item) => (item === liveReq ? null : <Item key={item.id} item={item} />))}
+          {liveReq && <Item key={liveReq.id} item={liveReq} />}
           {fresh && (
             <div className="mx-auto flex w-full max-w-[760px] flex-wrap gap-2">
               {EXAMPLES.map((ex) => (
