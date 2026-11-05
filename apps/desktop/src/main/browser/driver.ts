@@ -28,6 +28,8 @@ export interface BrowserDriver {
   downloadPdf(target: { ref?: string; url?: string }): Promise<import('./pdf').PdfFile>;
   /** 지금 화면(인쇄용 견적서 페이지)을 PDF로 저장 */
   printPdf(): Promise<import('./pdf').PdfFile>;
+  /** 다른 출처 iframe(옵션·가격 계산기 등)의 보이는 글자. 지원하지 않으면 없음 */
+  frameTexts?(): Promise<{ host: string; text: string }[]>;
 }
 
 export class ToolError extends Error {}

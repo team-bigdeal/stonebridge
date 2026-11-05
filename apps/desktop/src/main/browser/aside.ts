@@ -120,7 +120,18 @@ export class AsideDriver implements BrowserDriver {
     const id = Date.now();
     const r = await this.run<string[]>(
       `const __o${id} = ${T}.locator(${J(ref)});
-       const __r${id} = await __o${id}.selectOption({ label: ${J(option)} }, { timeout: 5000 }).catch(() => __o${id}.selectOption(${J(option)}, { timeout: 5000 }));
+       const __isSel${id} = await __o${id}.evaluate((e) => e.tagName === 'SELECT').catch(() => false);
+       let __r${id};
+       if (__isSel${id}) {
+         __r${id} = await __o${id}.selectOption({ label: ${J(option)} }, { timeout: 5000 }).catch(() => __o${id}.selectOption(${J(option)}, { timeout: 5000 }));
+       } else {
+         // 커스텀 드롭다운: 펼치고 목록 항목을 누른다
+         await __o${id}.click({ timeout: 5000 });
+         await sleep(500);
+         const __opt${id} = ${T}.getByRole('option', { name: ${J(option)} }).or(${T}.getByRole('menuitem', { name: ${J(option)} })).or(${T}.locator('.v-list-item, li', { hasText: ${J(option)} })).first();
+         await __opt${id}.click({ timeout: 5000 });
+         __r${id} = [${J(option)}];
+       }
        await ${T}.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {});
        await sleep(800);
        ${OUT(`__r${id}`)}`,
