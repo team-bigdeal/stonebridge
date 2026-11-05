@@ -7,8 +7,9 @@ import { VENDOR_IDS } from '@shared/types';
 import { missingKeys, productAmount, priceQty, recommend } from '@shared/quote';
 import { hasApiKey, imapConfigured } from './config';
 import {
-  emit, getStage, getVendorStatus, notice, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
+  emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
+import { addOriginal, clearOriginals, saveRecord, startRecord } from './history';
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
@@ -24,6 +25,11 @@ import { fillLeadTimeFromText } from './quote/normalize';
 import { parseQuoteFile } from './channels/file-parse';
 import { getVendor, listVendors, replaceVendor, setVendorEmail, setVendors, vendorName } from './vendors';
 import { savePdf } from './report';
+
+// 웹 캡처·메일·파일 원본을 히스토리에도 보관
+onEmit((ev) => {
+  if (ev.type === 'original' && ev.vendorId) addOriginal(ev.vendorId, ev.payload as QuoteOriginal);
+});
 
 let interview: Interview | null = null;
 let requirements: Requirements | null = null;
@@ -120,6 +126,7 @@ export async function onChat(text: string) {
 // ─── 브라우저 3개가 동시에: 업체 찾기 → 견적 받기 ──────────────
 
 async function startHunt(req: Requirements) {
+  startRecord();
   setStage('search');
   setVendors([]);
   emit('vendors', { payload: [] });
@@ -138,6 +145,7 @@ async function startHunt(req: Requirements) {
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
 async function startWithUrls(req: Requirements, urls: string[]) {
+  startRecord();
   setStage('search');
   setVendors([]);
   quoteStore.reset(req, VENDOR_IDS.slice(0, urls.length));
@@ -191,6 +199,7 @@ function dropVendor(slot: VendorId) {
   setVendors(listVendors().filter((v) => v.id !== slot));
   emit('vendors', { payload: listVendors() });
   quoteStore.resetOne(slot);
+  clearOriginals(slot);
 }
 
 /** 남은 대안 중 가장 나은 것: 메일 주소를 아는 곳 → 메일 → 파일 */
@@ -537,6 +546,8 @@ function onQuotesSettled() {
     timeline({ kind: 'docs' });
   }
   setStage('questions');
+  // 비교가 바뀔 때마다 히스토리에 저장 (같은 견적 건은 같은 파일을 덮어씀)
+  saveRecord(requirements, listVendors(), quoteStore.quotes);
   const rec = recommend(quoteStore.quotes, requirements);
   const key = `${rec.vendorId}:${rec.tentative}:${rec.reasons.join('|')}`;
   if (key === announced) return;
@@ -695,6 +706,7 @@ function openDraft(draft: MailDraft) {
 
 export async function reset() {
   generation++;
+  startRecord();
   interview = null;
   requirements = null;
   docsShown = false;

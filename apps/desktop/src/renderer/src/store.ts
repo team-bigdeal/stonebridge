@@ -1,7 +1,7 @@
 // renderer 상태 (zustand). main 이벤트를 받아 갱신한다.
 import { create } from 'zustand';
 import type {
-  AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
+  AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, HistoryRecord, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
   Requirements, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
 } from '@shared/types';
 
@@ -24,10 +24,12 @@ interface State {
   mails: MailRecord[];
   notices: Notice[];
   settingsOpen: boolean;
+  historyOpen: boolean;
   expanded: Slot | null;
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   backend: 'aside' | 'electron' | null;
-  viewer: { kind: 'vendor'; id: VendorId } | { kind: 'integrated' } | null;
+  /** record가 있으면 히스토리에 보관된 견적을 본다 */
+  viewer: { kind: 'vendor'; id: VendorId; record?: HistoryRecord } | { kind: 'integrated'; record?: HistoryRecord } | null;
   set: (p: Partial<State>) => void;
   push: (item: TimelineItem) => void;
   handle: (ev: AgentEvent) => void;
@@ -59,6 +61,7 @@ const initial = () => ({
 export const useStore = create<State>((set, get) => ({
   config: null,
   settingsOpen: false,
+  historyOpen: false,
   backend: null,
   ...initial(),
   set: (p) => set(p),

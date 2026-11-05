@@ -269,3 +269,26 @@ export interface BrowserInput {
 }
 
 export type SettingsInput = Partial<Record<'ANTHROPIC_API_KEY' | 'ANTHROPIC_MODEL' | 'SMTP_USER' | 'SMTP_PASS' | 'IMAP_USER' | 'IMAP_PASS' | 'BROWSER_BACKEND', string>>;
+
+/** 견적 히스토리: 견적 한 건을 통째로 보관 (main/history.ts) */
+export interface HistoryRecord {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  requirements: Requirements;
+  vendors: VendorInfo[];
+  quotes: Partial<Record<VendorId, Quote>>;
+  originals: Partial<Record<VendorId, QuoteOriginal[]>>;
+  recommendation?: { vendorId?: VendorId; vendorName?: string; total?: number; reasons: string[]; tentative: boolean };
+}
+
+export interface HistorySummary {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  item: string;
+  quantity: number;
+  vendorCount: number;
+  pricedCount: number;
+  best?: { name: string; total: number };
+}

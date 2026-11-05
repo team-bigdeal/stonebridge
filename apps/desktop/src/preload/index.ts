@@ -1,6 +1,6 @@
 // renderer에 노출하는 안전한 API (API 키 등 비밀값은 노출하지 않는다)
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentEvent, AppConfig, BrowserInput, MailDraft, MailKind, SettingsInput, Slot, VendorId } from '../shared/types';
+import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, SettingsInput, Slot, VendorId } from '../shared/types';
 
 type MailResult = { ok: boolean; error?: string; imap?: boolean };
 
@@ -15,6 +15,9 @@ function on<T>(channel: string, cb: (v: T) => void) {
 const api = {
   config: (): Promise<AppConfig> => ipcRenderer.invoke('app:config'),
   reset: () => ipcRenderer.invoke('app:reset'),
+  historyList: (): Promise<HistorySummary[]> => ipcRenderer.invoke('history:list'),
+  historyGet: (id: string): Promise<HistoryRecord | null> => ipcRenderer.invoke('history:get', id),
+  historyDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('history:delete', id),
   saveSettings: (input: SettingsInput): Promise<{ ok: boolean; error?: string; config?: AppConfig }> => ipcRenderer.invoke('settings:save', input),
   clearApiKey: (): Promise<AppConfig> => ipcRenderer.invoke('settings:clearKey'),
   onEvent: (cb: (ev: AgentEvent) => void) => on('agent:event', cb),

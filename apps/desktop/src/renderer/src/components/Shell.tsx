@@ -1,4 +1,4 @@
-import { Plus, Settings, X } from 'lucide-react';
+import { History, Plus, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,9 @@ export function TopBar() {
             {backend === 'aside' ? 'Aside 브라우저' : '내장 브라우저'}
           </Badge>
         )}
+        <Button size="sm" variant="outline" onClick={() => set({ historyOpen: true })}>
+          <History className="size-4" /> 히스토리
+        </Button>
         <Button size="sm" variant="outline" onClick={async () => { await window.doldari.reset(); resetAll(); }}>
           <Plus className="size-4" /> 새 견적
         </Button>

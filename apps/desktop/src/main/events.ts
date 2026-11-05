@@ -10,8 +10,17 @@ export const send = (channel: string, payload: unknown) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 };
 
+const emitListeners = new Set<(ev: AgentEvent) => void>();
+/** main 안에서 이벤트를 같이 받고 싶을 때 (예: 견적 원본을 히스토리에 보관) */
+export function onEmit(fn: (ev: AgentEvent) => void) {
+  emitListeners.add(fn);
+  return () => emitListeners.delete(fn);
+}
+
 export function emit(type: AgentEventType, fields: Omit<AgentEvent, 'type' | 'at'> = {}) {
-  send('agent:event', { type, at: new Date().toISOString(), ...fields } satisfies AgentEvent);
+  const ev = { type, at: new Date().toISOString(), ...fields } satisfies AgentEvent;
+  send('agent:event', ev);
+  for (const fn of emitListeners) fn(ev);
 }
 
 /** 대화 흐름에 카드/메시지를 추가 */
