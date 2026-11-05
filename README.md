@@ -43,6 +43,7 @@ npm run mock
 - `http://localhost:4102` 가격 비공개, 메일 문의만
 - `http://localhost:4103` 첫 방문은 HTTP 418 보안 확인 화면 → "확인"을 누르면 정상 (계속 테스트)
 - `http://localhost:4103/always` 항상 418 (건너뛰기 테스트)
+- `http://localhost:4104` 가격은 보이지만 배송비·제작 기간은 닫힌 "배송/교환" 탭 안에만 있음 (숨은 정보 탐색 테스트)
 
 예: "원형 방수 스티커 3000장 견적 비교해 줘. 지름 50mm 유광, 예산 20만원, 10일 안에, 대구 수성구로 택배, 설치·A/S는 필요 없어요. 업체: http://localhost:4101 http://localhost:4102 http://localhost:4103"
 

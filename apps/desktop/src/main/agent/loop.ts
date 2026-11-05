@@ -23,6 +23,7 @@ const TOOL_LABEL: Partial<Record<ToolName, string>> = {
   fill: '입력',
   select_option: '옵션 선택',
   expand_all: '펼치기',
+  find_in_page: '페이지에서 찾기',
   report_quote: '견적 기록',
   select_vendors: '업체 확정',
   claim_vendor: '업체 확정',

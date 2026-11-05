@@ -2,7 +2,7 @@
 // 요구 조건 → 브라우저 3개가 동시에 각자 업체를 찾아 견적 수집(가격 없으면 메일/파일) → 업체별 통일 견적서 → 비교·추천 → 작성 → 통합 견적서
 import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
-import type { MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, Slot, VendorId, VendorInfo } from '@shared/types';
+import type { FieldKey, MailDraft, MailKind, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { missingKeys, recommend } from '@shared/quote';
 import { hasApiKey, imapConfigured } from './config';
@@ -64,8 +64,8 @@ const hostKey = (url: string) => {
   }
 };
 
-const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'snapshot', 'click', 'select_option', 'expand_all', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
-const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote', 'switch_channel', 'request_user'];
+const HUNT_TOOLS: ToolName[] = ['search_web', 'navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'claim_vendor', 'report_quote', 'switch_channel', 'request_user'];
+const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote', 'switch_channel', 'request_user'];
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
@@ -255,7 +255,13 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return applyFields(slot, fields, meta, 'web', url);
         },
         onAfter: () => void refreshState(slot),
-        engine: () => engines.get(slot) ?? 'naver'
+        engine: () => engines.get(slot) ?? 'naver',
+        missingOnDone: () => {
+          if (!getVendor(slot) || !quoteStore.hasListedPrice(slot)) return [];
+          const want: [FieldKey, string][] = [['shippingFee', '배송비'], ['leadTimeDays', '납기']];
+          if (requirements?.needInstall) want.push(['installFee', '설치비']);
+          return want.filter(([k]) => !quoteStore.hasField(slot, k)).map(([, label]) => label);
+        }
       },
       { ...task, signal: { get aborted() { return gen !== generation; } } }
     );

@@ -33,6 +33,12 @@ export const TOOL_DEFS = {
   click: T('click', 'snapshot이 준 ref 요소를 클릭한다. 제출·결제 버튼은 거부된다.', { ref: { type: 'string', description: 'snapshot의 ref 값 그대로' } }, ['ref']),
   fill: T('fill', 'ref 입력칸의 기존 값을 지우고 text를 입력한다.', { ref: { type: 'string' }, text: { type: 'string' } }, ['ref', 'text']),
   select_option: T('select_option', '드롭다운(<select>)에서 옵션을 고른다. 수량·규격·용지 등을 요구 조건에 맞추면 금액이 다시 계산된다.', { ref: { type: 'string' }, option: { type: 'string', description: '보이는 옵션 글자 그대로 (예: "1000매")' } }, ['ref', 'option']),
+  find_in_page: T(
+    'find_in_page',
+    '페이지 전체(숨은 탭·접힌 영역·iframe 포함)에서 키워드 주변 문장과 관련 안내 링크를 찾는다. 배송비·납기·설치비가 본문에 안 보일 때 사용.',
+    { keywords: { type: 'array', items: { type: 'string' }, description: '예: ["배송비", "택배", "무료배송"]' } },
+    ['keywords']
+  ),
   expand_all: T('expand_all', '접힌 섹션(<details>, 아코디언)을 펼친다. 숨은 비용(설치비·배송비·옵션) 확인용.'),
   claim_vendor: T('claim_vendor', '이 브라우저가 견적을 받을 업체 1곳을 확정한다. 다른 브라우저가 이미 고른 업체면 거부된다.', vendorItem.properties, ['name', 'url', 'reason']),
   select_vendors: T('select_vendors', '견적을 받을 업체를 확정한다.', { vendors: { type: 'array', minItems: 1, maxItems: 3, items: vendorItem } }, ['vendors']),
@@ -82,6 +88,9 @@ export interface ToolContext {
   onAfter?: () => void;
   /** 이 브라우저가 쓸 검색 엔진 */
   engine?: () => Engine;
+  /** done=true 직전에 아직 비어 있는 주요 항목 (한 번은 되돌려 보내 더 찾게 한다) */
+  missingOnDone?: () => string[];
+  doneNudged?: boolean;
 }
 
 export interface ToolResult {
@@ -129,6 +138,10 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
         return { text: await d.selectOption(String(input.ref), String(input.option)) };
       case 'expand_all':
         return { text: await pageTools.expandAll(d) };
+      case 'find_in_page': {
+        const kws = Array.isArray(input.keywords) ? input.keywords.map(String) : [String(input.keywords ?? '')];
+        return { text: (await pageTools.findInPage(d, kws)) || `"${kws.join(', ')}"가 들어간 문구가 이 페이지에 없습니다. 안내 페이지(배송·이용 안내, FAQ)로 이동해 보세요.` };
+      }
       case 'claim_vendor': {
         if (!isUrl(input.url)) return { text: 'http(s) URL이 필요합니다.', isError: true };
         const v = { name: String(input.name), url: String(input.url), reason: String(input.reason ?? '') };
@@ -147,6 +160,14 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
       case 'report_quote': {
         const url = await d.url();
         const added = (await ctx.onReport?.(toReported(input.fields), toMeta(input, { channel: 'web', ref: url }), url)) ?? [];
+        // 끝내기 전에 빠진 항목이 있으면 한 번은 더 찾아보게 한다
+        const missing = input.done && !ctx.doneNudged ? (ctx.missingOnDone?.() ?? []) : [];
+        if (missing.length) {
+          ctx.doneNudged = true;
+          return {
+            text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}아직 ${missing.join(', ')}이(가) 비어 있습니다. 끝내기 전에 find_in_page(예: ["배송비", "택배", "무료배송", "출고", "제작기간"])로 숨은 탭까지 찾고, 안내 페이지·탭 후보가 있으면 열어 확인하세요. 정말 없으면 report_quote(done=true)를 다시 호출하세요.`
+          };
+        }
         return {
           text: added.length ? `보고 완료: ${added.join(', ')}` : '숫자 필드는 없었습니다. (부가 정보는 기록됨)',
           outcome: input.done ? { kind: 'reported' } : undefined
