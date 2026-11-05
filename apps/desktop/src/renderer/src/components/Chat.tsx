@@ -279,6 +279,8 @@ function ItemBody({ item }: { item: TimelineItem }) {
     case 'vendors':
       return <Wide><BrowserGrid slots={item.slots} /></Wide>;
     case 'browser':
+      // 보조 브라우저(사이즈 조사)는 좁고 낮게
+      if (item.compact) return <div className="w-full max-w-[560px]"><BrowserPanel slot={item.slot} title={item.title} frameClassName="max-h-[300px]" /></div>;
       return <Medium><BrowserPanel slot={item.slot} title={item.title} /></Medium>;
     case 'mail':
       return <Narrow><MailCard draft={item.draft} /></Narrow>;
