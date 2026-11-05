@@ -444,12 +444,14 @@ function applyFields(slot: VendorId, fields: ReportedFields, meta: QuoteMeta, ch
   return quoteStore.apply(slot, fields, { channel, ref }, answered);
 }
 
+/** 브라우저 3개가 모두 탐색·분석을 마쳤는지 */
+const allSettled = () => VENDOR_IDS.every((id) => !['browsing', 'parsing'].includes(getVendorStatus(id)));
+
 function maybeOpenGate() {
-  if (VENDOR_IDS.every((id) => !['browsing', 'parsing'].includes(getVendorStatus(id)))) {
-    quoteStore.openGate();
-    // 반영 대기 중인 값이 없으면 지금 바로 가격 이상치 확인 (있으면 큐가 비었을 때 onQuotesSettled에서)
-    if (!quoteStore.hasPending()) checkPriceOutliers();
-  }
+  if (!allSettled()) return;
+  quoteStore.openGate();
+  // 반영 대기 중인 값이 없으면 지금 바로 가격 이상치 확인·추천 (있으면 큐가 비었을 때 onQuotesSettled에서)
+  if (!quoteStore.hasPending()) onQuotesSettled();
 }
 
 function showCompare() {
@@ -564,9 +566,12 @@ async function handleReply(slot: VendorId, kind: MailKind, r: IncomingReply) {
 // ─── 비교 → 추천 → 견적서 ─────────────────────────────────────
 
 let announced = '';
+let reportShown = false;
 function onQuotesSettled() {
   if (!requirements) return;
   checkPriceOutliers();
+  // 먼저 끝난 업체만으로 추천·통합 견적서를 띄우지 않고 세 곳(가격 재확인 포함)이 다 끝날 때까지 기다린다
+  if (!allSettled()) return;
   const priced = listVendors().filter((v) => quoteStore.get(v.id)?.listedPrice.value !== null);
   if (priced.length === 0) return;
   if (!docsShown) {
@@ -582,6 +587,9 @@ function onQuotesSettled() {
   announced = key;
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
   say(`${rec.vendorId ? `추천: ${vendorName(rec.vendorId)}${rec.tentative ? ' (확인 필요)' : ''}` : '조건을 모두 만족하는 업체가 없어요.'}\n${rec.reasons.map((r) => `· ${r}`).join('\n')}${missing ? `\n견적서에 빠진 항목이 있는 업체가 ${missing}곳 있어요. 확인 질문 메일로 채울 수 있어요.` : ''}`);
+  // 통합 견적서 카드는 내용이 실시간으로 바뀌므로 한 번만 띄운다
+  if (reportShown) return;
+  reportShown = true;
   timeline({ kind: 'report' });
 }
 
@@ -739,6 +747,7 @@ async function clearRun() {
   docsShown = false;
   compareShown = false;
   announced = '';
+  reportShown = false;
   drafts.clear();
   banned.clear();
   captured.clear();
