@@ -15,7 +15,12 @@ export function useApprovalTemplate(fields: ApprovalField[], onUploaded: () => v
   const [edits, setEdits] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    void window.doldari.templateGet().then(setTpl);
+    // 앱을 다시 시작하기 전(옛 preload)이면 양식 API가 없다 → 양식 없이 기본 품의서만 보여 준다
+    try {
+      if (typeof window.doldari.templateGet === 'function') void window.doldari.templateGet().then(setTpl).catch(() => undefined);
+    } catch {
+      /* 양식 기능을 못 쓰는 상태 */
+    }
   }, []);
 
   const byKey = useMemo(() => new Map(fields.map((f) => [f.key, f.value])), [fields]);
