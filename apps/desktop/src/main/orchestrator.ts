@@ -15,7 +15,7 @@ import { addOriginal, clearOriginals, saveRecord, startRecord } from './history'
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
-import { ENGINE_ORDER, type Engine } from './browser/page';
+import { ENGINE_ORDER, detectBlock, type Engine } from './browser/page';
 import { photoFromPage, productPhoto } from './browser/photo';
 import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
@@ -102,7 +102,7 @@ export async function onChat(text: string) {
     setBusy(true);
     // "멈춰" 같은 말은 어느 단계에서든 진행 중인 탐색을 멈춘다 (조건 변경으로 해석하지 않게 먼저 본다)
     if (STOP_WORDS.test(text.trim())) {
-      stop();
+      await stop();
       return;
     }
     // 멈춘 뒤 "다시 시작"·"계속해" 같은 말은 멈춘 브라우저를 이어서 진행
@@ -158,17 +158,23 @@ export async function onChat(text: string) {
       return;
     }
     if (urls && requirements) {
-      for (const url of urls.slice(0, 3)) {
+      for (const url of uniqueSites(urls).slice(0, 3)) {
         const slot = VENDOR_IDS.find((id) => !getVendor(id) || ['failed', 'needs_user'].includes(getVendorStatus(id)));
         if (!slot) break;
+        // 같은 사이트를 이미 다른 브라우저가 보고 있거나 이미 빼 둔 사이트면 자리를 열지 않는다 (열면 그 브라우저가 멈춘 채 남음)
+        const conflict = claimConflict(slot, url);
+        if (conflict) {
+          say(`${url}: ${conflict.replace(' 다른 업체를 고르세요.', '')}`);
+          continue;
+        }
         // 쓰지 않던 브라우저면 자리를 열고 카드도 하나 띄운다
         const name = await siteName(url);
         if (!activeSlots.includes(slot)) {
           activeSlots = [...activeSlots, slot];
           quoteStore.ensure(slot);
-          timeline({ kind: 'browser', slot, title: name });
+          timeline({ kind: 'browser', slot, title: name || hostLabel(url) });
         }
-        claim(slot, { name, url, reason: '사용자가 지정' });
+        if (claim(slot, { name, url, reason: '사용자가 지정' })) continue;
         void collect(slot);
       }
       return;
@@ -312,7 +318,9 @@ async function startHunt(req: Requirements, slots: VendorId[] = [...VENDOR_IDS],
 }
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
-async function startWithUrls(req: Requirements, urls: string[]) {
+async function startWithUrls(req: Requirements, given: string[]) {
+  // 같은 사이트 주소가 여러 개면 하나만 쓴다 (둘째 브라우저가 업체를 못 잡고 "업체 찾는 중"으로 멈춰 있지 않게)
+  const urls = uniqueSites(given);
   setStage('search');
   setVendors([]);
   activeSlots = VENDOR_IDS.slice(0, urls.length);
@@ -324,43 +332,93 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   tries.clear();
   fallbacks.clear();
   triedNames.clear();
-  say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.`);
+  const dup = given.length - urls.length;
+  say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.${dup ? ` 같은 사이트 주소 ${dup}개는 한 번만 볼게요.` : ''}`);
   const names = await Promise.all(urls.map(siteName));
-  urls.forEach((url, i) => claim(VENDOR_IDS[i], { name: names[i], url, reason: '사용자가 지정' }));
+  // 업체로 잡지 못한 자리(이미 빼 둔 사이트 등)는 비워 두지 않고 웹에서 다른 업체를 찾는다
+  const failed = urls.map((url, i) => claim(VENDOR_IDS[i], { name: names[i], url, reason: '사용자가 지정' }));
   timeline({ kind: 'vendors', slots: activeSlots });
   const gen = generation;
-  await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
+  await Promise.all(urls.map((_, i) => (failed[i] ? hunt(VENDOR_IDS[i], gen) : collect(VENDOR_IDS[i], gen))));
   if (gen === generation) maybeOpenGate();
 }
 
-/** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인 */
+/** 주소의 호스트 ("www." 뺌). 주소가 아니면 그대로 */
+function hostLabel(url: string) {
+  try {
+    return new URL(url).host.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** 같은 사이트(siteKey)의 주소는 처음 것만 남긴다 */
+function uniqueSites(urls: string[]) {
+  const seen = new Set<string>();
+  return urls.filter((u) => {
+    const key = hostKey(u);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인.
+ *  차단·오류 화면이면 빈 이름: claim이 주소로 채우고, 사용자가 화면을 해결한 뒤 진짜 이름으로 바꾼다 */
 async function siteName(url: string): Promise<string> {
-  const host = (() => {
-    try {
-      return new URL(url).host.replace(/^www\./, '');
-    } catch {
-      return url;
-    }
-  })();
+  const host = hostLabel(url);
   if (!/^(localhost|127\.0\.0\.1)(:|$)/.test(host)) return host;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
     // 차단·오류 화면의 제목("보안 확인" 등)을 업체 이름으로 쓰지 않는다
-    if (!res.ok) return host;
+    if (!res.ok) return '';
     const html = await res.text();
     const title = /<title>([^<]+)<\/title>/i.exec(html)?.[1]?.split(/\s[-|·:]\s/)[0]?.trim();
-    return title || host;
+    return title && !BLOCK_TITLE.test(title) ? title : host;
   } catch {
     return host;
   }
 }
 
-/** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
-function claim(slot: VendorId, v: PickedVendor): string | null {
-  const key = hostKey(v.url);
+/** 차단·로그인·오류 화면의 제목: 업체 이름으로 쓰지 않는다 */
+const BLOCK_TITLE =
+  /보안\s*(확인|문자|검사)|접근\s*(차단|제한|거부|불가)|차단\s*(됨|된|되었)|비정상|자동\s*입력\s*방지|본인\s*(확인|인증)|로그인|captcha|\brobot\b|access\s*denied|\bforbidden\b|just a moment|attention required|\bsign\s*in\b|\blog\s*in\b|잠시만\s*기다|페이지를\s*찾을\s*수|^\s*\d{3}(\s|$)|\berror\b/i;
+
+/** 진짜 이름을 아직 못 읽은 업체 (차단 화면에서 정해 주소로 채워 둠) */
+const provisional = new Set<VendorId>();
+
+/** 사용자가 차단을 해결한 뒤처럼 진짜 페이지가 보일 때: 임시 이름을 페이지 제목의 업체 이름으로 바꾼다 */
+async function refreshVendorName(slot: VendorId) {
+  const v = getVendor(slot);
+  if (!v || !provisional.has(slot)) return;
+  const d = getDriver(slot);
+  if (await detectBlock(d).catch(() => null)) return;
+  const title = (await d.title().catch(() => '')).split(/\s[-|·:]\s/)[0]?.trim().slice(0, 60);
+  if (!title || BLOCK_TITLE.test(title) || getVendor(slot) !== v) return;
+  provisional.delete(slot);
+  replaceVendor({ ...v, name: title });
+  quoteStore.renameVendor(slot, title);
+  emit('vendors', { payload: listVendors() });
+}
+
+/** 이 브라우저가 이 사이트를 업체로 잡을 수 없는 사유 (이미 빼 둔 사이트·다른 브라우저가 고른 사이트) */
+function claimConflict(slot: VendorId, url: string): string | null {
+  const key = hostKey(url);
   if (banned.has(key)) return '이미 시도했지만 웹에서 견적을 낼 수 없었던 업체입니다. 다른 업체를 고르세요.';
   const dup = listVendors().find((x) => x.id !== slot && hostKey(x.url) === key);
   if (dup) return `브라우저 ${dup.id}가 이미 고른 업체(${dup.name})입니다. 다른 업체를 고르세요.`;
+  return null;
+}
+
+/** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
+function claim(slot: VendorId, picked: PickedVendor): string | null {
+  const conflict = claimConflict(slot, picked.url);
+  if (conflict) return conflict;
+  // 차단 화면 제목("보안 확인" 등)이나 빈 이름은 주소로 두고, 진짜 페이지가 보이면 바꾼다
+  const placeholder = !picked.name?.trim() || BLOCK_TITLE.test(picked.name);
+  const v = placeholder ? { ...picked, name: hostLabel(picked.url) } : picked;
+  if (placeholder) provisional.add(slot);
+  else provisional.delete(slot);
   const info: VendorInfo = { id: slot, ...v };
   noteVerdict(slot, v.url, `${v.name} 업체로 확정해 견적 받는 중`);
   replaceVendor(info);
@@ -392,6 +450,7 @@ async function hunt(slot: VendorId, gen = generation, countTry = true) {
 
 /** 이 브라우저의 업체 자리를 비운다 (다른 사이트를 다시 찾기 전) */
 function dropVendor(slot: VendorId) {
+  provisional.delete(slot);
   setVendors(listVendors().filter((v) => v.id !== slot));
   emit('vendors', { payload: listVendors() });
   quoteStore.resetOne(slot);
@@ -460,16 +519,20 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
         slot,
         driver,
         onClaim: (v) => claim(slot, v),
-        onReport: async (fields, meta, url) => {
-          if (!getVendor(slot)) claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '견적 정보가 있는 페이지' });
-          void captureWeb(slot, url);
-          // 에이전트가 납기를 빠뜨렸으면 페이지 원문에서 추정
-          if (!fields.leadTimeDays && !quoteStore.hasField(slot, 'leadTimeDays')) {
-            const text = await driver.evaluate<string>('document.body ? document.body.innerText : ""').catch(() => '');
-            fields = fillLeadTimeFromText(fields, text);
-          }
-          return applyFields(slot, fields, meta, 'web', url);
-        },
+        onReport: (fields, meta, url) =>
+          tracked(
+            (async () => {
+              if (!getVendor(slot)) claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '견적 정보가 있는 페이지' });
+              void captureWeb(slot, url);
+              void refreshVendorName(slot);
+              // 에이전트가 납기를 빠뜨렸으면 페이지 원문에서 추정
+              if (!fields.leadTimeDays && !quoteStore.hasField(slot, 'leadTimeDays')) {
+                const text = await driver.evaluate<string>('document.body ? document.body.innerText : ""').catch(() => '');
+                fields = fillLeadTimeFromText(fields, text);
+              }
+              return applyFields(slot, fields, meta, 'web', url);
+            })()
+          ),
         onAfter: () => void refreshState(slot),
         // 자기 업체 사이트 안에서 움직일 때는 기록만 하고 알림은 붙이지 않는다
         onVisit: (url, title) => {
@@ -599,7 +662,9 @@ export function resume(slot: Slot) {
   // collect·hunt는 시작하자마자 상태를 browsing으로 바꾸므로 그때 표시를 푼다
   void setHandoff(slot, undefined)
     .catch(() => undefined)
-    .then(() => {
+    .then(async () => {
+      // 차단 화면에서 정한 임시 이름이면 해결된 진짜 페이지의 이름으로 바꾼다
+      await refreshVendorName(slot).catch(() => undefined);
       pendingSlots.delete(slot);
       return getVendor(slot) ? collect(slot) : hunt(slot, generation, false);
     });
@@ -660,9 +725,18 @@ const runOf = (slot: VendorId) => runs.get(slot) ?? 0;
 /** 이 브라우저의 작업을 그만둬야 하는지: 새 견적·조건 변경(generation)이거나 사용자가 멈춤(실행 번호가 바뀜) */
 const halted = (slot: VendorId, gen: number, run: number) => gen !== generation || runOf(slot) !== run;
 
+/** 반영 중인 견적 보고 (멈춤 안내가 막 들어오던 견적을 빠뜨리지 않게 기다린다) */
+const reporting = new Set<Promise<unknown>>();
+function tracked<T>(p: Promise<T>): Promise<T> {
+  reporting.add(p);
+  const done = () => reporting.delete(p);
+  p.then(done, done);
+  return p;
+}
+
 /** 사용자가 멈춤: 탐색 중인 브라우저만 멈추고, 모은 업체·견적은 그대로 두고 그걸로 비교한다.
  *  메일 회신 대기·파일 분석은 사용자가 이미 맡긴 일이라 그대로 둔다 */
-export function stop() {
+export async function stop() {
   const running = VENDOR_IDS.filter((id) => getVendorStatus(id) === 'browsing');
   if (!requirements || running.length === 0) {
     say('지금 멈출 작업이 없어요.');
@@ -674,6 +748,12 @@ export function stop() {
     setVendorStatus(id, 'stopped');
     void refreshState(id);
   }
+  // 멈추기 직전에 보고한 견적이 반영될 때까지 잠깐 기다린 뒤 센다 (너무 오래 걸리면 그냥 진행)
+  const gen = generation;
+  if (reporting.size) await Promise.race([Promise.allSettled([...reporting]), sleep(3000)]);
+  if (gen !== generation) return;
+  // 이미 가격까지 받은 업체는 "멈춤"이 아니라 견적 완료로 둔다 (runCollector가 끝났을 때와 같은 기준)
+  for (const id of running) if (getVendorStatus(id) === 'stopped' && getVendor(id) && quoteStore.hasListedPrice(id)) setVendorStatus(id, 'done');
   const priced = listVendors().filter((v) => quoteStore.hasListedPrice(v.id)).length;
   if (priced === 0) {
     say('멈췄어요. 아직 모은 견적이 없어요. "다시 시작"이라고 말하거나 브라우저 카드의 "이어서 하기"를 누르면 이어서 찾고, 바꿀 조건을 말하면 그 조건으로 다시 찾아요.');
@@ -1260,6 +1340,7 @@ function clearRun() {
   engines.clear();
   handoffMode.clear();
   targets.clear();
+  provisional.clear();
   activeSlots = [...VENDOR_IDS];
   resetShared();
   stopSizeScan(true);
