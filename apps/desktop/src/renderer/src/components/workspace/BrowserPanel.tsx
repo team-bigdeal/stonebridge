@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Columns3, ExternalLink, PanelLeft, FileText, Maximize2, Play, RefreshCw, Replace, ShieldAlert, SkipForward, Square } from 'lucide-react';
 import type { Slot, VendorId, VendorStatus } from '@shared/types';
 import { Button } from '@/components/ui/button';
@@ -161,20 +161,8 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
   const { vendorStatus, scoped } = useRunStore();
   const running = !scoped && slots.some((id) => vendorStatus[id] === 'browsing');
   const [layout, setLayout] = useState<GridLayout>(loadLayout);
-  // 나란히 놓으면 칸이 실제 브라우저를 붙일 최소 너비(약 280px)보다 좁아져 정지 화면만 보이고 커서도 안 보인다.
-  // 그럴 때는 크게 보기로 보여 준다 (고른 보기 방식은 그대로 기억)
-  const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const cols = slots.length >= 3 ? 3 : 2;
-  const tooNarrow = slots.length > 1 && width > 0 && (width - 20 * (cols - 1)) / cols - 40 < 280;
-  const shown: GridLayout = tooNarrow ? 'focus' : layout;
+  // 칸이 좁아 실제 브라우저를 붙일 수 없는 나란히 보기에서도 화면 이미지와 커서로 진행이 보인다 (고른 보기 방식을 그대로 따름)
+  const shown = layout;
   const [focus, setFocus] = useState<VendorId>(slots[0]);
   const main = slots.includes(focus) ? focus : slots[0];
   const others = slots.filter((id) => id !== main);
@@ -187,7 +175,7 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
     }
   };
   return (
-    <div ref={box} className="space-y-3" data-browser-grid>
+    <div className="space-y-3" data-browser-grid>
       <div className="flex items-center justify-end gap-2">
         {slots.length > 1 && (
           <div className="flex rounded-lg bg-muted p-0.5 text-[13px] font-medium">
@@ -196,9 +184,7 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
                 key={l}
                 type="button"
                 onClick={() => choose(l)}
-                disabled={tooNarrow && l === 'grid'}
-                title={tooNarrow && l === 'grid' ? '창이 좁아 나란히 놓으면 실제 화면이 안 보여요. 창을 넓히면 쓸 수 있어요' : undefined}
-                className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors disabled:opacity-40', shown === l ? 'bg-card text-ink dark:bg-input shadow-sm' : 'text-muted-foreground hover:text-ink')}
+                className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors', shown === l ? 'bg-card text-ink dark:bg-input shadow-sm' : 'text-muted-foreground hover:text-ink')}
               >
                 {l === 'focus' ? <PanelLeft className="size-3.5" /> : <Columns3 className="size-3.5" />}
                 {l === 'focus' ? '크게 보기' : '나란히'}
