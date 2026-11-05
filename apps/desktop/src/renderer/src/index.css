@@ -3,38 +3,41 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 검정 · 블루 테마 (shadcn 토큰) */
+/* 다크 뉴트럴 + 차분한 블루 포인트 (shadcn 토큰) */
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.13 0.008 265);
-  --foreground: oklch(0.95 0.005 265);
-  --card: oklch(0.17 0.01 265);
-  --card-foreground: oklch(0.95 0.005 265);
-  --popover: oklch(0.19 0.012 265);
-  --popover-foreground: oklch(0.95 0.005 265);
-  --primary: oklch(0.62 0.19 258);
+  --radius: 0.625rem;
+  --background: oklch(0.155 0.004 265);
+  --foreground: oklch(0.94 0.004 265);
+  --card: oklch(0.19 0.005 265);
+  --card-foreground: oklch(0.94 0.004 265);
+  --popover: oklch(0.21 0.006 265);
+  --popover-foreground: oklch(0.94 0.004 265);
+  --primary: oklch(0.66 0.14 255);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.23 0.015 265);
-  --secondary-foreground: oklch(0.93 0.005 265);
-  --muted: oklch(0.21 0.012 265);
-  --muted-foreground: oklch(0.68 0.02 265);
-  --accent: oklch(0.25 0.04 260);
-  --accent-foreground: oklch(0.96 0.005 265);
-  --destructive: oklch(0.64 0.2 25);
-  --border: oklch(0.27 0.015 265);
-  --input: oklch(0.29 0.015 265);
-  --ring: oklch(0.62 0.19 258);
-  --chart-1: oklch(0.7 0.15 255);
-  --chart-2: oklch(0.7 0.14 290);
-  --chart-3: oklch(0.78 0.12 210);
-  --sidebar: oklch(0.15 0.01 265);
-  --sidebar-foreground: oklch(0.95 0.005 265);
-  --sidebar-primary: oklch(0.62 0.19 258);
+  --secondary: oklch(0.24 0.006 265);
+  --secondary-foreground: oklch(0.92 0.004 265);
+  --muted: oklch(0.22 0.005 265);
+  --muted-foreground: oklch(0.7 0.01 265);
+  --accent: oklch(0.25 0.008 265);
+  --accent-foreground: oklch(0.96 0.004 265);
+  --destructive: oklch(0.66 0.19 25);
+  --border: oklch(0.28 0.006 265);
+  --input: oklch(0.3 0.006 265);
+  --ring: oklch(0.66 0.14 255);
+  /* 상태 색: 충족 / 확인 필요 */
+  --ok: oklch(0.74 0.13 155);
+  --warn: oklch(0.8 0.13 75);
+  --chart-1: oklch(0.7 0.12 255);
+  --chart-2: oklch(0.7 0.12 300);
+  --chart-3: oklch(0.76 0.1 195);
+  --sidebar: oklch(0.17 0.005 265);
+  --sidebar-foreground: oklch(0.94 0.004 265);
+  --sidebar-primary: oklch(0.66 0.14 255);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.23 0.015 265);
-  --sidebar-accent-foreground: oklch(0.95 0.005 265);
-  --sidebar-border: oklch(0.27 0.015 265);
-  --sidebar-ring: oklch(0.62 0.19 258);
+  --sidebar-accent: oklch(0.24 0.006 265);
+  --sidebar-accent-foreground: oklch(0.94 0.004 265);
+  --sidebar-border: oklch(0.28 0.006 265);
+  --sidebar-ring: oklch(0.66 0.14 255);
 }
 
 @theme inline {
@@ -71,9 +74,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --color-va: oklch(0.72 0.15 255);
-  --color-vb: oklch(0.72 0.15 290);
-  --color-vc: oklch(0.8 0.13 210);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-va: oklch(0.72 0.12 255);
+  --color-vb: oklch(0.72 0.12 300);
+  --color-vc: oklch(0.78 0.1 195);
   --font-sans: "Pretendard", -apple-system, "Apple SD Gothic Neo", sans-serif;
 }
 
@@ -82,7 +87,7 @@
   html, body, #root { height: 100%; }
   body {
     @apply bg-background text-foreground antialiased;
-    background: radial-gradient(1200px 600px at 70% -10%, oklch(0.62 0.19 258 / 0.12), transparent 60%), var(--background);
+    word-break: keep-all;
   }
   input, textarea, select { color-scheme: dark; }
 }
@@ -90,6 +95,6 @@
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 .flash { animation: flash 1.4s ease-out; }
-@keyframes flash { 0% { background: oklch(0.62 0.19 258 / 0.45); } 100% { background: transparent; } }
+@keyframes flash { 0% { background: oklch(0.66 0.14 255 / 0.28); } 100% { background: transparent; } }
 .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
 .scroll-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
