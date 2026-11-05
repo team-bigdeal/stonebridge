@@ -109,11 +109,15 @@ function Composer() {
           </Suggestions>
         )}
         <PromptInput
-          onSubmit={async ({ text }) => {
+          // 동기로 끝내야 PromptInput이 입력창을 바로 비운다 (Promise를 돌려주면 응답이 올 때까지 글자가 남음)
+          onSubmit={({ text }) => {
             const t = text.trim();
             if (!t) return;
             push({ id: crypto.randomUUID(), kind: 'user', text: t });
-            await api.sendChat(t);
+            void api.sendChat(t).catch(() => {
+              // 보내기에 실패하면 다시 보낼 수 있게 입력창에 되돌려 둔다 (그사이 새로 쓴 글이 있으면 건드리지 않음)
+              if (!controller.textInput.value.trim()) controller.textInput.setInput(t);
+            });
           }}
           className="rounded-xl transition-colors"
         >
