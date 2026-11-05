@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, History, Plus, Trash2 } from 'lucide-react';
 import type { HistorySummary } from '@shared/types';
-import { useStore } from '@/store';
+import { saveSidebar, saveWidth, SIDEBAR_WIDTH, useStore } from '@/store';
+import { ResizeHandle } from './ResizeHandle';
 import { cn } from '@/lib/utils';
 import { Pill } from './cards/Section';
 import { exitReplay, openReplay } from '@/replay';
@@ -12,10 +13,11 @@ const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'nu
 
 /** 왼쪽 사이드 탭: 지난 견적 목록. 누르면 그 견적 세션(대화·브라우저·비교표)이 그대로 다시 뜬다 */
 export function HistorySidebar() {
-  const { sidebarOpen, historyRev, replay, liveId } = useStore();
+  const { sidebarOpen, historyRev, replay, liveId, sidebarWidth, set } = useStore();
   const active = replay?.id ?? liveId;
   const restart = useRestart();
   const [list, setList] = useState<HistorySummary[] | null>(null);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -24,7 +26,23 @@ export function HistorySidebar() {
 
   if (!sidebarOpen) return null;
   return (
-    <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-white fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
+    <aside
+      className={cn('relative flex shrink-0 animate-in flex-col border-r bg-white transition-opacity fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none', closing && 'opacity-40')}
+      style={{ width: sidebarWidth }}
+    >
+      <ResizeHandle
+        side="right"
+        label="지난 견적 너비 조절"
+        width={sidebarWidth}
+        range={SIDEBAR_WIDTH}
+        onResize={(w) => set({ sidebarWidth: w })}
+        onDone={(w) => saveWidth('doldari.sidebarWidth', w)}
+        onClosing={setClosing}
+        onClose={() => {
+          saveSidebar(false);
+          set({ sidebarOpen: false });
+        }}
+      />
       {/* 새 견적 버튼 + 사이드바 닫기 */}
       <div className="flex items-center gap-1.5 pl-3 pr-2 pt-3">
         <button

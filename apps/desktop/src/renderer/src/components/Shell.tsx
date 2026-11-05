@@ -26,14 +26,14 @@ export function useRestart() {
 }
 
 export function TopBar() {
-  const { stage, config, sidebarOpen, set } = useStore();
+  const { stage, config, sidebarOpen, sidebarWidth, set } = useStore();
   const restart = useRestart();
   const current = STAGES.findIndex((s) => s.id === stage);
 
   return (
     <header className="drag flex h-14 shrink-0 items-center border-b bg-white pr-6">
       {/* 로고 칸은 사이드바와 같은 너비 (창 버튼 오른쪽부터). 단계는 본문이 시작하는 곳에서 */}
-      <div className="flex h-full w-64 shrink-0 items-center gap-2 pl-[88px]">
+      <div className="flex h-full shrink-0 items-center gap-2 pl-[88px]" style={{ width: sidebarOpen ? Math.max(sidebarWidth, 256) : 256 }}>
         <Mascot size={26} className="rounded-md" />
         <span className="logo-type whitespace-nowrap text-[19px] leading-none text-primary" aria-label="돌다리">StoneBridge</span>
       </div>

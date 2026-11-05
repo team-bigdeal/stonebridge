@@ -7,6 +7,7 @@ import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
+import { RequirementsPanel } from './components/RequirementsPanel';
 import { startAutosave } from './replay';
 
 export default function App() {
@@ -39,6 +40,8 @@ export default function App() {
             {!sidebarOpen && <SidebarToggle className="absolute left-2 top-2 z-10 bg-white/80 shadow-sm" />}
             <Chat />
           </main>
+          {/* 요구 조건은 대화 안이 아니라 오른쪽에 늘 보이게 */}
+          <RequirementsPanel />
         </div>
         <ExpandedBrowser />
         <QuoteViewer />
