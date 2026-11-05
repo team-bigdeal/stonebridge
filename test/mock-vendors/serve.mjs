@@ -2,6 +2,7 @@
 //  A :4101 가격 공개 + 수량 옵션에 따라 금액 계산
 //  B :4102 가격 비공개, 메일 문의만
 //  D :4104 가격은 보이지만 배송비·제작 기간은 닫힌 "배송/교환" 탭 안에만 있음 (숨은 정보 탐색 테스트용)
+//  E :4105 시트 단위 가격 (1시트 = 24개) — 1개 가격으로 잘못 읽으면 금액이 수십 배로 튐 (수량 재확인 테스트용)
 //  C :4103 첫 방문은 HTTP 418 "보안 확인" 화면 → 사용자가 "확인" 누르면 정상 페이지 (차단 감지·handoff 테스트용)
 import http from 'node:http';
 
@@ -81,6 +82,15 @@ const D = page(
   <footer>(주)라벨하우스 · 대표 박지은 · 사업자등록번호 345-67-89012 · 02-555-0101 · help@labelhouse.test</footer>`
 );
 
+const E = page(
+  '스티커몰 - 원형 스티커 시트',
+  `<h1>원형 방수 스티커 50mm 유광</h1>
+  <p class="price">600원</p>
+  <p style="font-size:12px;color:#888">* 위 가격은 1시트(A4, 50mm 원형 24개 배치) 기준이며 부가세 포함입니다. 주문은 시트 단위입니다.</p>
+  <p>배송비 2,500원 · 제작 3일 + 배송 1~2일</p>
+  <footer>스티커몰 · 대표 이수현 · 사업자등록번호 456-78-90123 · 031-777-0202</footer>`
+);
+
 const send = (res, status, html, headers = {}) => {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers });
   res.end(html);
@@ -89,6 +99,7 @@ const send = (res, status, html, headers = {}) => {
 http.createServer((req, res) => send(res, 200, A)).listen(4101);
 http.createServer((req, res) => send(res, 200, B)).listen(4102);
 http.createServer((req, res) => send(res, 200, D)).listen(4104);
+http.createServer((req, res) => send(res, 200, E)).listen(4105);
 http
   .createServer((req, res) => {
     // /always 는 확인해도 계속 막힌다 (건너뛰기 테스트용)
@@ -98,4 +109,4 @@ http
     send(res, 200, C);
   })
   .listen(4103);
-console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104');
+console.log('[mock] A http://localhost:4101  B http://localhost:4102  C http://localhost:4103 (418 차단 → /verify)  C-항상차단 http://localhost:4103/always  D(숨은 배송 탭) http://localhost:4104  E(시트 단위 가격) http://localhost:4105');

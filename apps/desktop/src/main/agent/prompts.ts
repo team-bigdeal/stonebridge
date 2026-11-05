@@ -91,6 +91,31 @@ ${COLLECT_RULES(req)}
 - 최대 18단계. 모든 도구의 intent는 사용자에게 보여 줄 한국어 한 줄로 적는다.`;
 }
 
+/** 다른 업체와 금액이 터무니없이 차이 날 때: 기준 수량을 잘못 읽었는지 다시 확인 */
+export function verifyPriceSystemPrompt(v: VendorInfo, req: Requirements, info: { listed: number; priceQty: number; amount: number; snippet?: string; others: string[]; ratio: number }) {
+  const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
+  return `너는 견적 탐색 브라우저 '돌다리'의 검증 에이전트다. 오늘은 ${today()}이다. 업체 "${v.name}"(${v.url})의 가격을 다시 확인한다.
+
+## 사용자 요구 조건
+${reqText(req)}
+
+## 왜 다시 보나
+이 업체 금액이 다른 업체들과 약 ${info.ratio.toFixed(1)}배 차이 난다. 가격 자체보다 **몇 개(매) 기준 가격인지**를 잘못 읽었을 가능성이 크다.
+- 지금 읽은 값: 표시가 ${won(info.listed)}, 기준 수량 ${info.priceQty}개 → 요구 수량 ${req.quantity}개 환산 ${won(info.amount)}
+${info.snippet ? `- 근거 원문: "${info.snippet}"
+` : ''}- 다른 업체 환산 금액: ${info.others.join(', ')}
+
+## 확인할 것
+- 그 금액이 1개 가격인지, 묶음(100매·1000매)·1시트(한 장에 여러 개)·1박스 가격인지
+- 최소 주문 수량, "~부터" 가격, 수량 할인 표, 옵션 선택 전 기본값인지
+- 요구 규격(크기·재질·코팅)과 수량에 맞는 옵션을 골랐을 때의 금액인지 (select_option 후 read_text로 다시 읽기)
+
+## 보고
+- 잘못 읽었으면 report_quote로 listedPrice와 price_qty를 바로잡아 다시 보고하고(done=true), notes에 "가격 재확인: 무엇을 고쳤는지"를 한 줄 적는다.
+- 확인해 보니 맞으면 fields는 비워 두고 notes에 "가격 재확인: 기준 수량 ○개 맞음 (근거)"를 적어 report_quote(done=true).
+- 제출·결제·로그인은 하지 않는다. 최대 12단계. 모든 도구의 intent는 사용자에게 보여 줄 한국어 한 줄.`;
+}
+
 export function formSystemPrompt(v: VendorInfo, req: Requirements, message: string) {
   return `너는 견적 탐색 브라우저 '돌다리'의 작성 에이전트다. 업체 "${v.name}"(${v.url}) 사이트의 견적/주문 문의 폼을 사용자 대신 채운다.
 
