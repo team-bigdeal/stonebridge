@@ -23,7 +23,8 @@ export function normalizeField(key: FieldKey, f: ReportedField): NormalizedField
   } else {
     value = parseMonths(f.value);
   }
-  if (value === null || Number.isNaN(value)) return null;
+  // 음수 금액·기간은 잘못 읽은 값이라 버린다
+  if (value === null || Number.isNaN(value) || value < 0) return null;
   return { value, snippet: String(f.snippet ?? '').slice(0, 200) };
 }
 
