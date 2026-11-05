@@ -7,10 +7,20 @@ export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 const val = (f: Field<number>) => f.value ?? 0;
 
 /** 총액에 들어가야 하는 필드 (설치·A/S가 필요 없으면 제외) */
+/** 이 요구 조건에서 필요한 항목만. 설치·A/S·배송이 필요 없으면 빼서 "확인 필요"로 남지 않게 한다 */
 export function requiredKeys(req: Requirements | null): FieldKey[] {
   const noWarranty = req !== null && req.minWarrantyMonths <= 0;
-  return FIELD_KEYS.filter((k) => (k !== 'installFee' || (req?.needInstall ?? true)) && !(noWarranty && (k === 'warrantyMonths' || k === 'warrantyExtraFee')));
+  const noDelivery = req?.needDelivery === false;
+  return FIELD_KEYS.filter(
+    (k) =>
+      (k !== 'installFee' || (req?.needInstall ?? true)) &&
+      !(noWarranty && (k === 'warrantyMonths' || k === 'warrantyExtraFee')) &&
+      !(noDelivery && k === 'shippingFee')
+  );
 }
+
+/** 합계에 들어가는 금액 항목 (납기·A/S 기간은 금액이 아니라 비어 있어도 합계는 낼 수 있다) */
+export const COST_KEYS: FieldKey[] = ['listedPrice', 'installFee', 'shippingFee', 'warrantyExtraFee'];
 
 /** 누락 필드: A/S는 기간이나 연장비 중 하나로 요구 기간 충족을 판정할 수 있으면 누락 아님 */
 export function missingKeys(q: Quote, req: Requirements | null): FieldKey[] {
@@ -42,7 +52,8 @@ export function confirmedSum(q: Quote, req: Requirements | null): number {
 
 export function recompute(q: Quote, req: Requirements | null): Quote {
   const missing = missingKeys(q, req);
-  return { ...q, missing, totalPrice: missing.length === 0 ? confirmedSum(q, req) : null };
+  const costMissing = missing.filter((k) => COST_KEYS.includes(k));
+  return { ...q, missing, totalPrice: costMissing.length === 0 ? confirmedSum(q, req) : null };
 }
 
 /** 정렬: 표시가가 있는 업체만 확인된 합계 오름차순, 나머지는 뒤로 */
@@ -207,7 +218,13 @@ export interface QuoteDoc {
   supply: number;
   vat: number;
   notes: string[];
+  /** 비어 있는 항목 전체 */
   missing: string[];
+  /** 비어 있는 금액 항목 (합계에 반영 못 함) */
+  missingCost: string[];
+  /** 비어 있는 금액 외 항목 (납기·A/S 기간 — 업체 확인 필요) */
+  missingInfo: string[];
+  /** 금액 항목이 모두 있어 합계가 확정됨 */
   complete: boolean;
 }
 
@@ -231,7 +248,7 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
   });
   if (req.needInstall)
     lines.push({ kind: 'install', name: '설치비', qty: 1, unitPrice: q.installFee.value, amount: q.installFee.value, note: q.installFee.value === 0 ? '포함' : undefined, counted: true, source: q.installFee.source });
-  lines.push({ kind: 'shipping', name: '배송비', qty: 1, unitPrice: q.shippingFee.value, amount: q.shippingFee.value, note: q.shippingFee.value === 0 ? '무료' : undefined, counted: true, source: q.shippingFee.source });
+  if (req.needDelivery !== false) lines.push({ kind: 'shipping', name: '배송비', qty: 1, unitPrice: q.shippingFee.value, amount: q.shippingFee.value, note: q.shippingFee.value === 0 ? '무료' : undefined, counted: true, source: q.shippingFee.source });
   const wm = q.warrantyMonths.value;
   const wx = q.warrantyExtraFee.value;
   if (req.minWarrantyMonths > 0 && (wx ? true : wx === null ? !(wm !== null && wm >= req.minWarrantyMonths) : false))
@@ -250,7 +267,11 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
 
   const total = confirmedSum(q, req);
   const supply = Math.round(total / 1.1);
-  const missing = missingKeys(q, req).map((k) => ({ listedPrice: '단가', installFee: '설치비', shippingFee: '배송비', warrantyMonths: 'A/S 기간', warrantyExtraFee: 'A/S 연장비', leadTimeDays: '납기' })[k]);
+  const LABEL: Record<FieldKey, string> = { listedPrice: '단가', installFee: '설치비', shippingFee: '배송비', warrantyMonths: 'A/S 기간', warrantyExtraFee: 'A/S 연장비', leadTimeDays: '납기' };
+  const missingAll = missingKeys(q, req);
+  const missing = missingAll.map((k) => LABEL[k]);
+  const missingCost = missingAll.filter((k) => COST_KEYS.includes(k)).map((k) => LABEL[k]);
+  const missingInfo = missingAll.filter((k) => !COST_KEYS.includes(k)).map((k) => LABEL[k]);
   const notes = [
     '금액은 모두 부가세 포함 기준으로 통일했습니다.',
     wm !== null ? `기본 A/S ${wm % 12 === 0 && wm >= 12 ? `${wm / 12}년` : `${wm}개월`}` : '',
@@ -274,6 +295,8 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     vat: total - supply,
     notes,
     missing: [...new Set(missing)],
-    complete: missing.length === 0
+    missingCost: [...new Set(missingCost)],
+    missingInfo: [...new Set(missingInfo)],
+    complete: missingCost.length === 0
   };
 }
