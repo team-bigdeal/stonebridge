@@ -40,6 +40,18 @@ export interface Requirements {
   vendors?: string[];
   /** 지정한 업체에서만 받기 (true면 그 수만큼만 브라우저를 띄운다) */
   onlyVendors?: boolean;
+  /** 품목에 맞는 세부 조건 (예: 블라인드 가로·세로·원단, 스티커 지름·재질). 인터뷰가 품목을 보고 정한다 */
+  specs?: ReqSpec[];
+  /** 이 품목에서 물어볼 의미가 있는 기본 항목 (없으면 모두 보여 줌) */
+  shown?: { install: boolean; warranty: boolean; region: boolean };
+}
+
+export interface ReqSpec {
+  label: string;
+  value: string | null;
+  unit?: string;
+  /** 고를 수 있는 값 (예: 암막·일반) */
+  options?: string[];
 }
 
 export type Channel = 'web' | 'mail' | 'file';

@@ -114,7 +114,7 @@ export async function onChat(text: string) {
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
-        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 아래 요구 조건 카드의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
+        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 오른쪽 요구 조건의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
         // 사용자가 사이즈를 모르거나 추천을 원할 때만 브라우저 1개가 업체 사이트를 돌며 파는 사이즈를 모아 실제 크기로 보여 준다
         const item = interview.req.item;
         if (wantsSizeHelp && item && !sizeScanStarted() && hasApiKey()) {
@@ -127,7 +127,7 @@ export async function onChat(text: string) {
       }
       // 기본값으로 채운 항목은 숨기지 않고 알린다 (카드에도 그 값이 보인다)
       const filled = defaulted?.length ? ` ${defaulted.join('·')}은(는) 말씀이 없어서 기본값으로 넣어 뒀어요.` : '';
-      say(ready ? `요구 조건을 정리했어요.${filled} 카드에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.` : '어떤 품목의 견적이 필요한지 알려 주세요.');
+      say(ready ? `요구 조건을 정리했어요.${filled} 오른쪽에서 내용을 확인하고 고칠 게 있으면 고친 뒤 "이 조건으로 찾기 시작"을 눌러 주세요.` : '어떤 품목의 견적이 필요한지 알려 주세요.');
       return;
     }
     // 사용자가 업체 URL을 주면 비어 있거나 막힌 자리에 넣는다
@@ -201,6 +201,11 @@ export async function startSearch(patch: Partial<Requirements>) {
   if (typeof patch.needInstall === 'boolean') clean.needInstall = patch.needInstall;
   if (typeof patch.minWarrantyMonths === 'number' && Number.isInteger(patch.minWarrantyMonths) && patch.minWarrantyMonths >= 0) clean.minWarrantyMonths = patch.minWarrantyMonths;
   if (typeof patch.region === 'string') clean.region = patch.region.trim().slice(0, 100) || undefined;
+  // 품목별 세부 조건: 이름은 인터뷰가 정한 것만, 값만 사용자가 고친다
+  if (Array.isArray(patch.specs) && interview.req.specs) {
+    const edited = new Map(patch.specs.filter((x) => x && typeof x.label === 'string').map((x) => [x.label, typeof x.value === 'string' ? x.value.trim().slice(0, 100) || null : null]));
+    clean.specs = interview.req.specs.map((sp) => (edited.has(sp.label) ? { ...sp, value: edited.get(sp.label) ?? null } : sp));
+  }
   interview.apply(clean);
   if (!interview.req.item) {
     say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
@@ -1168,5 +1173,5 @@ export async function revise(fromChat = false) {
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: { ready: true, asking: false } });
-  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이 조건으로 찾기 시작"을 눌러 주세요.');
+  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 오른쪽에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이 조건으로 찾기 시작"을 눌러 주세요.');
 }

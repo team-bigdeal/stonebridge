@@ -37,9 +37,6 @@ const FOLLOW_UPS = ['수량을 5000개로 바꿔서 다시 찾아 줘', '예산�
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation · Message · PromptInput · Suggestion) */
 export function Chat() {
   const { timeline, busy, replay, stage, runOf } = useStore();
-  // 요구 조건 단계에서는 지금 견적의 확인 카드를 최신 메시지 바로 아래에 둔다 (위로 밀려 안 보이지 않게).
-  // 조건을 바꾸기 전 검색의 카드(runOf)는 제자리에 둔다
-  const liveReq = stage === 'interview' && !replay ? timeline.find((t) => t.kind === 'requirements' && !runOf[t.id]) : undefined;
   // 처음 그릴 때(또는 지난 견적을 열 때) 이미 있던 항목은 등장 애니메이션 없이, 이후 새로 붙는 항목만 살짝 미끄러져 들어온다
   const settled = useRef<Set<string>>(new Set());
   const replayId = replay?.id ?? null;
@@ -59,8 +56,8 @@ export function Chat() {
       ) : (
         <Conversation className="min-h-0">
           <ConversationContent className="w-full gap-8 px-8 py-8">
-            {timeline.map((item) => (item === liveReq ? null : <Item key={item.id} item={item} animate={!settled.current.has(item.id)} />))}
-            {liveReq && <Item key={liveReq.id} item={liveReq} animate={!settled.current.has(liveReq.id)} />}
+            {/* 지금 견적의 요구 조건은 오른쪽 패널에서 보고 고친다. 대화에는 조건을 바꾸기 전 검색의 카드만 남긴다 */}
+            {timeline.map((item) => (item.kind === 'requirements' && !runOf[item.id] ? null : <Item key={item.id} item={item} animate={!settled.current.has(item.id)} />))}
             {busy && (
               <div className="w-full animate-in fade-in-0 duration-300 motion-reduce:animate-none">
                 <Typing />

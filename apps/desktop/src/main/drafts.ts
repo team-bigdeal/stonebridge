@@ -14,7 +14,8 @@ function reqLines(r: Requirements) {
     `- 희망 납기: ${r.deadline}까지`,
     `- 설치: ${r.needInstall ? '필요' : '불필요'}`,
     r.minWarrantyMonths > 0 ? `- A/S: 최소 ${as}` : '',
-    r.region ? `- 지역: ${r.region}` : ''
+    r.region ? `- 지역: ${r.region}` : '',
+    ...(r.specs ?? []).filter((s) => s.value).map((s) => `- ${s.label}: ${s.value}${s.unit ?? ''}`)
   ]
     .filter(Boolean)
     .join('\n');

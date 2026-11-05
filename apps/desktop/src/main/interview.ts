@@ -29,6 +29,10 @@ interface StepOut {
   notes: string | null;
   vendors: string[] | null;
   onlyVendors: boolean | null;
+  specs: { label: string; value: string | null; unit: string | null; options: string[] | null }[];
+  showInstall: boolean;
+  showWarranty: boolean;
+  showRegion: boolean;
   wantsSizeHelp: boolean;
   nextQuestion: string | null;
   ready: boolean;
@@ -60,12 +64,14 @@ A/S가 의미 없는 품목(명함·스티커·리플릿 같은 인쇄물, 판�
 wantsSizeHelp는 사용자의 가장 최근 메시지가 사이즈를 모르겠다거나 추천·비교·보여 달라고 할 때만 true다 (예: "모르겠어", "추천해줘", "어떤 사이즈가 있어?", "보여줘", "사이즈 비교해줘"). 사이즈를 물었다는 이유만으로 true로 하지 않는다. 이때 nextQuestion은 "업체 사이트에서 사이즈를 모아 볼게요. 카드에서 실제 크기로 비교하고 골라 주세요." 같은 짧은 안내로 한다.
 사용자가 사이즈를 말하거나 골랐으면(예: "90×50mm로 할게요") item에 사이즈를 넣고(예: "명함 90×50mm") 다음으로 넘어간다.
 남은 질문이 있더라도 품목과 수량 등 업체를 찾아 견적을 받기에 충분한 정보가 모였으면 ready=true.
-ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuestion을 비우지 않는다. 예산·납기를 아직 모르면 nextQuestion으로 묻는다.`,
+ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuestion을 비우지 않는다. 예산·납기를 아직 모르면 nextQuestion으로 묻는다.
+specs에는 이 품목의 견적 가격을 크게 바꾸는 세부 조건을 2~4개 넣는다 (품목·수량·예산·납기·설치·A/S·지역은 넣지 않는다). 예: 롤스크린 블라인드 → 가로(cm)·세로(cm)·원단(암막/일반/우드), 원형 스티커 → 지름(mm)·재질(유포지/아트지/투명)·코팅(유광/무광), 노트북 → 화면 크기(인치)·메모리(GB)·용도, 사무실 의자 → 등받이(메쉬/가죽)·팔걸이(있음/없음). 대화에 나온 값은 value에, 모르면 null. 고를 값이 정해져 있으면 options(2~4개), 단위가 있으면 unit. current.specs에 값이 있으면 사용자가 고친 값이니 그대로 둔다. specs 항목은 질문으로 따로 묻지 않는다(카드에서 고칠 수 있음).
+showInstall·showWarranty·showRegion은 이 품목에서 설치 여부·A/S 기간·지역을 물을 의미가 있으면 true (스티커·명함 같은 인쇄물은 설치·A/S가 false, 방문 수령이면 지역 false).`,
       content: JSON.stringify({ current: this.req, conversation: this.history, questionsAsked: this.asked }),
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'wantsSizeHelp', 'nextQuestion', 'ready'],
+        required: ['item', 'quantity', 'budgetMax', 'deadlineDays', 'needInstall', 'minWarrantyMonths', 'needDelivery', 'region', 'notes', 'vendors', 'onlyVendors', 'specs', 'showInstall', 'showWarranty', 'showRegion', 'wantsSizeHelp', 'nextQuestion', 'ready'],
         properties: {
           item: nullable('string'),
           quantity: nullable('integer'),
@@ -78,6 +84,18 @@ ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuesti
           notes: nullable('string'),
           vendors: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
           onlyVendors: nullable('boolean'),
+          specs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['label', 'value', 'unit', 'options'],
+              properties: { label: { type: 'string' }, value: nullable('string'), unit: nullable('string'), options: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] } }
+            }
+          },
+          showInstall: { type: 'boolean' },
+          showWarranty: { type: 'boolean' },
+          showRegion: { type: 'boolean' },
           wantsSizeHelp: { type: 'boolean' },
           nextQuestion: nullable('string'),
           ready: { type: 'boolean' }
@@ -98,6 +116,8 @@ ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuesti
     if (out.notes) this.req.notes = out.notes;
     if (out.vendors?.length) this.req.vendors = [...new Set(out.vendors.map((v) => v.trim()).filter(Boolean))].slice(0, 3);
     if (out.onlyVendors !== null) this.req.onlyVendors = out.onlyVendors;
+    this.mergeSpecs(out.specs);
+    this.req.shown = { install: out.showInstall, warranty: out.showWarranty, region: out.showRegion };
     // AI가 질문 없이 끝내도 비교에 꼭 필요한 값(예산·납기, 배송·설치가 있으면 지역)이 비었으면 한 번씩만 직접 묻는다
     // 사이즈 도움 요청: AI 판단 + 직전 질문이 사이즈였고 "모르겠어/추천/보여줘" 같은 답이면 안전망으로 인정
     const lastAsk = [...this.history].reverse().find((h) => h.role === 'assistant')?.text ?? '';
@@ -136,6 +156,16 @@ ready와 nextQuestion은 따로 판단한다. ready=true라고 해서 nextQuesti
       filled.push('납기');
     }
     return filled;
+  }
+
+  /** 품목에 맞는 세부 조건: 사용자가 고친 값은 지키고, 새로 알게 된 값만 채운다 (최대 4개) */
+  private mergeSpecs(next: StepOut['specs']) {
+    const prev = new Map((this.req.specs ?? []).map((s) => [s.label, s]));
+    const merged = next.slice(0, 4).map((s) => {
+      const old = prev.get(s.label);
+      return { label: s.label, value: old?.value ?? s.value, ...(s.unit ? { unit: s.unit } : {}), ...(s.options?.length ? { options: s.options.slice(0, 4) } : {}) };
+    });
+    if (merged.length) this.req.specs = merged;
   }
 
   /** 사용자가 카드에서 직접 고친 값 반영 */
