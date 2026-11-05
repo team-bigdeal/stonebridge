@@ -150,7 +150,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
-        className="relative flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]"
+        className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]"
         onDragOver={(e) => {
           if (!Array.from(e.dataTransfer.types).includes('Files')) return;
           e.preventDefault();
