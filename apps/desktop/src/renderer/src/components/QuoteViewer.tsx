@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { Download, ExternalLink } from 'lucide-react';
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
-import { buildApproval } from '@shared/approval';
+import { approvalFields, buildApproval, type ApprovalHeader } from '@shared/approval';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ApprovalDocument, type ApprovalHeader } from '@/doc/ApprovalDocument';
+import { ApprovalDocument } from '@/doc/ApprovalDocument';
+import { ApprovalTemplatePanel } from '@/components/ApprovalTemplatePanel';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/store';
@@ -138,6 +139,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
     }
   };
   const el = <ApprovalDocument doc={doc} header={header} />;
+  const fields = useMemo(() => approvalFields(doc, header), [doc, header]);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[92vh] max-w-[900px] flex-col gap-3 sm:max-w-[900px]">
@@ -156,6 +158,7 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
           <span className="text-muted-foreground">결재선</span>
           <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
         </div>
+        <ApprovalTemplatePanel fields={fields} />
         {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-neutral-300/90 p-6">
           <style>{DOC_CSS}</style>

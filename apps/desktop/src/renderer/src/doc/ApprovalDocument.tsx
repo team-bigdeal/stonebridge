@@ -1,16 +1,9 @@
 // 구매 품의서 (회사 결재용 A4 양식)
-import type { ApprovalDoc, ApprovalSentence } from '@shared/approval';
+import type { ApprovalDoc, ApprovalHeader, ApprovalSentence } from '@shared/approval';
 import { won } from '@shared/quote';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 const n = (v: number | null) => (v === null ? '' : v.toLocaleString('ko-KR'));
-
-export interface ApprovalHeader {
-  dept: string;
-  author: string;
-  /** 결재선 역할 (왼쪽부터) */
-  roles: string[];
-}
 
 /** 문장 끝에 근거 번호를 붙인다 */
 const Refs = ({ ids }: { ids: number[] }) => (ids.length ? <sup className="dl-ref">[{[...new Set(ids)].sort((a, b) => a - b).join(',')}]</sup> : null);
