@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
+import { SizesCard } from './cards/Sizes';
 import { HistoryCard, MailCard, RequirementsCard, UploadCard } from './cards/Basics';
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
 import { api } from '@/lib/api';
@@ -263,6 +264,8 @@ function ItemBody({ item }: { item: TimelineItem }) {
       );
     case 'requirements':
       return <Medium><RequirementsCard /></Medium>;
+    case 'sizes':
+      return <Wide><SizesCard item={item.item} status={item.status} options={item.options} /></Wide>;
     case 'search':
       return <Wide><BrowserGrid /></Wide>;
     case 'vendors':
