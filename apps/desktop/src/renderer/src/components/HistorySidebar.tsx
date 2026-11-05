@@ -118,9 +118,12 @@ export function HistorySidebar() {
                 <button
                   type="button"
                   title="이 기록 삭제"
+                  aria-label={`${h.item} 견적 기록 삭제`}
                   className="absolute right-1.5 top-2 rounded p-1 text-muted-foreground opacity-0 hover:bg-card hover:text-destructive group-hover:opacity-100"
                   onClick={async () => {
-                    if (!confirm(`"${h.item}" 견적 기록을 삭제할까요?`)) return;
+                    // 같은 품목 기록이 여러 개일 수 있어 언제 기록인지도 적는다
+                    const at = new Date(h.updatedAt).toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    if (!confirm(`${at}에 저장한 "${h.item}" 견적 기록을 삭제할까요?`)) return;
                     if (replay?.id === h.id) exitReplay();
                     await window.doldari.historyDelete(h.id);
                   }}

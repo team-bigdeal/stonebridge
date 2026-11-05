@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { Requirements, ReqSpec } from '@shared/types';
+import { deadlineIssue, parseAmountInput, valueIssue } from '@shared/limits';
+import { localIsoDate } from '@shared/parse';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useApi } from '@/runScope';
@@ -87,10 +89,23 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
     });
   }, [r]);
 
+  // 고친 값은 바로 main에도 보낸다: 채팅으로 "시작"하거나 다음 질문에 답해도 고친 값이 쓰인다 (품목은 다 쓴 뒤 changeItem으로)
+  useEffect(() => {
+    const { item: _item, ...rest } = edit;
+    const patch: Partial<Requirements> = { ...rest, ...(Object.keys(specEdit).length ? { specs: (r.specs ?? []).map((s) => ({ ...s, value: specEdit[s.label] ?? s.value })) } : {}) };
+    if (Object.keys(patch).length) void api.editRequirements(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, specEdit]);
+
   const v = { ...r, ...edit };
   const shown = r.shown ?? { install: true, warranty: true, region: true };
   const item = (v.item ?? '').trim();
-  const canStart = ready && Boolean(item) && !busy && !starting;
+  // 수량·예산이 범위를 벗어나거나 납기가 지났으면 시작을 막고 그 칸 아래에 이유를 보여 준다
+  const qtyIssue = v.quantity !== undefined ? valueIssue('quantity', v.quantity) : null;
+  const budgetIssue = v.budgetMax !== undefined ? valueIssue('budgetMax', v.budgetMax) : null;
+  const dateIssue = deadlineIssue(v.deadline);
+  const issue = qtyIssue ?? budgetIssue ?? dateIssue;
+  const canStart = ready && Boolean(item) && !busy && !starting && !issue;
   // 품목 이름에 이미 들어 있는 값(예: "지름 50mm" 품목의 지름 50 mm)은 다시 묻지 않는다
   const allSpecs = (r.specs ?? []).map((s) => ({ ...s, value: specEdit[s.label] ?? s.value }));
   const specs = allSpecs.filter((s) => specEdit[s.label] !== undefined || !inItem(s, item));
@@ -142,15 +157,16 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
       </Field>
 
       <Field label="수량">
-        <Slider value={v.quantity} base={r.quantity ?? 1} kind="qty" onChange={(n) => setEdit({ ...edit, quantity: n })} />
+        <Slider value={v.quantity} base={r.quantity ?? 1} kind="qty" issue={qtyIssue} onChange={(n) => setEdit({ ...edit, quantity: n })} />
       </Field>
 
       <Field label="예산">
-        <Slider value={v.budgetMax} base={r.budgetMax ?? 1_000_000} kind="won" onChange={(n) => setEdit({ ...edit, budgetMax: n })} />
+        <Slider value={v.budgetMax} base={r.budgetMax ?? 1_000_000} kind="won" issue={budgetIssue} onChange={(n) => setEdit({ ...edit, budgetMax: n })} />
       </Field>
 
       <Field label="납기">
-        <TextBox type="date" value={v.deadline ?? ''} onChange={(t) => setEdit({ ...edit, deadline: t })} suffix="까지" />
+        <TextBox type="date" value={v.deadline ?? ''} min={localIsoDate()} onChange={(t) => setEdit({ ...edit, deadline: t })} suffix="까지" />
+        {dateIssue && <Hint text={dateIssue} />}
       </Field>
 
       {shown.install && (
@@ -194,7 +210,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
           <Search className="size-4" /> {starting ? '시작하는 중…' : asking ? '지금 바로 시작' : '이 조건으로 찾기 시작'}
         </Button>
         <p className="text-center text-[12px] text-muted-foreground">
-          {!item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : ready ? '질문에 다 답하지 않아도 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.'}
+          {!item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : issue ? '위에 표시한 값을 고치면 시작할 수 있어요.' : ready ? '질문에 다 답하지 않아도 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.'}
         </p>
       </div>
     </div>
@@ -215,12 +231,22 @@ function Field({ label, value, children }: { label: string; value?: string; chil
   );
 }
 
+/** 입력 칸 아래 빨간 안내 (잘못된 값) */
+function Hint({ text }: { text: string }) {
+  return (
+    <p role="alert" className="-mt-1 text-[12px] leading-snug text-destructive">
+      {text}
+    </p>
+  );
+}
+
 function TextBox({
   value,
   onChange,
   onCommit,
   placeholder,
   type = 'text',
+  min,
   suffix
 }: {
   value: string;
@@ -229,6 +255,7 @@ function TextBox({
   onCommit?: (v: string) => void;
   placeholder?: string;
   type?: string;
+  min?: string;
   suffix?: string;
 }) {
   return (
@@ -236,6 +263,7 @@ function TextBox({
       <Input
         type={type}
         value={value}
+        min={min}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onCommit ? (e) => onCommit(e.target.value) : undefined}
@@ -322,10 +350,16 @@ function valueToPos(v: number, stops: number[]) {
 }
 
 /** 볼륨 조절기처럼 끌어서 정하는 막대 + 아래 예시 값. 눈금 밖 값은 숫자 칸에 직접 */
-function Slider({ value, base, kind, onChange }: { value?: number; base: number; kind: 'qty' | 'won'; onChange: (n: number) => void }) {
+function Slider({ value, base, kind, issue, onChange }: { value?: number; base: number; kind: 'qty' | 'won'; issue?: string | null; onChange: (n: number) => void }) {
   const stops = useMemo(() => stopsFor(base, kind), [base, kind]);
   const pos = value === undefined ? 0 : valueToPos(value, stops);
   const [typing, setTyping] = useState<string | null>(null);
+  // 직접 쓴 값을 쓸 수 없을 때의 안내 (값은 바꾸지 않고 그대로 둔다)
+  const [hint, setHint] = useState<string | null>(null);
+  const pick = (n: number) => {
+    setHint(null);
+    onChange(n);
+  };
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-3">
@@ -335,21 +369,24 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
           max={1000}
           value={pos}
           aria-label={kind === 'won' ? '예산' : '수량'}
-          onChange={(e) => onChange(posToValue(Number(e.target.value), stops))}
+          onChange={(e) => pick(posToValue(Number(e.target.value), stops))}
           className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full outline-none [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.08)] focus-visible:[&::-webkit-slider-thumb]:ring-4 focus-visible:[&::-webkit-slider-thumb]:ring-primary/25"
           style={{ background: `linear-gradient(to right, var(--primary) ${pos / 10}%, var(--muted) ${pos / 10}%)` }}
         />
         <label className="flex w-[104px] shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-1 focus-within:ring-2 focus-within:ring-primary/30">
         <input
           inputMode="numeric"
-          aria-label={kind === 'won' ? '예산 직접 입력(원)' : '수량 직접 입력'}
+          aria-label={kind === 'won' ? '예산 직접 입력(원, 예: 20만)' : '수량 직접 입력'}
+          aria-invalid={Boolean(hint ?? issue)}
           value={typing ?? (value !== undefined ? value.toLocaleString('ko-KR') : '')}
           placeholder="직접"
           onFocus={() => setTyping(value !== undefined ? String(value) : '')}
           onChange={(e) => setTyping(e.target.value)}
           onBlur={() => {
-            const n = Number((typing ?? '').replace(/[^\d]/g, ''));
-            if (n > 0) onChange(n);
+            // "20만" → 200000. 음수·소수·범위 밖 값은 받지 않고 이유를 보여 준다
+            const { value: n, error } = parseAmountInput(typing ?? '', kind === 'won' ? 'budgetMax' : 'quantity');
+            if (n !== undefined) pick(n);
+            else setHint(error ?? null);
             setTyping(null);
           }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
@@ -364,7 +401,7 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
           <button
             key={s}
             type="button"
-            onClick={() => onChange(s)}
+            onClick={() => pick(s)}
             className={cn('absolute -translate-x-1/2 whitespace-nowrap tabular-nums hover:text-ink', value === s && 'font-semibold text-primary')}
             // 손잡이(20px)가 움직이는 범위에 맞춰 눈금을 둔다
             style={{ left: `calc(10px + (100% - 20px) * ${i / (stops.length - 1)})` }}
@@ -373,6 +410,7 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
           </button>
         ))}
       </div>
+      {(hint ?? issue) && <Hint text={(hint ?? issue)!} />}
     </div>
   );
 }

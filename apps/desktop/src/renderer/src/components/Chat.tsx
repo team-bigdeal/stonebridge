@@ -13,7 +13,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import arrowUp from '@/assets/figma/arrow-up.svg';
 import { Mascot } from './Mascot';
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
+import { Suggestion } from '@/components/ai-elements/suggestion';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
@@ -107,17 +107,18 @@ function Composer() {
     <div ref={box} className="bg-background px-8 pb-3 pt-2.5">
       <div className="space-y-3">
         {chips.length > 0 && (
-          <Suggestions key={fresh ? 'examples' : 'follow-ups'} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
+          // 창이 좁아도 제안이 잘리지 않게 여러 줄로 감싼다 (가로 스크롤 영역인 Suggestions 대신 줄바꿈되는 칸)
+          <div key={fresh ? 'examples' : 'follow-ups'} className="flex flex-wrap items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
             {chips.map((c) => (
               <Suggestion
                 key={c}
                 suggestion={c}
                 onClick={pick}
                 variant="ghost"
-                className="h-auto rounded-lg bg-card px-4 py-2.5 text-[14px] font-medium text-muted-foreground hover:bg-secondary hover:text-primary"
+                className="h-auto max-w-full whitespace-normal rounded-lg bg-card px-4 py-2.5 text-left text-[14px] font-medium text-muted-foreground hover:bg-secondary hover:text-primary"
               />
             ))}
-          </Suggestions>
+          </div>
         )}
         <PromptInput
           // 동기로 끝내야 PromptInput이 입력창을 바로 비운다 (Promise를 돌려주면 응답이 올 때까지 글자가 남음)
@@ -136,6 +137,7 @@ function Composer() {
           <PromptInputBody className="flex min-w-0 flex-1 items-center rounded-lg bg-card px-5 py-3 transition-shadow focus-within:ring-2 focus-within:ring-primary/30">
             <PromptInputTextarea
               autoFocus
+              aria-label="메시지 입력"
               placeholder={
                 fresh
                   ? '견적을 비교하고 싶은 상품을 입력해주세요'

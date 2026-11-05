@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron';
 import type { MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
 import { clearApiKey, config, publicConfig, saveSettings, themeMode } from './config';
@@ -58,12 +59,43 @@ function createWindow() {
 
   if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL);
   else win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // 화면을 다시 불러오면(⌘R·메뉴의 새로 고침 등) 화면은 처음 상태가 되므로 main도 새 견적으로 맞춘다.
+  // 진행 중인 에이전트는 멈추고, 지난 검색은 히스토리에 남는다. 처음 불러올 때는 그대로 둔다
+  let loaded = false;
+  win.webContents.on('did-finish-load', () => {
+    if (loaded) void flow.reset().catch((e) => console.log(`[reload] 초기화 실패: ${e instanceof Error ? e.message : String(e)}`));
+    loaded = true;
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
+  // preload(window.doldari)가 붙은 앱 창은 앱 화면 밖으로 이동하지 않는다 (링크는 기본 브라우저로)
+  win.webContents.on('will-navigate', (e, url) => {
+    if (isAppUrl(url)) return;
+    e.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+  });
 }
+
+/** 앱 화면 주소인지: 개발 실행은 vite 주소(같은 origin), 빌드한 앱은 renderer/index.html 파일 */
+function isAppUrl(url: string) {
+  try {
+    const u = new URL(url);
+    const dev = process.env.ELECTRON_RENDERER_URL;
+    if (dev) return u.origin === new URL(dev).origin;
+    return u.protocol === 'file:' && u.pathname === pathToFileURL(path.join(__dirname, '../renderer/index.html')).pathname;
+  } catch {
+    return false;
+  }
+}
+
+// 모든 웹 화면: <webview>는 붙이지 않고, 새 창은 기본으로 거부한다 (필요한 화면은 만든 뒤 자기 처리기로 바꿔 씀)
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('will-attach-webview', (ev) => ev.preventDefault());
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+});
 
 /** 화면 배율: Ctrl(⌘) + "+" / "-" / "0", Ctrl + 휠. 너무 작거나 커져 화면이 깨지지 않게 80%~150%로 묶는다 */
 const ZOOM = { min: 0.8, max: 1.5, step: 0.1 };
@@ -97,7 +129,8 @@ function registerIpc() {
       const err = await verifyApiKey(key, input.ANTHROPIC_MODEL?.trim() || config.model);
       if (err) return { ok: false, error: err };
     }
-    saveSettings(input);
+    const saveErr = saveSettings(input);
+    if (saveErr) return { ok: false, error: saveErr };
     // 테마를 바꿨으면 창 배경색도 맞춰 둔다 (크기를 줄일 때 비치는 색)
     if (input.THEME) mainWindow?.setBackgroundColor(windowBackground());
     // 앱 비밀번호를 새로 넣었으면 기다리던 회신 확인을 이어 간다
@@ -136,6 +169,7 @@ function registerIpc() {
   });
   ipcMain.handle('flow:start', (_e, patch: Partial<Requirements>) => flow.startSearch(patch ?? {}));
   ipcMain.handle('req:item', (_e, item: string) => flow.onItemChange(item));
+  ipcMain.handle('req:edit', (_e, patch: Partial<Requirements>) => flow.editRequirements(patch ?? {}));
   ipcMain.handle('flow:revise', () => flow.revise());
   ipcMain.handle('file:upload', (_e, vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => flow.onFileUpload(vendorId, file));
   ipcMain.handle('mail:send', (_e, draft: MailDraft) => flow.onMailSend(draft));

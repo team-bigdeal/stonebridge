@@ -6,7 +6,7 @@ type Api = typeof window.doldari;
 
 const MUTATING = new Set<string>([
   'sendChat', 'uploadFile', 'sendMail', 'openMailApp', 'pasteReply', 'draftOrder', 'draftQuestion',
-  'retry', 'replace', 'skip', 'resume', 'browserBack', 'startSearch', 'changeItem', 'revise', 'stop', 'messageSent', 'pasteMessage', 'openSms', 'openOrder'
+  'retry', 'replace', 'skip', 'resume', 'browserBack', 'startSearch', 'changeItem', 'editRequirements', 'revise', 'stop', 'messageSent', 'pasteMessage', 'openSms', 'openOrder'
 ]);
 
 function blocked() {

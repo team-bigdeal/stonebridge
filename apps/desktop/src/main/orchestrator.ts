@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
+import { josa } from '@shared/josa';
+import { requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
@@ -14,10 +16,11 @@ import { addOriginal, clearOriginals, saveRecord, startRecord } from './history'
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
-import { ENGINE_ORDER, type Engine } from './browser/page';
+import { ENGINE_ORDER, detectBlock, type Engine } from './browser/page';
 import { photoFromPage, productPhoto } from './browser/photo';
 import type { PdfFile } from './browser/pdf';
 import { runAgent } from './agent/loop';
+import { apiErrorNotice } from './agent/claude';
 import { sizeScanStarted, startSizeScan, stopSizeScan } from './sizes';
 import { boardFor, noteVerdict, noteVisit, resetShared, siteKey } from './agent/shared';
 import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSystemPrompt } from './agent/prompts';
@@ -28,7 +31,7 @@ import { appendToInbox, cancelAllWatches, cancelWatch, checkNow, isWatching, wat
 import { demoReply, demoReplyMessage } from './channels/demo-mail';
 import { extractQuote } from './channels/extract';
 import { fillLeadTimeFromText } from './quote/normalize';
-import { parseQuoteFile, quoteFileBlock } from './channels/file-parse';
+import { MAX_QUOTE_FILE_BYTES, parseQuoteFile, quoteFileBlock } from './channels/file-parse';
 import { getVendor, listVendors, replaceVendor, setVendorEmail, setVendors, vendorName } from './vendors';
 import { savePdf } from './report';
 
@@ -75,7 +78,8 @@ const verified = new Set<string>();
 /** 다른 업체 금액과 이만큼(배) 이상 차이 나면 기준 수량을 다시 확인한다 */
 const OUTLIER_RATIO = 3;
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// Claude API 오류(키·한도·크레딧·과부하 등)는 짧은 한국어 안내로
+const errMsg = (e: unknown) => apiErrorNotice(e) ?? (e instanceof Error ? e.message : String(e));
 const clause = (s: string) => s.trim().replace(/[.。!]+$/, '');
 /** 같은 업체 판단 키: 오픈마켓은 판매자(경로)까지, 그 밖에는 기본 도메인 (dev.·shop.·m. 하위 도메인도 같은 업체) */
 const hostKey = siteKey;
@@ -85,17 +89,21 @@ const COLLECT_TOOLS: ToolName[] = ['navigate', 'read_text', 'find_in_page', 'sna
 
 // ─── 대화 입력 ────────────────────────────────────────────────
 
+/** 처리 중인 대화 수: 먼저 끝난 처리가 다른 처리 중에 busy를 끄지 않게 */
+let chatting = 0;
+
 export async function onChat(text: string) {
   if (!hasApiKey()) {
     say('먼저 오른쪽 위 ⚙️ 설정에서 Anthropic API 키를 넣어 주세요.');
     emit('notice', { message: 'API 키가 필요합니다', payload: { openSettings: true } });
     return;
   }
+  chatting++;
   try {
     setBusy(true);
     // "멈춰" 같은 말은 어느 단계에서든 진행 중인 탐색을 멈춘다 (조건 변경으로 해석하지 않게 먼저 본다)
     if (STOP_WORDS.test(text.trim())) {
-      stop();
+      await stop();
       return;
     }
     // 멈춘 뒤 "다시 시작"·"계속해" 같은 말은 멈춘 브라우저를 이어서 진행
@@ -151,17 +159,23 @@ export async function onChat(text: string) {
       return;
     }
     if (urls && requirements) {
-      for (const url of urls.slice(0, 3)) {
+      for (const url of uniqueSites(urls).slice(0, 3)) {
         const slot = VENDOR_IDS.find((id) => !getVendor(id) || ['failed', 'needs_user'].includes(getVendorStatus(id)));
         if (!slot) break;
+        // 같은 사이트를 이미 다른 브라우저가 보고 있거나 이미 빼 둔 사이트면 자리를 열지 않는다 (열면 그 브라우저가 멈춘 채 남음)
+        const conflict = claimConflict(slot, url);
+        if (conflict) {
+          say(`${url}: ${conflict.replace(' 다른 업체를 고르세요.', '')}`);
+          continue;
+        }
         // 쓰지 않던 브라우저면 자리를 열고 카드도 하나 띄운다
         const name = await siteName(url);
         if (!activeSlots.includes(slot)) {
           activeSlots = [...activeSlots, slot];
           quoteStore.ensure(slot);
-          timeline({ kind: 'browser', slot, title: name });
+          timeline({ kind: 'browser', slot, title: name || hostLabel(url) });
         }
-        claim(slot, { name, url, reason: '사용자가 지정' });
+        if (claim(slot, { name, url, reason: '사용자가 지정' })) continue;
         void collect(slot);
       }
       return;
@@ -187,7 +201,8 @@ export async function onChat(text: string) {
   } catch (e) {
     notice(`처리 실패: ${errMsg(e)}`);
   } finally {
-    setBusy(false);
+    chatting = Math.max(0, chatting - 1);
+    if (chatting === 0) setBusy(false);
   }
 }
 
@@ -228,25 +243,48 @@ export async function onItemChange(item: unknown) {
   emit('requirements', { payload: interview.req });
 }
 
-export async function startSearch(patch: Partial<Requirements>) {
-  if (!interview || getStage() !== 'interview') return;
-  // renderer 입력이라 값을 검증해서 받는다
+/** 시작 버튼을 연달아 눌러도 검색이 한 번만 시작되게 (정리를 기다리는 동안에도 단계는 아직 interview) */
+let starting = false;
+
+/** renderer가 보낸 요구 조건 값을 검증해서 받는다 (범위를 벗어난 수량·예산은 버림) */
+function cleanPatch(patch: Partial<Requirements>, int: Interview): Partial<Requirements> {
   const clean: Partial<Requirements> = {};
+  if (!patch || typeof patch !== 'object') return clean;
   if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
-  if (posInt(patch.quantity)) clean.quantity = patch.quantity;
-  if (posInt(patch.budgetMax)) clean.budgetMax = patch.budgetMax;
+  if (posInt(patch.quantity) && !valueIssue('quantity', patch.quantity!)) clean.quantity = patch.quantity;
+  if (posInt(patch.budgetMax) && !valueIssue('budgetMax', patch.budgetMax!)) clean.budgetMax = patch.budgetMax;
+  // 지난 날짜도 받아 두고 시작할 때 막는다 (패널에 보이는 값과 main 값이 어긋나지 않게)
   if (typeof patch.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(patch.deadline)) clean.deadline = patch.deadline;
   if (typeof patch.needInstall === 'boolean') clean.needInstall = patch.needInstall;
   if (typeof patch.minWarrantyMonths === 'number' && Number.isInteger(patch.minWarrantyMonths) && patch.minWarrantyMonths >= 0) clean.minWarrantyMonths = patch.minWarrantyMonths;
   if (typeof patch.region === 'string') clean.region = patch.region.trim().slice(0, 100) || undefined;
   // 품목별 세부 조건: 이름은 인터뷰가 정한 것만, 값만 사용자가 고친다
-  if (Array.isArray(patch.specs) && interview.req.specs) {
+  if (Array.isArray(patch.specs) && int.req.specs) {
     const edited = new Map(patch.specs.filter((x) => x && typeof x.label === 'string').map((x) => [x.label, typeof x.value === 'string' ? x.value.trim().slice(0, 100) || null : null]));
-    clean.specs = interview.req.specs.map((sp) => (edited.has(sp.label) ? { ...sp, value: edited.get(sp.label) ?? null } : sp));
+    clean.specs = int.req.specs.map((sp) => (edited.has(sp.label) ? { ...sp, value: edited.get(sp.label) ?? null } : sp));
   }
-  interview.apply(clean);
+  return clean;
+}
+
+/** 요구 조건 패널에서 값을 고칠 때마다: 채팅으로 "시작"해도, 다음 질문을 받아도 고친 값이 쓰이게 main에 바로 반영한다.
+ *  품목은 다 쓴 뒤 onItemChange가 세부 조건까지 다시 정하므로 여기서는 받지 않는다 */
+export function editRequirements(patch: Partial<Requirements>) {
+  if (!interview || getStage() !== 'interview' || starting) return;
+  const { item: _item, ...rest } = cleanPatch(patch, interview);
+  interview.apply(rest);
+}
+
+export async function startSearch(patch: Partial<Requirements>) {
+  if (!interview || getStage() !== 'interview' || starting) return;
+  interview.apply(cleanPatch(patch, interview));
   if (!interview.req.item) {
     say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
+    return;
+  }
+  // 수량·예산이 말이 안 되거나 납기가 이미 지났으면 시작하지 않고 고칠 곳을 알린다
+  const issue = requirementIssue(interview.result());
+  if (issue) {
+    say(`${issue} 오른쪽 요구 조건에서 고친 뒤 다시 시작해 주세요.`);
     return;
   }
   requirements = interview.result();
@@ -255,7 +293,14 @@ export async function startSearch(patch: Partial<Requirements>) {
   emit('requirements', { payload: requirements });
   emit('requirements_ready', { payload: { ready: false, asking: false } });
   // 조건 변경 직후라면 이전 검색의 브라우저 정리를 기다리되, 정리가 실패하거나 오래 걸려도 시작은 막지 않는다
-  await Promise.race([resetting, sleep(3000)]);
+  starting = true;
+  try {
+    await Promise.race([resetting, sleep(3000)]);
+  } finally {
+    starting = false;
+  }
+  // 기다리는 사이 새 견적을 눌렀으면 시작하지 않는다
+  if (!requirements || getStage() !== 'interview') return;
   if (givenUrls.length) {
     void startWithUrls(requirements, givenUrls);
     return;
@@ -294,7 +339,9 @@ async function startHunt(req: Requirements, slots: VendorId[] = [...VENDOR_IDS],
 }
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
-async function startWithUrls(req: Requirements, urls: string[]) {
+async function startWithUrls(req: Requirements, given: string[]) {
+  // 같은 사이트 주소가 여러 개면 하나만 쓴다 (둘째 브라우저가 업체를 못 잡고 "업체 찾는 중"으로 멈춰 있지 않게)
+  const urls = uniqueSites(given);
   setStage('search');
   setVendors([]);
   activeSlots = VENDOR_IDS.slice(0, urls.length);
@@ -306,50 +353,93 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   tries.clear();
   fallbacks.clear();
   triedNames.clear();
-  say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.`);
+  const dup = given.length - urls.length;
+  say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.${dup ? ` 같은 사이트 주소 ${dup}개는 한 번만 볼게요.` : ''}`);
   const names = await Promise.all(urls.map(siteName));
-  urls.forEach((url, i) => claim(VENDOR_IDS[i], { name: names[i], url, reason: '사용자가 지정' }));
+  // 업체로 잡지 못한 자리(이미 빼 둔 사이트 등)는 비워 두지 않고 웹에서 다른 업체를 찾는다
+  const failed = urls.map((url, i) => claim(VENDOR_IDS[i], { name: names[i], url, reason: '사용자가 지정' }));
   timeline({ kind: 'vendors', slots: activeSlots });
   const gen = generation;
-  await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
+  await Promise.all(urls.map((_, i) => (failed[i] ? hunt(VENDOR_IDS[i], gen) : collect(VENDOR_IDS[i], gen))));
   if (gen === generation) maybeOpenGate();
 }
 
-/** 이름 뒤에 을/를 (받침 있으면 을). 한글로 안 끝나면 "을(를)" */
-function withEulReul(name: string) {
-  const c = name.trim().slice(-1).charCodeAt(0);
-  if (c < 0xac00 || c > 0xd7a3) return `${name}을(를)`;
-  return `${name}${(c - 0xac00) % 28 ? '을' : '를'}`;
+/** 주소의 호스트 ("www." 뺌). 주소가 아니면 그대로 */
+function hostLabel(url: string) {
+  try {
+    return new URL(url).host.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
 }
 
-/** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인 */
+/** 같은 사이트(siteKey)의 주소는 처음 것만 남긴다 */
+function uniqueSites(urls: string[]) {
+  const seen = new Set<string>();
+  return urls.filter((u) => {
+    const key = hostKey(u);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인.
+ *  차단·오류 화면이면 빈 이름: claim이 주소로 채우고, 사용자가 화면을 해결한 뒤 진짜 이름으로 바꾼다 */
 async function siteName(url: string): Promise<string> {
-  const host = (() => {
-    try {
-      return new URL(url).host.replace(/^www\./, '');
-    } catch {
-      return url;
-    }
-  })();
+  const host = hostLabel(url);
   if (!/^(localhost|127\.0\.0\.1)(:|$)/.test(host)) return host;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
     // 차단·오류 화면의 제목("보안 확인" 등)을 업체 이름으로 쓰지 않는다
-    if (!res.ok) return host;
+    if (!res.ok) return '';
     const html = await res.text();
     const title = /<title>([^<]+)<\/title>/i.exec(html)?.[1]?.split(/\s[-|·:]\s/)[0]?.trim();
-    return title || host;
+    return title && !BLOCK_TITLE.test(title) ? title : host;
   } catch {
     return host;
   }
 }
 
-/** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
-function claim(slot: VendorId, v: PickedVendor): string | null {
-  const key = hostKey(v.url);
+/** 차단·로그인·오류 화면의 제목: 업체 이름으로 쓰지 않는다 */
+const BLOCK_TITLE =
+  /보안\s*(확인|문자|검사)|접근\s*(차단|제한|거부|불가)|차단\s*(됨|된|되었)|비정상|자동\s*입력\s*방지|본인\s*(확인|인증)|로그인|captcha|\brobot\b|access\s*denied|\bforbidden\b|just a moment|attention required|\bsign\s*in\b|\blog\s*in\b|잠시만\s*기다|페이지를\s*찾을\s*수|^\s*\d{3}(\s|$)|\berror\b/i;
+
+/** 진짜 이름을 아직 못 읽은 업체 (차단 화면에서 정해 주소로 채워 둠) */
+const provisional = new Set<VendorId>();
+
+/** 사용자가 차단을 해결한 뒤처럼 진짜 페이지가 보일 때: 임시 이름을 페이지 제목의 업체 이름으로 바꾼다 */
+async function refreshVendorName(slot: VendorId) {
+  const v = getVendor(slot);
+  if (!v || !provisional.has(slot)) return;
+  const d = getDriver(slot);
+  if (await detectBlock(d).catch(() => null)) return;
+  const title = (await d.title().catch(() => '')).split(/\s[-|·:]\s/)[0]?.trim().slice(0, 60);
+  if (!title || BLOCK_TITLE.test(title) || getVendor(slot) !== v) return;
+  provisional.delete(slot);
+  replaceVendor({ ...v, name: title });
+  quoteStore.renameVendor(slot, title);
+  emit('vendors', { payload: listVendors() });
+}
+
+/** 이 브라우저가 이 사이트를 업체로 잡을 수 없는 사유 (이미 빼 둔 사이트·다른 브라우저가 고른 사이트) */
+function claimConflict(slot: VendorId, url: string): string | null {
+  const key = hostKey(url);
   if (banned.has(key)) return '이미 시도했지만 웹에서 견적을 낼 수 없었던 업체입니다. 다른 업체를 고르세요.';
   const dup = listVendors().find((x) => x.id !== slot && hostKey(x.url) === key);
   if (dup) return `브라우저 ${dup.id}가 이미 고른 업체(${dup.name})입니다. 다른 업체를 고르세요.`;
+  return null;
+}
+
+/** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
+function claim(slot: VendorId, picked: PickedVendor): string | null {
+  const conflict = claimConflict(slot, picked.url);
+  if (conflict) return conflict;
+  // 차단 화면 제목("보안 확인" 등)이나 빈 이름은 주소로 두고, 진짜 페이지가 보이면 바꾼다
+  const placeholder = !picked.name?.trim() || BLOCK_TITLE.test(picked.name);
+  const v = placeholder ? { ...picked, name: hostLabel(picked.url) } : picked;
+  if (placeholder) provisional.add(slot);
+  else provisional.delete(slot);
   const info: VendorInfo = { id: slot, ...v };
   noteVerdict(slot, v.url, `${v.name} 업체로 확정해 견적 받는 중`);
   replaceVendor(info);
@@ -381,6 +471,7 @@ async function hunt(slot: VendorId, gen = generation, countTry = true) {
 
 /** 이 브라우저의 업체 자리를 비운다 (다른 사이트를 다시 찾기 전) */
 function dropVendor(slot: VendorId) {
+  provisional.delete(slot);
   setVendors(listVendors().filter((v) => v.id !== slot));
   emit('vendors', { payload: listVendors() });
   quoteStore.resetOne(slot);
@@ -415,7 +506,7 @@ async function useFallback(slot: VendorId, fb: Fallback, exhausted: boolean) {
     const message = messageDraft(slot, requirements, fb.contact);
     messages.set(slot, message);
     const how = message.chatUrl && message.phone ? '카카오톡이나 문자' : message.chatUrl ? '카카오톡' : message.phone ? '문자' : '카카오톡·문자';
-    say(`${why}${fb.vendor.name}는 ${how}로 견적을 받아야 해요 (${clause(fb.reason)}). 아래 문의 초안을 확인해 보내 주세요. 받은 견적서 PDF를 올리거나 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교할게요.`);
+    say(`${why}${josa(fb.vendor.name, '은/는')} ${how}로 견적을 받아야 해요 (${clause(fb.reason)}). 아래 문의 초안을 확인해 보내 주세요. 받은 견적서 PDF를 올리거나 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교할게요.`);
     timeline({ kind: 'upload', vendorId: slot, message });
   }
 }
@@ -449,16 +540,20 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
         slot,
         driver,
         onClaim: (v) => claim(slot, v),
-        onReport: async (fields, meta, url) => {
-          if (!getVendor(slot)) claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '견적 정보가 있는 페이지' });
-          void captureWeb(slot, url);
-          // 에이전트가 납기를 빠뜨렸으면 페이지 원문에서 추정
-          if (!fields.leadTimeDays && !quoteStore.hasField(slot, 'leadTimeDays')) {
-            const text = await driver.evaluate<string>('document.body ? document.body.innerText : ""').catch(() => '');
-            fields = fillLeadTimeFromText(fields, text);
-          }
-          return applyFields(slot, fields, meta, 'web', url);
-        },
+        onReport: (fields, meta, url) =>
+          tracked(
+            (async () => {
+              if (!getVendor(slot)) claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '견적 정보가 있는 페이지' });
+              void captureWeb(slot, url);
+              void refreshVendorName(slot);
+              // 에이전트가 납기를 빠뜨렸으면 페이지 원문에서 추정
+              if (!fields.leadTimeDays && !quoteStore.hasField(slot, 'leadTimeDays')) {
+                const text = await driver.evaluate<string>('document.body ? document.body.innerText : ""').catch(() => '');
+                fields = fillLeadTimeFromText(fields, text);
+              }
+              return applyFields(slot, fields, meta, 'web', url);
+            })()
+          ),
         onAfter: () => void refreshState(slot),
         // 자기 업체 사이트 안에서 움직일 때는 기록만 하고 알림은 붙이지 않는다
         onVisit: (url, title) => {
@@ -575,18 +670,40 @@ async function captureWeb(slot: VendorId, url: string, force = false) {
   if (photo) emit('original', { vendorId: slot, payload: { ...original, productImage: photo } });
 }
 
+/** 계속·건너뛰기를 처리하는 중인 브라우저. 버튼을 연달아 눌러도 한 브라우저에 에이전트가 하나만 돌게 */
+const pendingSlots = new Set<VendorId>();
+
 /** 사용자가 차단 화면을 해결함 → 같은 단계부터 이어서 */
 export function resume(slot: Slot) {
-  if (slot === 'search') return;
+  if (slot === 'search' || getVendorStatus(slot) !== 'needs_user' || pendingSlots.has(slot)) return;
+  pendingSlots.add(slot);
   const h = handoffMode.get(slot);
   handoffMode.delete(slot);
   say(`브라우저 ${slot}: 이어서 진행할게요.`);
-  void setHandoff(slot, undefined).then(() => (getVendor(slot) ? collect(slot) : hunt(slot, generation, false)));
+  // collect·hunt는 시작하자마자 상태를 browsing으로 바꾸므로 그때 표시를 푼다
+  void setHandoff(slot, undefined)
+    .catch(() => undefined)
+    .then(async () => {
+      // 차단 화면에서 정한 임시 이름이면 해결된 진짜 페이지의 이름으로 바꾼다
+      await refreshVendorName(slot).catch(() => undefined);
+      pendingSlots.delete(slot);
+      return getVendor(slot) ? collect(slot) : hunt(slot, generation, false);
+    });
   void h;
 }
 
 /** 사용자가 건너뜀 → 이 업체(또는 막힌 검색 엔진)를 빼고 다음 업체로 */
 export async function skip(slot: VendorId) {
+  if (!requirements || getVendorStatus(slot) !== 'needs_user' || pendingSlots.has(slot)) return;
+  pendingSlots.add(slot);
+  try {
+    await skipNow(slot);
+  } finally {
+    pendingSlots.delete(slot);
+  }
+}
+
+async function skipNow(slot: VendorId) {
   if (!requirements) return;
   const h = handoffMode.get(slot);
   handoffMode.delete(slot);
@@ -617,7 +734,7 @@ export async function skip(slot: VendorId) {
     await useFallback(slot, best, true);
   } else {
     setVendorStatus(slot, 'failed');
-    say(`브라우저 ${slot}: ${v ? v.name : '이 업체'}는 건너뛰었어요. 더 시도할 업체가 없으면 업체 URL을 붙여 넣어 주세요.`);
+    say(`브라우저 ${slot}: ${v ? josa(v.name, '은/는') : '이 업체는'} 건너뛰었어요. 더 시도할 업체가 없으면 업체 URL을 붙여 넣어 주세요.`);
   }
   maybeOpenGate();
 }
@@ -629,9 +746,18 @@ const runOf = (slot: VendorId) => runs.get(slot) ?? 0;
 /** 이 브라우저의 작업을 그만둬야 하는지: 새 견적·조건 변경(generation)이거나 사용자가 멈춤(실행 번호가 바뀜) */
 const halted = (slot: VendorId, gen: number, run: number) => gen !== generation || runOf(slot) !== run;
 
+/** 반영 중인 견적 보고 (멈춤 안내가 막 들어오던 견적을 빠뜨리지 않게 기다린다) */
+const reporting = new Set<Promise<unknown>>();
+function tracked<T>(p: Promise<T>): Promise<T> {
+  reporting.add(p);
+  const done = () => reporting.delete(p);
+  p.then(done, done);
+  return p;
+}
+
 /** 사용자가 멈춤: 탐색 중인 브라우저만 멈추고, 모은 업체·견적은 그대로 두고 그걸로 비교한다.
  *  메일 회신 대기·파일 분석은 사용자가 이미 맡긴 일이라 그대로 둔다 */
-export function stop() {
+export async function stop() {
   const running = VENDOR_IDS.filter((id) => getVendorStatus(id) === 'browsing');
   if (!requirements || running.length === 0) {
     say('지금 멈출 작업이 없어요.');
@@ -643,6 +769,12 @@ export function stop() {
     setVendorStatus(id, 'stopped');
     void refreshState(id);
   }
+  // 멈추기 직전에 보고한 견적이 반영될 때까지 잠깐 기다린 뒤 센다 (너무 오래 걸리면 그냥 진행)
+  const gen = generation;
+  if (reporting.size) await Promise.race([Promise.allSettled([...reporting]), sleep(3000)]);
+  if (gen !== generation) return;
+  // 이미 가격까지 받은 업체는 "멈춤"이 아니라 견적 완료로 둔다 (runCollector가 끝났을 때와 같은 기준)
+  for (const id of running) if (getVendorStatus(id) === 'stopped' && getVendor(id) && quoteStore.hasListedPrice(id)) setVendorStatus(id, 'done');
   const priced = listVendors().filter((v) => quoteStore.hasListedPrice(v.id)).length;
   if (priced === 0) {
     say('멈췄어요. 아직 모은 견적이 없어요. "다시 시작"이라고 말하거나 브라우저 카드의 "이어서 하기"를 누르면 이어서 찾고, 바꿀 조건을 말하면 그 조건으로 다시 찾아요.');
@@ -662,16 +794,18 @@ function resumeStopped() {
 }
 
 export function retry(slot: VendorId) {
+  // 실패·멈춘 브라우저만 (collect·hunt가 바로 browsing으로 바꿔 연달아 눌러도 한 번만 돈다)
+  if (!['failed', 'stopped'].includes(getVendorStatus(slot)) || pendingSlots.has(slot)) return;
   void (getVendor(slot) ? collect(slot) : hunt(slot));
 }
 
 /** 막힌 업체를 빼고 같은 브라우저로 새 업체를 찾는다 */
 export function replace(slot: VendorId) {
   const old = getVendor(slot);
-  if (!requirements) return;
+  if (!requirements || !VENDOR_IDS.includes(slot) || pendingSlots.has(slot) || ['browsing', 'parsing'].includes(getVendorStatus(slot))) return;
   if (old) {
     banned.add(hostKey(old.url));
-    say(`${old.name}는 빼고 브라우저 ${slot}로 다른 업체를 찾아볼게요.`);
+    say(`${josa(old.name, '은/는')} 빼고 브라우저 ${slot}로 다른 업체를 찾아볼게요.`);
   }
   dropVendor(slot);
   tries.set(slot, 0);
@@ -736,24 +870,32 @@ async function onQuotePdf(slot: VendorId, file: PdfFile): Promise<string[]> {
 
 // ─── 파일 채널 ────────────────────────────────────────────────
 
-export async function onFileUpload(slot: VendorId, file: { name: string; mime: string; data: Uint8Array }) {
-  if (!requirements) return;
-  setVendorStatus(slot, 'parsing');
-  emit('original', {
-    vendorId: slot,
-    payload: {
-      id: randomUUID(),
-      vendorId: slot,
-      channel: 'file',
-      title: file.name,
-      fileName: file.name,
-      mime: file.mime,
-      fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
-      text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
-      capturedAt: new Date().toISOString()
-    } satisfies QuoteOriginal
-  });
+export async function onFileUpload(slot: VendorId, input: { name: string; mime: string; data: Uint8Array }) {
+  if (!requirements || !VENDOR_IDS.includes(slot)) return;
+  // renderer 입력이라 이름·형식·크기를 확인한다
+  const name = typeof input?.name === 'string' ? (input.name.split(/[\\/]/).pop() ?? '').trim().slice(0, 200) : '';
+  const mime = typeof input?.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(input.mime) ? input.mime.toLowerCase() : '';
+  const data = input?.data instanceof Uint8Array ? input.data : null;
+  if (!name || !data) return notice('파일을 읽지 못했어요. 다시 올려 주세요.', slot);
+  if (data.length > MAX_QUOTE_FILE_BYTES) return notice(`파일이 너무 커요 (${Math.ceil(data.length / 1024 / 1024)}MB). 15MB 이하 견적서만 올릴 수 있어요.`, slot);
+  const file = { name, mime, data };
+  if (!quoteFileBlock(file)) return notice(`지원하지 않는 파일 형식이에요 (${name}). PDF·사진·글 파일을 올려 주세요.`, slot);
   try {
+    setVendorStatus(slot, 'parsing');
+    emit('original', {
+      vendorId: slot,
+      payload: {
+        id: randomUUID(),
+        vendorId: slot,
+        channel: 'file',
+        title: file.name,
+        fileName: file.name,
+        mime: file.mime,
+        fileData: `data:${file.mime || 'application/octet-stream'};base64,${Buffer.from(file.data).toString('base64')}`,
+        text: file.mime.startsWith('text/') ? Buffer.from(file.data).toString('utf8').slice(0, 20000) : undefined,
+        capturedAt: new Date().toISOString()
+      } satisfies QuoteOriginal
+    });
     const { fields, meta } = await parseQuoteFile({ vendorId: slot, requirements, ...file });
     const added = applyFields(slot, fields, meta, 'file', file.name);
     setVendorStatus(slot, 'done');
@@ -820,22 +962,35 @@ function afterSent(draft: MailDraft) {
   maybeOpenGate();
 }
 
-export async function onMailSend(draft: MailDraft) {
-  if (!draft.to.trim()) return { ok: false, error: '받는 사람 메일 주소를 넣어 주세요.' };
+/** renderer가 보낸 초안: 이번 검색에서 main이 만든 초안이어야 하고, 고친 받는 사람·제목·본문만 반영한다 (업체·종류·항목은 main 것) */
+function liveDraft(input: MailDraft): MailDraft | null {
+  const stored = typeof input?.id === 'string' ? drafts.get(input.id) : undefined;
+  if (!stored) return null;
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+  return { ...stored, to: str(input.to, 320).trim(), subject: str(input.subject, 300), body: str(input.body, 20000) };
+}
+const STALE_DRAFT = '이 메일 초안은 이미 보냈거나 지난 검색의 초안이라 보낼 수 없어요.';
+
+export async function onMailSend(input: MailDraft) {
+  const draft = liveDraft(input);
+  if (!draft) return { ok: false, error: STALE_DRAFT };
+  if (!draft.to) return { ok: false, error: '받는 사람 메일 주소를 넣어 주세요.' };
   // 보내는 동안 새 견적·조건 변경이 일어나면 이 메일의 회신을 새 검색에 섞지 않는다
   const gen = generation;
-  const full: MailDraft = { ...drafts.get(draft.id), ...draft };
+  // 연달아 눌러도 한 번만 보내도록 보내는 동안 초안을 빼 둔다 (실패하면 되돌림)
+  const stored = drafts.get(draft.id)!;
+  drafts.delete(draft.id);
   let sent: MailRecord;
   try {
-    sent = await sendMail(full);
+    sent = await sendMail(draft);
   } catch (e) {
+    if (gen === generation) drafts.set(draft.id, stored);
     return { ok: false, error: errMsg(e) };
   }
-  drafts.delete(draft.id);
   if (gen !== generation) return { ok: true, imap: false };
   afterSent(draft);
   const demo = isDemoAddress(draft.to);
-  if (demo) scheduleDemoReply(full, sent);
+  if (demo) scheduleDemoReply(draft, sent);
   return { ok: true, imap: imapConfigured() || demo };
 }
 
@@ -887,7 +1042,9 @@ function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
   }, DEMO_REPLY_DELAY_MS);
 }
 
-export async function onMailExternal(draft: MailDraft) {
+export async function onMailExternal(input: MailDraft) {
+  const draft = liveDraft(input);
+  if (!draft) return { ok: false, error: STALE_DRAFT };
   const tag = subjectTag(draft);
   const subject = draft.subject.includes(tag) ? draft.subject : `${draft.subject} ${tag}`;
   await shell.openExternal(`mailto:${encodeURIComponent(draft.to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(draft.body)}`);
@@ -982,7 +1139,7 @@ function onQuotesSettled() {
   announced = key;
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
   // 금액·이유는 아래 추천 카드에 있으니 채팅은 한 줄로
-  say(`${rec.vendorId ? `${withEulReul(vendorName(rec.vendorId))} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
+  say(`${rec.vendorId ? `${josa(vendorName(rec.vendorId), '을/를')} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
   // 통합 견적서 카드는 내용이 실시간으로 바뀌므로 한 번만 띄운다
   if (reportShown) return;
   reportShown = true;
@@ -1076,7 +1233,7 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
       say(`${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`);
     } else {
       quoteStore.mergeMeta(slot, { priceDoubt: note || '기준 수량을 확인하지 못함' });
-      say(`${v.name}는 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
+      say(`${josa(v.name, '은/는')} 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
     }
     announced = '';
     onQuotesSettled();
@@ -1131,8 +1288,11 @@ export async function onDraftOrder(slot: VendorId) {
   timeline({ kind: 'browser', slot, title: `${v.name} · 문의 폼 작성` });
   const driver = getDriver(slot);
   driver.locked = false;
+  // 새 견적·조건 변경·멈춤이면 다른 탐색처럼 이 에이전트도 멈춘다
+  const gen = generation;
   await setHandoff(slot, undefined);
   setVendorStatus(slot, 'browsing');
+  const run = runOf(slot);
   try {
     const outcome = await runAgent(
       { slot, driver, onAfter: () => void refreshState(slot) },
@@ -1140,9 +1300,11 @@ export async function onDraftOrder(slot: VendorId) {
         system: formSystemPrompt(v, requirements, formMessage(slot, requirements)),
         goal: `${v.url} 에서 견적·주문 문의 폼을 찾아 채우고 제출 직전에 handoff 해 줘.`,
         tools: ['navigate', 'read_text', 'snapshot', 'click', 'fill', 'handoff', 'request_user'],
-        maxSteps: 16
+        maxSteps: 16,
+        signal: { get aborted() { return halted(slot, gen, run); } }
       }
     );
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'done');
     if (outcome.kind === 'handoff') {
       await setHandoff(slot, 'AI가 여기까지 작성했습니다. 이름·연락처를 확인하고 직접 제출하세요.');
@@ -1151,6 +1313,7 @@ export async function onDraftOrder(slot: VendorId) {
     }
     say(`${v.name} 사이트에서 문의 폼을 쓸 수 없어요${outcome.kind === 'user' ? ` (${clause(outcome.reason)})` : ''}. 대신 주문 문의 메일을 써 두었어요.`);
   } catch (e) {
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'done');
     notice(`폼 작성 실패: ${errMsg(e)}`, slot);
   }
@@ -1198,6 +1361,7 @@ function clearRun() {
   engines.clear();
   handoffMode.clear();
   targets.clear();
+  provisional.clear();
   activeSlots = [...VENDOR_IDS];
   resetShared();
   stopSizeScan(true);

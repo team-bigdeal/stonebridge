@@ -2,6 +2,7 @@
 import type { Field, FieldKey, Quote, Requirements, VendorId } from './types';
 import { FIELD_KEYS } from './types';
 import { localIsoDate } from './parse';
+import { josa } from './josa';
 
 export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 
@@ -37,18 +38,37 @@ export function missingKeys(q: Quote, req: Requirements | null): FieldKey[] {
 export const extraSum = (q: Quote) => (q.meta?.extras ?? []).filter((e) => e.required).reduce((s, e) => s + e.amount, 0);
 
 /** 표시가의 기준 수량 (1개 가격이면 1, "1000매 12,430원"이면 1000) */
-export const priceQty = (q: Quote) => Math.max(1, q.meta?.priceQty ?? 1);
+export const priceQty = (q: Quote) => {
+  const n = Number(q.meta?.priceQty);
+  return Number.isFinite(n) ? Math.max(1, n) : 1;
+};
 
-/** 요구 수량만큼의 제품 금액: 표시가 × (요구 수량 ÷ 기준 수량) */
+/** 요구 수량을 사려면 필요한 묶음 수. 묶음(1000매·1시트 등) 가격이면 모자란 수량도 한 묶음으로 친다 (100매 요청 → 1000매 1묶음) */
+export function bundleCount(q: Quote, req: Requirements | null): number {
+  const qty = req?.quantity ?? 1;
+  const pq = priceQty(q);
+  return pq > 1 ? Math.ceil(qty / pq) : qty;
+}
+
+/** 요구 수량만큼의 제품 금액: 묶음 가격이면 표시가 × 묶음 수, 1개 가격이면 표시가 × 요구 수량 */
 export function productAmount(q: Quote, req: Requirements | null): number | null {
   if (q.listedPrice.value === null) return null;
-  return Math.round(q.listedPrice.value * ((req?.quantity ?? 1) / priceQty(q)));
+  return Math.round(q.listedPrice.value * bundleCount(q, req));
 }
 
 /** 현재 확인된 금액 합계: 제품 금액 + 설치비(필요 시) + 배송비 + A/S 연장비 + 필수 추가 비용 */
 export function confirmedSum(q: Quote, req: Requirements | null): number {
   const install = req?.needInstall ?? true ? val(q.installFee) : 0;
-  return (productAmount(q, req) ?? 0) + install + val(q.shippingFee) + val(q.warrantyExtraFee) + extraSum(q);
+  const shipping = req?.needDelivery === false ? 0 : val(q.shippingFee);
+  const warranty = needsWarrantyExtension(q, req) ? val(q.warrantyExtraFee) : 0;
+  return (productAmount(q, req) ?? 0) + install + shipping + warranty + extraSum(q);
+}
+
+/** A/S 연장비가 합계에 드는 경우: A/S가 필요한데 기본 기간이 요구보다 짧을 때만 */
+export function needsWarrantyExtension(q: Quote, req: Requirements | null): boolean {
+  if (!req || req.minWarrantyMonths <= 0) return false;
+  const wm = q.warrantyMonths.value;
+  return !(wm !== null && wm >= req.minWarrantyMonths);
 }
 
 export function recompute(q: Quote, req: Requirements | null): Quote {
@@ -73,7 +93,7 @@ export function rankQuotes(quotes: Partial<Record<VendorId, Quote>>, req: Requir
 export function lowestListed(quotes: Partial<Record<VendorId, Quote>>): VendorId | null {
   const list = (Object.values(quotes).filter(Boolean) as Quote[]).filter((q) => q.listedPrice.value !== null);
   if (list.length === 0) return null;
-  return list.sort((a, b) => a.listedPrice.value! - b.listedPrice.value!)[0].vendorId;
+  return list.sort((a, b) => a.listedPrice.value! - b.listedPrice.value! || a.vendorId.localeCompare(b.vendorId))[0].vendorId;
 }
 
 export function daysUntil(deadlineIso: string, from = new Date()): number {
@@ -97,14 +117,14 @@ export function evaluateConditions(q: Quote, req: Requirements): ConditionResult
   const budget: Check = sum > req.budgetMax ? 'violate' : costMissing ? 'unknown' : 'ok';
   const limit = daysUntil(req.deadline);
   const lead = q.leadTimeDays.value;
-  const deadline: Check = lead === null ? 'unknown' : lead > limit ? 'violate' : 'ok';
+  const deadline: Check = lead === null || Number.isNaN(limit) ? 'unknown' : lead > limit ? 'violate' : 'ok';
   let warranty: Check = req.minWarrantyMonths <= 0 ? 'ok' : 'unknown';
   if (q.warrantyMonths.value !== null && q.warrantyMonths.value >= req.minWarrantyMonths) warranty = 'ok';
   else if (q.warrantyExtraFee.value !== null) warranty = 'ok';
   const violations: string[] = [];
   if (q.meta?.priceDoubt) violations.push('가격 기준(1개·묶음) 확인 필요');
-  if (budget === 'violate') violations.push(`총액 ${won(sum)}로 예산 ${won(req.budgetMax)} 초과`);
-  if (deadline === 'violate') violations.push(`납기 ${lead}일로 요청 기한(${limit}일) 초과`);
+  if (budget === 'violate') violations.push(`총액 ${josa(won(sum), '으로/로')} 예산 ${won(req.budgetMax)} 초과`);
+  if (deadline === 'violate') violations.push(`납기 ${josa(`${lead}일`, '으로/로')} 요청 기한(${limit}일) 초과`);
   // 가격 기준을 확인하지 못한 견적은 금액 비교 자체를 믿을 수 없으니 조건 위반처럼 추천에서 뺀다
   const checks = [budget, deadline, warranty, q.meta?.priceDoubt ? ('violate' as Check) : ('ok' as Check)];
   const overall: Check = checks.includes('violate') ? 'violate' : checks.includes('unknown') ? 'unknown' : 'ok';
@@ -119,10 +139,11 @@ export interface Recommendation {
 
 /** 추천 = 조건 충족 업체 중 총액 최저. 이유 3줄 */
 export function recommend(quotes: Partial<Record<VendorId, Quote>>, req: Requirements): Recommendation {
+  const bySum = (a: { q: Quote; sum: number }, b: { q: Quote; sum: number }) => a.sum - b.sum || a.q.vendorId.localeCompare(b.q.vendorId);
   const list = (Object.values(quotes).filter(Boolean) as Quote[]).filter((q) => q.listedPrice.value !== null);
   if (list.length === 0) return { vendorId: null, tentative: true, reasons: ['아직 비교할 견적이 없습니다.'] };
   const evaluated = list.map((q) => ({ q, c: evaluateConditions(q, req), sum: confirmedSum(q, req) }));
-  const candidates = evaluated.filter((e) => e.c.overall !== 'violate').sort((a, b) => a.sum - b.sum);
+  const candidates = evaluated.filter((e) => e.c.overall !== 'violate').sort(bySum);
   const reasons: string[] = [];
   const pick = candidates[0];
   if (pick) {
@@ -135,14 +156,14 @@ export function recommend(quotes: Partial<Record<VendorId, Quote>>, req: Require
   } else {
     reasons.push('모든 조건을 만족하는 업체가 없습니다. 조건 완화나 협상이 필요합니다.');
   }
-  const cheapest = [...evaluated].sort((a, b) => a.sum - b.sum)[0];
-  for (const e of evaluated.sort((a, b) => a.sum - b.sum)) {
+  const cheapest = [...evaluated].sort(bySum)[0];
+  for (const e of [...evaluated].sort(bySum)) {
     if (e === pick || reasons.length >= 3) continue;
     if (e.c.violations.length > 0) {
       const lead = e === cheapest ? `총액 최저(${won(e.sum)})지만 ` : '';
-      reasons.push(`${e.q.vendorName}는 ${lead}${e.c.violations.join(', ')}`);
+      reasons.push(`${josa(e.q.vendorName, '은/는')} ${lead}${e.c.violations.join(', ')}`);
     } else {
-      reasons.push(`${e.q.vendorName}는 총액 ${won(e.sum)}로 더 비쌈`);
+      reasons.push(`${josa(e.q.vendorName, '은/는')} 총액 ${josa(won(e.sum), '으로/로')} 더 비쌈`);
     }
   }
   return { vendorId: pick?.q.vendorId ?? null, tentative: pick ? pick.c.overall !== 'ok' : true, reasons };
@@ -185,11 +206,12 @@ export function confirmQuestions(quotes: Partial<Record<VendorId, Quote>>, req: 
 
 const KOR_DIGIT = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
 const KOR_SMALL = ['', '십', '백', '천'];
-const KOR_BIG = ['', '만', '억', '조'];
+const KOR_BIG = ['', '만', '억', '조', '경', '해'];
 
 /** 495000 → "사십구만오천" */
 export function koreanAmount(n: number): string {
-  if (n <= 0) return '영';
+  n = Math.round(n);
+  if (!Number.isFinite(n) || n <= 0) return '영';
   let out = '';
   let group = 0;
   while (n > 0) {
@@ -202,7 +224,7 @@ export function koreanAmount(n: number): string {
         const pos = 3 - i;
         s += (d === 1 && pos > 0 ? '' : KOR_DIGIT[d]) + KOR_SMALL[pos];
       });
-      out = s + KOR_BIG[group] + out;
+      out = s + (KOR_BIG[group] ?? '') + out;
     }
     n = Math.floor(n / 10000);
     group++;
@@ -237,15 +259,20 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
   const m = q.meta ?? {};
   const lines: QuoteDoc['lines'] = [];
   const pq = priceQty(q);
+  // 묶음 단위로만 팔면 실제로 사는 수량(묶음 수 × 묶음 크기)으로 적는다 (100매 요청이어도 1000매 1묶음)
+  const billed = pq > 1 ? bundleCount(q, req) * pq : qty;
   lines.push({
     kind: 'product',
     name: m.productName || req.item,
     spec: m.spec,
-    qty,
+    qty: billed,
     // 묶음 가격이면 1개(매)당 단가로 환산해 보여 준다
     unitPrice: q.listedPrice.value === null ? null : pq > 1 ? Math.round((q.listedPrice.value / pq) * 10) / 10 : q.listedPrice.value,
     amount: productAmount(q, req),
-    note: pq > 1 && q.listedPrice.value !== null ? `${pq.toLocaleString('ko-KR')}개 기준 ${q.listedPrice.value.toLocaleString('ko-KR')}원` : undefined,
+    note:
+      pq > 1 && q.listedPrice.value !== null
+        ? `${pq.toLocaleString('ko-KR')}개 기준 ${q.listedPrice.value.toLocaleString('ko-KR')}원${billed !== qty ? ` · ${pq.toLocaleString('ko-KR')}개 단위라 요청 ${qty.toLocaleString('ko-KR')}개 대신 ${billed.toLocaleString('ko-KR')}개로 계산` : ''}`
+        : undefined,
     counted: true,
     source: q.listedPrice.source
   });
@@ -253,8 +280,7 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
     lines.push({ kind: 'install', name: '설치비', qty: 1, unitPrice: q.installFee.value, amount: q.installFee.value, note: q.installFee.value === 0 ? '포함' : undefined, counted: true, source: q.installFee.source });
   if (req.needDelivery !== false) lines.push({ kind: 'shipping', name: '배송비', qty: 1, unitPrice: q.shippingFee.value, amount: q.shippingFee.value, note: q.shippingFee.value === 0 ? '무료' : undefined, counted: true, source: q.shippingFee.source });
   const wm = q.warrantyMonths.value;
-  const wx = q.warrantyExtraFee.value;
-  if (req.minWarrantyMonths > 0 && (wx ? true : wx === null ? !(wm !== null && wm >= req.minWarrantyMonths) : false))
+  if (needsWarrantyExtension(q, req))
     lines.push({
       kind: 'warranty',
       name: `A/S 연장 (${req.minWarrantyMonths}개월 맞춤)`,

@@ -94,6 +94,7 @@ export async function xlsxToHtml(bytes: Uint8Array): Promise<string> {
 // ─── hwpx ───
 
 const hwpPx = (v: string | null) => (v ? Math.max(8, Math.round(Number(v) / 75)) : 0);
+const spanNum = (v: string | null | undefined) => Math.min(1000, Math.max(1, Math.trunc(Number(v)) || 1));
 
 function hwpxPara(p: El): string {
   let out = '';
@@ -124,7 +125,8 @@ function hwpxTable(tbl: El): string {
       const sub = kids(tc).find((c) => local(c) === 'subList');
       const inner = sub ? kids(sub).filter((c) => local(c) === 'p').map(hwpxPara).join('') : '';
       const w = hwpPx(size?.getAttribute('width') ?? null);
-      t += `<td colspan="${span?.getAttribute('colSpan') ?? 1}" rowspan="${span?.getAttribute('rowSpan') ?? 1}" style="border:1px solid #888;padding:3px 6px;vertical-align:middle${w ? `;min-width:${w}px` : ''}">${inner}</td>`;
+      // 파일에서 온 값이라 HTML 속성에 넣기 전에 숫자로만
+      t += `<td colspan="${spanNum(span?.getAttribute('colSpan'))}" rowspan="${spanNum(span?.getAttribute('rowSpan'))}" style="border:1px solid #888;padding:3px 6px;vertical-align:middle${w ? `;min-width:${w}px` : ''}">${inner}</td>`;
     }
     t += '</tr>';
   }
