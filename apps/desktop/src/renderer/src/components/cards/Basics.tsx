@@ -35,7 +35,7 @@ export function RequirementsCard() {
   const filled = items.filter(([, v]) => v).length;
   // 디자인 30:1039: 흰 띠 안에 "요구 조건" 탭 + 항목별 칸
   return (
-    <div className="w-fit max-w-full rounded-lg bg-white p-2" title={filled < items.length ? '대화로 채워지고 있어요. 빈 칸은 이어서 물어볼게요.' : '이 조건으로 업체를 찾아요.'}>
+    <div className="w-fit max-w-full rounded-lg bg-card p-2" title={filled < items.length ? '대화로 채워지고 있어요. 빈 칸은 이어서 물어볼게요.' : '이 조건으로 업체를 찾아요.'}>
       <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-medium leading-normal xl:text-[16px]">
         <div className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-primary">
           요구 조건 <span className="text-[13px] tabular-nums opacity-70">{filled}/{items.length}</span>
@@ -43,7 +43,7 @@ export function RequirementsCard() {
         {items.map(([k, v]) => (
           <div key={k} className="flex min-w-0 items-center gap-2.5 rounded-lg px-4 py-2.5">
             <dt className="shrink-0 text-muted-foreground">{k}</dt>
-            <dd className={cn('max-w-[260px] truncate', v ? 'text-black' : 'text-muted-foreground/60')} title={v}>
+            <dd className={cn('max-w-[260px] truncate', v ? 'text-ink' : 'text-muted-foreground/60')} title={v}>
               {v ?? '…'}
             </dd>
           </div>
@@ -121,7 +121,7 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
             aria-invalid={bad || undefined}
             className={cn(
               'h-auto min-w-[3ch] max-w-[220px] rounded-none border-0 bg-transparent p-0 text-[14px] font-medium shadow-none [field-sizing:content] focus-visible:ring-0 md:text-[14px]',
-              has ? 'text-black' : 'text-muted-foreground'
+              has ? 'text-ink' : 'text-muted-foreground'
             )}
           />
           {unit && has && <span className="shrink-0 text-[13px] text-muted-foreground">{unit}</span>}
@@ -135,10 +135,10 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
   const filled = keys.filter((k) => shown(k).trim() !== '').length + (needInstall === undefined ? 0 : 1);
 
   return (
-    <div className="w-fit max-w-full rounded-lg bg-white px-5 py-4">
+    <div className="w-fit max-w-full rounded-lg bg-card px-5 py-4">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-4">
-          <h3 className="text-[16px] font-semibold text-black">요구조건</h3>
+          <h3 className="text-[16px] font-semibold text-ink">요구조건</h3>
           <Pill tone="primary" className="text-[13px]">{filled}/{keys.length + 1} 확인</Pill>
           <span className="text-[13px] text-muted-foreground">대화로 채운 값이에요. 다르면 바로 고쳐 주세요.</span>
         </div>
@@ -157,7 +157,7 @@ function RequirementsEditor({ r, ready, asking, busy }: { r: Partial<Requirement
                   aria-pressed={needInstall === on}
                   className={cn(
                     'rounded-md px-2 py-0.5 text-[14px] font-medium transition-colors',
-                    needInstall === on ? 'bg-white text-black shadow-[0_0_0_1px_var(--line)]' : 'text-muted-foreground hover:text-ink'
+                    needInstall === on ? 'bg-card text-ink dark:bg-input shadow-[0_0_0_1px_var(--line)]' : 'text-muted-foreground hover:text-ink'
                   )}
                   onClick={() => setInstall(on)}
                 >
@@ -254,7 +254,7 @@ export function MailCard({ draft }: { draft: MailDraft }) {
   // 디자인 29:174: 흰 카드, 칸마다 아래 줄, 근거는 회색 상자, 버튼은 외곽선 + 연파랑
   const bare = 'h-auto rounded-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 disabled:opacity-100';
   return (
-    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-white p-5">
+    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-card p-5">
       <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
         <div className="flex min-w-0 flex-col gap-3 leading-normal">
           <p className="flex items-center gap-2 text-[19px] font-semibold text-ink">
@@ -264,8 +264,8 @@ export function MailCard({ draft }: { draft: MailDraft }) {
           {state !== 'sent' && <p className="text-[14px] font-medium text-muted-foreground">내용을 확인하고 직접 보내 주세요. 누르기 전에는 발송되지 않아요.</p>}
         </div>
         <div className="flex shrink-0 items-center rounded-lg bg-muted p-1">
-          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'text-muted-foreground' : 'bg-white text-black')}>보내기 전</span>
-          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'bg-white text-ok' : 'text-muted-foreground')}>
+          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'text-muted-foreground' : 'bg-card text-ink dark:bg-input')}>보내기 전</span>
+          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', state === 'sent' ? 'bg-card text-ok' : 'text-muted-foreground')}>
             {state === 'sent' && <Check className="size-4" />} 보냄
           </span>
         </div>
@@ -370,7 +370,7 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-white p-5">
+    <div className="flex w-full max-w-[940px] flex-col gap-3 rounded-lg bg-card p-5">
       <div className="flex items-start justify-between gap-4 border-b border-line px-2 pb-3">
         <div className="flex min-w-0 flex-col gap-3 leading-normal">
           <p className="flex items-center gap-2 text-[19px] font-semibold text-ink">
@@ -380,8 +380,8 @@ export function MessageCard({ draft }: { draft: MessageDraft }) {
           <p className="text-[14px] font-medium text-muted-foreground">초안을 복사하거나 앱을 열어 직접 보내 주세요. 돌다리가 대신 보내지는 않아요.</p>
         </div>
         <div className="flex shrink-0 items-center rounded-lg bg-muted p-1">
-          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'text-muted-foreground' : 'bg-white text-black')}>보내기 전</span>
-          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'bg-white text-ok' : 'text-muted-foreground')}>
+          <span className={cn('rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'text-muted-foreground' : 'bg-card text-ink dark:bg-input')}>보내기 전</span>
+          <span className={cn('flex items-center gap-1 rounded-lg px-4 py-2 text-[14px] font-medium', sent ? 'bg-card text-ok' : 'text-muted-foreground')}>
             {sent && <Check className="size-4" />} 보냄
           </span>
         </div>
@@ -495,7 +495,7 @@ export function UploadCard({ vendorId }: { vendorId: VendorId }) {
     >
       <input type="file" accept=".pdf,image/*,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
       <div className="flex min-w-0 flex-col gap-2 font-medium leading-normal">
-        <div className="flex items-center gap-2 text-[17px] text-black">
+        <div className="flex items-center gap-2 text-[17px] text-ink">
           <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[vendorId])} />
           {vendor?.name ?? `${vendorId} 업체`} 견적서 올리기
         </div>
@@ -505,8 +505,8 @@ export function UploadCard({ vendorId }: { vendorId: VendorId }) {
       </div>
       <span
         className={cn(
-          'flex max-w-[45%] shrink-0 items-center gap-1.5 rounded-lg border bg-white px-4 py-2.5 text-[14px] font-medium',
-          doneUp ? 'border-ok text-ok' : 'border-muted-foreground text-black'
+          'flex max-w-[45%] shrink-0 items-center gap-1.5 rounded-lg border bg-card px-4 py-2.5 text-[14px] font-medium',
+          doneUp ? 'border-ok text-ok' : 'border-muted-foreground text-ink'
         )}
       >
         {doneUp ? <Check className="size-4 shrink-0" /> : <Paperclip className="size-4 shrink-0" />}

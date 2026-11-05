@@ -45,7 +45,7 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => voi
           role="radio"
           aria-checked={view === id}
           onClick={() => onChange(id)}
-          className={cn('flex items-center gap-1.5 rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', view === id ? 'bg-white text-black' : 'text-muted-foreground hover:text-ink')}
+          className={cn('flex items-center gap-1.5 rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', view === id ? 'bg-card text-ink dark:bg-input' : 'text-muted-foreground hover:text-ink')}
         >
           <Icon className="size-3.5" /> {label}
         </button>
@@ -74,7 +74,7 @@ export function CompareCard() {
           <CompareChart order={order} />
         ) : (
         <div className="overflow-x-auto" onClick={() => setPop(null)}>
-          <table className="w-full border-separate border-spacing-x-0 border-spacing-y-3 whitespace-nowrap text-[13px] font-medium text-black">
+          <table className="w-full border-separate border-spacing-x-0 border-spacing-y-3 whitespace-nowrap text-[13px] font-medium text-ink">
             <thead>
               <tr className="text-left text-[13px] text-muted-foreground">
                 {heads.map((h, i) => (
@@ -246,7 +246,7 @@ export function Recommend() {
             {rec.tentative && pick && <Pill tone="warn" className="text-[13px]">확인 후 확정</Pill>}
           </div>
           <div className="flex flex-col gap-3 leading-normal">
-            <p className="flex items-center gap-2 text-[21px] font-semibold text-black">
+            <p className="flex items-center gap-2 text-[21px] font-semibold text-ink">
               {pick && <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[pick.vendorId])} />}
               {pick ? pick.vendorName : '조건을 모두 만족하는 업체가 없어요'}
             </p>
@@ -254,12 +254,12 @@ export function Recommend() {
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 font-medium">
                 <span className="flex items-center gap-2">
                   <span className="text-[17px] text-muted-foreground">합계</span>
-                  <span className="text-[21px] tabular-nums text-black">{won(confirmedSum(pick, req))}</span>
+                  <span className="text-[21px] tabular-nums text-ink">{won(confirmedSum(pick, req))}</span>
                 </span>
                 {pick.leadTimeDays.value !== null && (
                   <span className="flex items-center gap-2">
                     <span className="text-[17px] text-muted-foreground">납기</span>
-                    <span className="text-[21px] tabular-nums text-black">{pick.leadTimeDays.value}일</span>
+                    <span className="text-[21px] tabular-nums text-ink">{pick.leadTimeDays.value}일</span>
                   </span>
                 )}
               </div>
@@ -273,7 +273,7 @@ export function Recommend() {
       </div>
       {questions.length > 0 && (
         <div className="rounded-lg bg-row-alt p-6">
-          <div className="text-[16px] font-semibold text-black">아직 모르는 항목</div>
+          <div className="text-[16px] font-semibold text-ink">아직 모르는 항목</div>
           <p className="mt-1 text-[13px] text-muted-foreground">업체에 물어보면 합계를 확정할 수 있어요.</p>
           <div className="mt-3 divide-y divide-line">
             {questions.map((q) => {
@@ -316,7 +316,7 @@ export function DocsCard() {
                   <span className="text-[13px] font-medium text-muted-foreground">{CH[quotes[id]!.channel]} 견적</span>
                   {!doc.complete && <Pill tone="warn" className="text-[13px]">일부 미확인</Pill>}
                 </div>
-                <div className="flex flex-col gap-3 text-[21px] font-semibold leading-normal text-black">
+                <div className="flex flex-col gap-3 text-[21px] font-semibold leading-normal text-ink">
                   <span className="flex min-w-0 items-center gap-2">
                     <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[id])} />
                     <span className="truncate">{doc.supplier.name}</span>
@@ -360,7 +360,7 @@ export function ReportCard() {
         <FileText className="size-6" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[17px] font-semibold text-black">통합 견적서가 준비됐어요</div>
+        <div className="text-[17px] font-semibold text-ink">통합 견적서가 준비됐어요</div>
         <div className="mt-1 text-[14px] font-medium text-muted-foreground">업체 {count}곳의 공급가액·부가세·합계·조건과 추천 이유를 한 장에 정리했어요. PDF로 저장할 수 있어요.</div>
       </div>
       <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" disabled={busy} onClick={() => void api.revise()}>
@@ -428,7 +428,7 @@ function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req:
   const has = (id: VendorId) => quotes[id]!.listedPrice.value !== null;
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-black">
+      <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-ink">
         <img src={cartIcon} alt="" className="size-5" />
         {q.vendorName}에 주문하기
         <span className="text-[14px] font-medium text-muted-foreground">합계 {has(cur) ? won(confirmedSum(q, req)) : '미확인'}</span>
@@ -447,7 +447,7 @@ function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req:
                 onClick={() => setSel(id)}
                 className={cn(
                   'flex h-auto items-center gap-2 rounded-lg border px-4 py-2.5 text-[14px] font-medium transition-colors',
-                  on ? 'border-primary bg-tint text-primary' : 'border-line bg-card text-black hover:bg-muted/50',
+                  on ? 'border-primary bg-tint text-primary' : 'border-line bg-card text-ink hover:bg-muted/50',
                 )}
               >
                 <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[id])} />

@@ -5,7 +5,7 @@ export function SectionHead({ title, hint, right, className }: { title: React.Re
   return (
     <div className={cn('flex items-start gap-3', className)}>
       <div className="min-w-0">
-        <h3 className="text-[16px] font-semibold leading-tight text-black">{title}</h3>
+        <h3 className="text-[16px] font-semibold leading-tight text-ink">{title}</h3>
         {hint && <p className="mt-2 text-[13px] leading-snug text-muted-foreground">{hint}</p>}
       </div>
       {right && <div className="ml-auto flex shrink-0 items-center gap-1.5">{right}</div>}

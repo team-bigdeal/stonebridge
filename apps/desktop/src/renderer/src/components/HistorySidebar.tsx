@@ -24,25 +24,25 @@ export function HistorySidebar() {
 
   if (!sidebarOpen) return null;
   return (
-    <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-white fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
+    <aside className="flex w-64 shrink-0 animate-in flex-col border-r bg-card fade-in-0 slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none">
       {/* 새 견적 버튼 + 사이드바 닫기 */}
       <div className="flex items-center gap-1.5 pl-3 pr-2 pt-3">
         <button
           type="button"
           onClick={() => void restart()}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[14px] font-medium text-primary hover:bg-[#dce8f7]"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[14px] font-medium text-primary hover:bg-primary/20"
         >
           <Plus className="size-4" /> 새 견적 추가하기
         </button>
         {/* 새 견적 버튼과 같은 높이로 */}
         <SidebarToggle className="size-10 rounded-lg hover:bg-muted" />
       </div>
-      <div className="flex h-12 items-center gap-2 pl-5 pr-3 text-[14px] font-semibold text-black">
+      <div className="flex h-12 items-center gap-2 pl-5 pr-3 text-[14px] font-semibold text-ink">
         <History className="size-4 text-muted-foreground" /> 지난 견적
         {list && list.length > 0 && <span className="tabular-nums text-muted-foreground">{list.length}</span>}
       </div>
       {replay && (
-        <button type="button" onClick={exitReplay} className="mx-3 mb-2 flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[13px] font-medium text-primary hover:bg-[#dce8f7]">
+        <button type="button" onClick={exitReplay} className="mx-3 mb-2 flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2.5 text-[13px] font-medium text-primary hover:bg-primary/20">
           <ArrowLeft className="size-3.5" /> 현재 견적으로 돌아가기
         </button>
       )}
@@ -60,7 +60,7 @@ export function HistorySidebar() {
                   className={cn('w-full rounded-lg px-3 py-2.5 text-left hover:bg-background', active === h.id && 'bg-secondary hover:bg-secondary')}
                   onClick={() => void openReplay(h.id)}
                 >
-                  <div className={cn('truncate pr-6 text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-black')}>
+                  <div className={cn('truncate pr-6 text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-ink')}>
                     {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
                     {h.item}
                   </div>
@@ -74,14 +74,14 @@ export function HistorySidebar() {
                   {h.best && (
                     <div className="mt-0.5 truncate text-[12px]">
                       <span className="text-muted-foreground">추천 {h.best.name} </span>
-                      <span className="font-semibold tabular-nums text-black">{won(h.best.total)}</span>
+                      <span className="font-semibold tabular-nums text-ink">{won(h.best.total)}</span>
                     </div>
                   )}
                 </button>
                 <button
                   type="button"
                   title="이 기록 삭제"
-                  className="absolute right-1.5 top-2 rounded p-1 text-muted-foreground opacity-0 hover:bg-white hover:text-destructive group-hover:opacity-100"
+                  className="absolute right-1.5 top-2 rounded p-1 text-muted-foreground opacity-0 hover:bg-card hover:text-destructive group-hover:opacity-100"
                   onClick={async () => {
                     if (!confirm(`"${h.item}" 견적 기록을 삭제할까요?`)) return;
                     if (replay?.id === h.id) exitReplay();

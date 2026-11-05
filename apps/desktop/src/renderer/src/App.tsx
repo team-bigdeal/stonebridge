@@ -38,7 +38,7 @@ export default function App() {
           <HistorySidebar />
           <main className="relative min-w-0 flex-1">
             {/* 사이드바가 닫혀 있으면 그 자리(왼쪽 위)에서 다시 연다 */}
-            {!sidebarOpen && <SidebarToggle className="absolute left-2 top-2 z-10 bg-white/80 shadow-sm" />}
+            {!sidebarOpen && <SidebarToggle className="absolute left-2 top-2 z-10 bg-card/80 shadow-sm" />}
             <Chat />
           </main>
         </div>

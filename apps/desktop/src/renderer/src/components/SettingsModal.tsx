@@ -264,7 +264,7 @@ function MailTab({ config }: { config: AppConfig }) {
           {config.googleUser ? (
             <>
               <Box filled className="min-w-0 flex-1">
-                <span className="truncate text-[14px] font-medium text-black" title={config.googleUser}>
+                <span className="truncate text-[14px] font-medium text-ink" title={config.googleUser}>
                   {config.googleUser}
                 </span>
               </Box>
@@ -406,7 +406,7 @@ function Segmented({ value, options, onChange }: { value: string; options: { val
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cn('rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', value === o.value ? 'bg-card text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
+          className={cn('rounded-lg px-4 py-2 text-[14px] font-medium transition-colors', value === o.value ? 'bg-card text-ink dark:bg-input shadow-sm' : 'text-muted-foreground hover:text-ink')}
         >
           {o.label}
         </button>

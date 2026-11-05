@@ -31,7 +31,7 @@ export function TopBar() {
   const current = STAGES.findIndex((s) => s.id === stage);
 
   return (
-    <header className="drag flex h-14 shrink-0 items-center border-b bg-white pr-6">
+    <header className="drag flex h-14 shrink-0 items-center border-b bg-card pr-6">
       {/* 로고 칸은 사이드바와 같은 너비 (창 버튼 오른쪽부터). 단계는 본문이 시작하는 곳에서 */}
       <div className="flex h-full w-64 shrink-0 items-center gap-2 pl-[88px]">
         <Mascot size={26} className="rounded-md" />

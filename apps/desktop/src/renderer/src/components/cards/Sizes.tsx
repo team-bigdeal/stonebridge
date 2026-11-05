@@ -64,7 +64,7 @@ export function SizesCard({ item, status, options }: { item: string; status: Siz
   };
 
   return (
-    <div className="space-y-4 rounded-lg bg-white px-5 py-5">
+    <div className="space-y-4 rounded-lg bg-card px-5 py-5">
       <SectionHead
         title={`"${item}" 사이즈 비교 (실제 크기)`}
         hint="업체 사이트에서 실제로 파는 사이즈를 모았어요. 화면에 실제 크기로 그렸으니 대 보고 눌러서 고르세요."
@@ -181,11 +181,11 @@ function SizeCompare({ options, pxPerMm, picked, canPick, onPick }: { options: S
                   !canPick && 'cursor-default'
                 )}
               >
-                <span className="w-[92px] shrink-0 text-[14px] font-semibold tabular-nums text-black">
+                <span className="w-[92px] shrink-0 text-[14px] font-semibold tabular-nums text-ink">
                   {fmt(o.widthMm)}×{fmt(o.heightMm)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  {o.label.replace(/[\s×xX*mm]/g, '') !== `${fmt(o.widthMm)}${fmt(o.heightMm)}` && <span className="block truncate text-[13px] text-black">{o.label}</span>}
+                  {o.label.replace(/[\s×xX*mm]/g, '') !== `${fmt(o.widthMm)}${fmt(o.heightMm)}` && <span className="block truncate text-[13px] text-ink">{o.label}</span>}
                   <span className="block truncate text-[12px] text-muted-foreground" title={o.vendors.map((v) => v.name).join(', ')}>
                     {o.vendors.length > 1 ? `${o.vendors[0].name} 외 ${o.vendors.length - 1}곳` : o.vendors[0]?.name}
                     {o.note ? ` · ${o.note}` : ''}
