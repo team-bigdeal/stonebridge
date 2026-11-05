@@ -3,25 +3,28 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useStore } from './store';
 import { Chat } from './components/Chat';
 import { ExpandedBrowser, Notices, SidebarToggle, TopBar } from './components/Shell';
-import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
+import { pushCursor } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
 import { RequirementsPanel } from './components/RequirementsPanel';
-import { startAutosave } from './replay';
+import { routeEvent, routeFrame, startAutosave } from './replay';
 import { useTheme } from './lib/theme';
 
 export default function App() {
-  const handle = useStore((s) => s.handle);
   const set = useStore((s) => s.set);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   useTheme(useStore((s) => s.config?.theme));
 
   useEffect(() => {
     window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey }));
-    const offEvent = window.doldari.onEvent(handle);
-    const offFrame = window.doldari.onFrame(({ slot, data }) => pushFrame(slot, data));
-    const offCursor = window.doldari.onCursor(pushCursor);
+    const offEvent = window.doldari.onEvent(routeEvent);
+    const offFrame = window.doldari.onFrame(routeFrame);
+    // 커서는 보고 있는 견적 세션 것만
+    const offCursor = window.doldari.onCursor((c) => {
+      const f = useStore.getState().focusedSid;
+      if (!f || c.sid === f) pushCursor(c);
+    });
     const offSave = startAutosave();
     return () => {
       offEvent();
@@ -29,7 +32,7 @@ export default function App() {
       offCursor();
       offSave();
     };
-  }, [handle, set]);
+  }, [set]);
 
   return (
     <TooltipProvider>

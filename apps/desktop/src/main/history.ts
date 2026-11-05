@@ -9,19 +9,20 @@ import { confirmedSum, recommend } from '@shared/quote';
 import { scrubContacts } from '@shared/privacy';
 import { addOriginal as addTo, MAX_ORIGINALS } from '@shared/originals';
 import { emit } from './events';
+import { scoped } from './session';
 
 const dir = () => path.join(app.getPath('userData'), 'history');
 
 /** settled: 비교까지 끝난 기록 (중단 저장으로 덮어쓰지 않는다) */
-let current: { id: string; createdAt: string; settled: boolean } | null = null;
-const originals: Partial<Record<VendorId, QuoteOriginal[]>> = {};
+const H = scoped(() => ({ current: null as { id: string; createdAt: string; settled: boolean } | null }));
+const originals = scoped((): Partial<Record<VendorId, QuoteOriginal[]>> => ({}));
 
 /** 지금 견적의 기록 id (아직 저장 전이면 null) */
-export const currentRecordId = () => current?.id ?? null;
+export const currentRecordId = () => H.current?.id ?? null;
 
 /** 새 견적을 시작할 때 (다음 저장부터 새 기록) */
 export function startRecord() {
-  current = null;
+  H.current = null;
   for (const k of Object.keys(originals)) delete originals[k as VendorId];
 }
 
@@ -29,7 +30,7 @@ export function startRecord() {
 export function resumeRecord(id: string): HistoryRecord | null {
   const r = readRecord(id);
   if (!r) return null;
-  current = { id: r.id, createdAt: r.createdAt, settled: !r.incomplete };
+  H.current = { id: r.id, createdAt: r.createdAt, settled: !r.incomplete };
   for (const k of Object.keys(originals)) delete originals[k as VendorId];
   for (const [vid, list] of Object.entries(r.originals ?? {})) originals[vid as VendorId] = [...(list ?? [])].slice(-MAX_ORIGINALS);
   return r;
@@ -48,15 +49,15 @@ export function clearOriginals(vendorId: VendorId) {
 /** incomplete: 비교까지 가지 못한 검색(시작 직후·취소)을 남길 때. 이미 비교가 끝난 기록은 덮어쓰지 않는다
  *  (조건을 바꾼 새 검색을 견적 전에 취소해도 이전 비교가 남게) */
 export function saveRecord(requirements: Requirements, vendors: VendorInfo[], quotes: Partial<Record<VendorId, Quote>>, opts: { incomplete?: boolean } = {}) {
-  if (opts.incomplete && current?.settled) return;
+  if (opts.incomplete && H.current?.settled) return;
   const now = new Date().toISOString();
-  current ??= { id: `${now.slice(0, 10)}-${randomUUID().slice(0, 8)}`, createdAt: now, settled: false };
-  if (!opts.incomplete) current.settled = true;
+  H.current ??= { id: `${now.slice(0, 10)}-${randomUUID().slice(0, 8)}`, createdAt: now, settled: false };
+  if (!opts.incomplete) H.current.settled = true;
   const ids = new Set(vendors.map((v) => v.id));
   const rec = recommend(quotes, requirements);
   const record: HistoryRecord = {
-    id: current.id,
-    createdAt: current.createdAt,
+    id: H.current.id,
+    createdAt: H.current.createdAt,
     updatedAt: now,
     requirements,
     vendors,
@@ -124,7 +125,7 @@ export function deleteRecord(id: string) {
   try {
     fs.unlinkSync(path.join(dir(), `${id}.json`));
     fs.rmSync(path.join(dir(), `${id}.session.json`), { force: true });
-    if (current?.id === id) current = null;
+    if (H.current?.id === id) H.current = null;
     emit('history', { payload: { id, kind: 'deleted' } satisfies HistoryEventPayload });
     return true;
   } catch {

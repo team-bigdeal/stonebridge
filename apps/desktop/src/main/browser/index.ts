@@ -4,15 +4,25 @@ import type { BrowserState, Slot } from '@shared/types';
 import { emit } from '../events';
 import type { BrowserDriver } from './driver';
 import { browserSession, ElectronDriver, type Rect } from './electron';
+import { currentSid, focusedSid, onDispose, scoped } from '../session';
 
-const drivers = new Map<Slot, ElectronDriver>();
-const states = new Map<Slot, BrowserState>();
+// 견적 세션마다 브라우저 A·B·C를 따로 둔다. 화면에는 보고 있는 세션의 뷰만 카드 자리에 놓는다
+const all = new Map<string, Map<Slot, ElectronDriver>>();
+const drivers = scoped(() => {
+  const m = new Map<Slot, ElectronDriver>();
+  all.set(currentSid(), m);
+  return m;
+});
+const states = scoped(() => new Map<Slot, BrowserState>());
+/** renderer가 마지막으로 알려 준 카드 자리 (세션을 바꾸면 새 세션 뷰를 같은 자리에 놓는다) */
+const lastRect = new Map<Slot, Rect | null>();
 
 export function getDriver(slot: Slot): BrowserDriver {
   let d = drivers.get(slot);
   if (!d) {
-    d = new ElectronDriver(slot);
+    d = new ElectronDriver(slot, currentSid());
     drivers.set(slot, d);
+    if (d.sid === focusedSid() && lastRect.get(slot)) void d.setBounds(lastRect.get(slot)!);
   }
   return d;
 }
@@ -37,11 +47,16 @@ export async function setHandoff(slot: Slot, reason: string | undefined) {
 /** renderer 카드 자리에 내장 브라우저 뷰를 맞춘다 */
 /** renderer가 보낸 카드 자리(CSS px)를 창 좌표(DIP)로 바꿔 뷰를 맞춘다. 앱 화면이 ⌘+/⌘-로 확대·축소돼 있으면 그 배율을 곱한다 */
 export function setViewBounds(slot: Slot, rect: Rect | null, zoom = 1) {
-  const d = drivers.get(slot) ?? (getDriver(slot) as ElectronDriver);
   const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  void d.setBounds(
-    rect && { x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) }
-  );
+  const r = rect && { x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) };
+  lastRect.set(slot, r);
+  const d = all.get(focusedSid())?.get(slot);
+  if (d) void d.setBounds(r);
+}
+
+/** 보는 세션을 바꿀 때: 다른 세션 뷰는 창 밖으로(일은 계속), 이 세션 뷰는 카드 자리로 */
+export function showSessionViews(sid: string) {
+  for (const [s, m] of all) for (const [slot, d] of m) void d.setBounds(s === sid ? (lastRect.get(slot) ?? null) : null);
 }
 
 /** 내장 브라우저 세션에 사용자가 직접 로그인하는 창 (쿠키가 에이전트 브라우저와 공유된다) */
@@ -78,6 +93,12 @@ export async function resetAll() {
 }
 
 export async function closeAll() {
-  await Promise.all([...drivers.values()].map((d) => d.close().catch(() => undefined)));
-  drivers.clear();
+  await Promise.all([...all.values()].flatMap((m) => [...m.values()]).map((d) => d.close().catch(() => undefined)));
+  all.clear();
 }
+
+// 세션을 없애면 그 세션 브라우저도 닫는다
+onDispose((sid) => {
+  for (const d of all.get(sid)?.values() ?? []) void d.close().catch(() => undefined);
+  all.delete(sid);
+});

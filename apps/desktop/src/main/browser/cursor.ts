@@ -4,8 +4,10 @@
 import type { Slot } from '@shared/types';
 import { sleep } from '../config';
 import { send } from '../events';
+import { currentSid } from '../session';
 
 export interface CursorEvent {
+  sid: string;
   slot: Slot;
   x: number;
   y: number;
@@ -23,7 +25,7 @@ export const onCursor = (l: Listener) => {
 /** 커서 이동 (뷰포트 좌표 x, y와 뷰포트 크기) */
 export async function cursorTo(slot: Slot, x: number, y: number, vw: number, vh: number, click = false) {
   if (!vw || !vh) return;
-  const e: CursorEvent = { slot, x: Math.max(0, Math.min(1, x / vw)), y: Math.max(0, Math.min(1, y / vh)), click };
+  const e: CursorEvent = { sid: currentSid(), slot, x: Math.max(0, Math.min(1, x / vw)), y: Math.max(0, Math.min(1, y / vh)), click };
   send('browser:cursor', e);
   for (const l of listeners) l(e);
   await sleep(click ? 180 : 320);

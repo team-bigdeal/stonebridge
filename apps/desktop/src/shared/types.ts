@@ -349,6 +349,8 @@ export interface AgentEvent {
   message?: string;
   payload?: unknown;
   at: string;
+  /** 이벤트가 난 견적 세션 (여러 견적을 동시에 돌릴 때 화면이 나눠 받는다) */
+  sid?: string;
 }
 
 export interface QuoteUpdatePayload {

@@ -1,6 +1,7 @@
 // 브라우저 3개가 함께 쓰는 메모: 누가 어느 사이트·페이지를 봤고 어떻게 판단했는지.
 // 같은 상품 페이지를 여러 브라우저가 따로 확인하지 않게, 다른 브라우저가 이미 본 곳이면 도구 결과에 알려 준다.
 import type { Slot } from '@shared/types';
+import { scoped } from '../session';
 
 interface Visit {
   slot: Slot;
@@ -14,7 +15,7 @@ interface SiteNote {
   verdicts: Map<Slot, string>;
 }
 
-const sites = new Map<string, SiteNote>();
+const sites = scoped(() => new Map<string, SiteNote>());
 
 /** 사이트 키: 오픈마켓은 판매자 경로까지, 그 밖에는 기본 도메인 */
 export function siteKey(url: string): string {

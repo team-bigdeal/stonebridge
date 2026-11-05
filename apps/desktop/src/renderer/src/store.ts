@@ -8,6 +8,12 @@ import { confirmedSum } from '@shared/quote';
 
 export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
 export interface Notice { id: number; message: string; vendorId?: VendorId }
+/** 동시에 돌고 있는 견적 세션 하나의 요약 (사이드바 표시용) */
+export interface SessionMeta {
+  recordId: string | null;
+  stage: Stage;
+  vendorStatus: Partial<Record<VendorId, VendorStatus>>;
+}
 
 interface State {
   config: AppConfig | null;
@@ -43,6 +49,10 @@ interface State {
   replay: { id: string } | null;
   /** 지금 진행 중인 견적의 히스토리 id (첫 저장 뒤부터) */
   liveId: string | null;
+  /** 화면이 보고 있는 견적 세션 (main 세션 id) */
+  focusedSid: string | null;
+  /** 살아 있는 견적 세션들 (보고 있지 않은 세션도 계속 진행) */
+  sessions: Record<string, SessionMeta>;
   /** 조건을 바꾸기 전 검색들 */
   runs: Record<string, RunSnapshot>;
   /** 타임라인 항목 id → 이전 검색 id */
@@ -137,6 +147,8 @@ export const useStore = create<State>((set, get) => ({
   sidebarWidth: readWidth('doldari.sidebarWidth', SIDEBAR_WIDTH),
   panelWidth: readWidth('doldari.panelWidth', PANEL_WIDTH),
   historyRev: 0,
+  focusedSid: null,
+  sessions: {},
   ...initial(),
   set: (p) => set(p),
   push: (item) => set((s) => ({ timeline: [...s.timeline, item] })),
