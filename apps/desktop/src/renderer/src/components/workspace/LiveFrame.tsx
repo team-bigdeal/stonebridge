@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import type { Slot } from '@shared/types';
 import { cn } from '@/lib/utils';
-import { useStore } from '@/store';
+import { setFrameIO, useStore } from '@/store';
 import { registerView, useShownViews } from './viewManager';
-import { api } from '@/lib/api';
+import { RunContext, useApi } from '@/runScope';
 
 /** 프레임·커서는 자주 바뀌므로 메인 상태와 분리 */
 export const useFrames = create<{ frames: Partial<Record<Slot, string>> }>(() => ({ frames: {} }));
 export const pushFrame = (slot: Slot, data: string) => useFrames.setState((s) => ({ frames: { ...s.frames, [slot]: data } }));
+// 조건 바꾸기 때 store가 지금 화면을 이전 검색으로 얼리고 비울 수 있게
+setFrameIO({ get: () => useFrames.getState().frames, clear: () => useFrames.setState({ frames: {} }) });
 interface Cursor {
   x: number;
   y: number;
@@ -26,9 +28,12 @@ export const pushCursor = (c: { slot: Slot; x: number; y: number; click?: boolea
  */
 export function LiveFrame({ slot, className, priority = 1 }: { slot: Slot; className?: string; priority?: number }) {
   const backend = useStore((s) => s.backend);
-  const frame = useFrames((s) => s.frames[slot]);
+  const scope = useContext(RunContext);
+  const liveFrame = useFrames((s) => s.frames[slot]);
+  // 이전 검색 카드는 그때 저장된 화면
+  const frame = scope ? scope.frames[slot] : liveFrame;
   const ref = useRef<HTMLDivElement>(null);
-  const replay = useStore((s) => Boolean(s.replay));
+  const replay = useStore((s) => Boolean(s.replay)) || Boolean(scope);
   const embedded = backend === 'electron' && !replay;
   const shown = useShownViews((s) => Boolean(s.shown[slot]));
 
@@ -65,6 +70,7 @@ function Placeholder() {
 }
 
 function ImageFrame({ slot, className, frame }: { slot: Slot; className?: string; frame?: string }) {
+  const api = useApi();
   const cursor = useCursors((s) => s.cursors[slot]);
   const [focused, setFocused] = useState(false);
   const [, force] = useState(0);

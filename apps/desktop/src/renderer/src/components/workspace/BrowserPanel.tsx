@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Pill } from '../cards/Section';
 import { LiveFrame } from './LiveFrame';
 import { Steps } from './Steps';
-import { api } from '@/lib/api';
+import { useRunStore, useApi } from '@/runScope';
 
 const STATUS_TONE: Record<VendorStatus, 'ok' | 'warn' | 'bad' | 'muted' | 'primary'> = {
   idle: 'muted',
@@ -22,7 +22,8 @@ const STATUS_TONE: Record<VendorStatus, 'ok' | 'warn' | 'bad' | 'muted' | 'prima
 };
 
 export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: string; className?: string }) {
-  const { browsers, vendorStatus, vendors, quotes, set } = useStore();
+  const api = useApi();
+  const { browsers, vendorStatus, vendors, quotes, set, scoped } = useRunStore();
   const b = browsers[slot];
   const vid = slot === 'search' ? null : (slot as VendorId);
   const vendor = vid ? vendors.find((v) => v.id === vid) : null;
@@ -62,9 +63,9 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
             <ExternalLink className="size-3.5" />
           </Button>
         )}
-        <Button size="icon" variant="ghost" className="size-6" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
+        {!scoped && <Button size="icon" variant="ghost" className="size-6" onClick={() => set({ expanded: slot })} title="크게 보고 직접 조작하기" aria-label="크게 보기">
           <Maximize2 className="size-3.5" />
-        </Button>
+        </Button>}
       </div>
 
       {/* 차단·로그인 화면: 사용자에게 넘김 */}

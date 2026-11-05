@@ -230,8 +230,6 @@ export interface RunSummary {
   recommended: VendorId | null;
   reasons: string[];
   at: string;
-  /** 이 검색의 히스토리 기록 id (있으면 "이전 검색 다시 보기"로 그 세션을 연다) */
-  recordId?: string;
 }
 
 export interface BrowserState {
@@ -325,6 +323,24 @@ export interface SessionSnapshot {
   mails: MailRecord[];
   originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   /** 브라우저 카드의 마지막 화면 */
+  frames: Partial<Record<Slot, string>>;
+  /** 조건을 바꾸기 전 검색들 (대화 안에 그대로 남은 카드가 이 값으로 그려진다) */
+  runs?: Record<string, RunSnapshot>;
+  /** 타임라인 항목 id → 그 항목이 속한 이전 검색 id */
+  runOf?: Record<string, string>;
+}
+
+/** 조건을 바꾸기 전 검색 한 번의 화면 상태 (카드는 대화에 그대로 남고 이 값으로 그린다) */
+export interface RunSnapshot {
+  stage: Stage;
+  requirements: Partial<Requirements> | null;
+  quotes: Partial<Record<VendorId, Quote>>;
+  vendors: VendorInfo[];
+  vendorStatus: Partial<Record<VendorId, VendorStatus>>;
+  steps: Partial<Record<Slot, AgentStep[]>>;
+  browsers: Partial<Record<Slot, BrowserState>>;
+  sources: (Source & { vendorId: VendorId; field: FieldKey })[];
+  originals: Partial<Record<VendorId, QuoteOriginal[]>>;
   frames: Partial<Record<Slot, string>>;
 }
 

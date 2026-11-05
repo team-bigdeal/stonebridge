@@ -3,10 +3,10 @@
 // - 히스토리를 누르면 그 세션 화면을 그대로 다시 그린다 (보기 전용).
 // - 그동안 지금 견적은 따로 보관해 두고, 들어온 이벤트는 돌아올 때 반영한다.
 import type { HistoryRecord, SessionSnapshot, TimelineItem } from '@shared/types';
-import { pendingLive, setBeforeRevised, useStore } from '@/store';
+import { pendingLive, useStore } from '@/store';
 import { useFrames } from '@/components/workspace/LiveFrame';
 
-const KEYS = ['stage', 'requirements', 'timeline', 'quotes', 'vendors', 'vendorStatus', 'steps', 'browsers', 'sources', 'mails', 'originals'] as const;
+const KEYS = ['stage', 'requirements', 'timeline', 'quotes', 'vendors', 'vendorStatus', 'steps', 'browsers', 'sources', 'mails', 'originals', 'runs', 'runOf'] as const;
 
 function takeSnapshot(): SessionSnapshot {
   const s = useStore.getState();
@@ -20,6 +20,8 @@ function takeSnapshot(): SessionSnapshot {
 function applySnapshot(snap: SessionSnapshot) {
   useStore.setState({
     ...Object.fromEntries(KEYS.map((k) => [k, snap[k]])),
+    runs: snap.runs ?? {},
+    runOf: snap.runOf ?? {},
     busy: false,
     flash: null,
     viewer: null,
@@ -51,7 +53,9 @@ function fromRecord(r: HistoryRecord): SessionSnapshot {
     sources: [],
     mails: [],
     originals: r.originals,
-    frames: {}
+    frames: {},
+    runs: {},
+    runOf: {}
   };
 }
 
@@ -110,16 +114,8 @@ export function startAutosave() {
     if (s.liveId !== p.liveId || KEYS.some((k) => s[k] !== p[k])) schedule();
   });
   const off2 = useFrames.subscribe(schedule);
-  // 조건 바꾸기: 화면을 비우기 직전 상태를 바로 저장 (대기 중인 저장은 취소)
-  setBeforeRevised(() => {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    const s = useStore.getState();
-    if (!s.replay && s.liveId) void window.doldari.historySaveSession(s.liveId, takeSnapshot());
-  });
   return () => {
     off1();
     off2();
-    setBeforeRevised(null);
   };
 }

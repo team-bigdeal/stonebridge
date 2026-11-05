@@ -13,7 +13,10 @@ import { saveDocPdf } from '@/doc/print';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
 export function QuoteViewer() {
-  const { viewer, set, quotes, requirements, vendors, originals } = useStore();
+  const live = useStore();
+  const { viewer, set } = live;
+  // 이전 검색 카드에서 연 견적서면 그 검색의 값으로
+  const { quotes, requirements, vendors, originals } = viewer?.scope ?? live;
   const [saved, setSaved] = useState('');
   if (!viewer || !requirements?.deadline) return null;
   const req = requirements as Requirements;

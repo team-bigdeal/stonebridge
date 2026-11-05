@@ -9,12 +9,12 @@ import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
 import { cn } from '@/lib/utils';
 import CountUp from '../CountUp';
 import { Pill, SectionHead } from './Section';
-import { api } from '@/lib/api';
+import { useRunStore, useApi } from '@/runScope';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 
 export function CompareCard() {
-  const { quotes, requirements, stage } = useStore();
+  const { quotes, requirements, stage } = useRunStore();
   const [pop, setPop] = useState<SourceEntry | null>(null);
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   const order = rankQuotes(quotes, req);
@@ -72,7 +72,8 @@ function SourcePop({ pop, onClose }: { pop: SourceEntry; onClose: () => void }) 
 }
 
 function Row({ q, rank, req, leader, onSource, canAct }: { q: Quote; rank: number; req: Requirements | null; leader: boolean; onSource: (s: SourceEntry) => void; canAct: boolean }) {
-  const { flash, vendorStatus, set } = useStore();
+  const api = useApi();
+  const { flash, vendorStatus, set } = useRunStore();
   const status = vendorStatus[q.vendorId] ?? 'idle';
   const has = q.listedPrice.value !== null;
   const cond = req && has ? evaluateConditions(q, req) : null;
@@ -163,7 +164,8 @@ function CheckPill({ c, title }: { c: Check; title: string }) {
 }
 
 export function Recommend() {
-  const { quotes, requirements, vendorStatus } = useStore();
+  const api = useApi();
+  const { quotes, requirements, vendorStatus } = useRunStore();
   if (!requirements?.deadline || requirements.budgetMax === undefined) return null;
   const req = requirements as Requirements;
   const rec = recommend(quotes, req);
@@ -213,7 +215,7 @@ export function Recommend() {
 
 /** 업체별 통일 견적서 요약 타일 */
 export function DocsCard() {
-  const { quotes, requirements, vendors, set } = useStore();
+  const { quotes, requirements, vendors, set } = useRunStore();
   if (!requirements?.deadline) return null;
   const req = requirements as Requirements;
   const list = rankQuotes(quotes, req).filter((id) => quotes[id]?.listedPrice.value !== null);
@@ -265,7 +267,8 @@ export function DocsCard() {
 }
 
 export function ReportCard() {
-  const { set, quotes, busy } = useStore();
+  const api = useApi();
+  const { set, quotes, busy } = useRunStore();
   const count = Object.values(quotes).filter((q) => q && q.listedPrice.value !== null).length;
   return (
     <Card className="flex-row items-center gap-4 px-5 py-4">

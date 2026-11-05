@@ -11,6 +11,7 @@ import { HistoryCard, MailCard, RequirementsCard, UploadCard } from './cards/Bas
 import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
 import { api } from '@/lib/api';
 import { exitReplay } from '@/replay';
+import { RunContext } from '@/runScope';
 
 const EXAMPLES = [
   '회의실에 롤스크린 블라인드 3개 설치하고 싶어요',
@@ -124,7 +125,18 @@ const Narrow = ({ children }: { children: React.ReactNode }) => <div className="
 const Medium = ({ children }: { children: React.ReactNode }) => <div className="mx-auto w-full max-w-[1100px]">{children}</div>;
 const Wide = ({ children }: { children: React.ReactNode }) => <div className="w-full">{children}</div>;
 
+/** 이전 검색에 속한 카드는 그 검색의 얼려 둔 상태로 그린다 */
 function Item({ item }: { item: TimelineItem }) {
+  const run = useStore((s) => (s.runOf[item.id] ? s.runs[s.runOf[item.id]] : undefined));
+  if (!run) return <ItemBody item={item} />;
+  return (
+    <RunContext.Provider value={run}>
+      <ItemBody item={item} />
+    </RunContext.Provider>
+  );
+}
+
+function ItemBody({ item }: { item: TimelineItem }) {
   switch (item.kind) {
     case 'user':
       return (

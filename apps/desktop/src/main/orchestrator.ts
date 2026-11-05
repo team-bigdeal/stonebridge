@@ -9,7 +9,7 @@ import { hasApiKey, imapConfigured } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
-import { addOriginal, clearOriginals, currentRecordId, saveRecord, startRecord } from './history';
+import { addOriginal, clearOriginals, saveRecord, startRecord } from './history';
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
@@ -166,7 +166,6 @@ export async function startSearch(patch: Partial<Requirements>) {
 // ─── 브라우저 3개가 동시에: 업체 찾기 → 견적 받기 ──────────────
 
 async function startHunt(req: Requirements) {
-  startRecord();
   setStage('search');
   setVendors([]);
   emit('vendors', { payload: [] });
@@ -185,7 +184,6 @@ async function startHunt(req: Requirements) {
 
 /** 사용자가 준 업체 URL로 바로 견적 받기 (검색 생략) */
 async function startWithUrls(req: Requirements, urls: string[]) {
-  startRecord();
   setStage('search');
   setVendors([]);
   quoteStore.reset(req, VENDOR_IDS.slice(0, urls.length));
@@ -757,7 +755,6 @@ function openDraft(draft: MailDraft) {
 /** 진행 중인 검색을 멈추고 업체·견적 상태를 비운다 (대화·요구 조건은 호출한 쪽이 정함) */
 async function clearRun() {
   generation++;
-  startRecord();
   docsShown = false;
   compareShown = false;
   announced = '';
@@ -779,6 +776,8 @@ async function clearRun() {
 }
 
 export async function reset() {
+  // 새 견적 = 새 히스토리 기록. 조건 바꾸기는 같은 대화라 같은 기록에 이어서 쌓는다
+  startRecord();
   interview = null;
   requirements = null;
   givenUrls = [];
@@ -793,12 +792,7 @@ export async function revise(fromChat = false) {
   const req = requirements;
   const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
   const rec = recommend(quoteStore.quotes, req);
-  // 이전 검색은 지금 상태 그대로 히스토리 기록으로 마무리하고, 다음 검색은 새 기록으로 쌓는다
-  const recordId = currentRecordId();
-  if (recordId) saveRecord(req, listVendors(), quoteStore.quotes);
-  startRecord();
   const summary: RunSummary = {
-    recordId: recordId ?? undefined,
     requirements: req,
     rows: listVendors().map((v) => {
       const q = quoteStore.get(v.id);
@@ -826,5 +820,5 @@ export async function revise(fromChat = false) {
   timeline({ kind: 'requirements' });
   emit('requirements', { payload: interview.req });
   emit('requirements_ready', { payload: true });
-  if (!fromChat) say('이전 검색 결과는 요약으로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
+  if (!fromChat) say('이전 검색 결과는 위에 그대로 남겨 두었어요. 카드에서 조건을 고치거나 바꿀 내용을 말해 주세요. 준비되면 "이대로 검색 시작"을 눌러 주세요.');
 }

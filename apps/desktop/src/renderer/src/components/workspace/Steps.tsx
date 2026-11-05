@@ -3,10 +3,11 @@ import type { Slot } from '@shared/types';
 import { Task, TaskContent, TaskTrigger } from '@/components/ai-elements/task';
 import { useStore } from '@/store';
 import { cn } from '@/lib/utils';
+import { useRunSel } from '@/runScope';
 
 /** 에이전트 작업 기록: 지금 하는 일 한 줄 + 펼치면 전체 기록 */
 export function Steps({ slot, defaultOpen = false }: { slot: Slot; defaultOpen?: boolean }) {
-  const steps = useStore((s) => s.steps[slot]) ?? [];
+  const steps = useRunSel((s) => s.steps[slot]) ?? [];
   if (steps.length === 0) return null;
   const last = steps[steps.length - 1];
   const running = last.status === 'running';

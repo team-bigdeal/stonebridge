@@ -11,8 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { clock, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill, SectionHead } from './Section';
-import { api } from '@/lib/api';
-import { openReplay } from '@/replay';
+import { useRunStore, useApi } from '@/runScope';
 
 type EditKey = 'item' | 'quantity' | 'budgetMax' | 'deadline' | 'minWarrantyMonths' | 'region';
 const NUM_KEYS: EditKey[] = ['quantity', 'budgetMax', 'minWarrantyMonths'];
@@ -20,7 +19,7 @@ const toNum = (s: string) => Number(s.replace(/[,\s원개월]/g, ''));
 const validNum = (k: EditKey, s: string) => Number.isInteger(toNum(s)) && toNum(s) >= (k === 'minWarrantyMonths' ? 0 : 1);
 
 export function RequirementsCard() {
-  const { requirements, stage, reqReady, busy } = useStore();
+  const { requirements, stage, reqReady, busy } = useRunStore();
   const r = requirements ?? {};
   if (stage === 'interview') return <RequirementsEditor r={r} ready={reqReady} busy={busy} />;
   const items: [string, string | undefined][] = [
@@ -58,6 +57,7 @@ export function RequirementsCard() {
 
 /** 검색 전 확인: 값을 직접 고치고 사용자가 눌러야 검색 시작 */
 function RequirementsEditor({ r, ready, busy }: { r: Partial<Requirements>; ready: boolean; busy: boolean }) {
+  const api = useApi();
   // 입력 중인 문자열만 따로 들고 있다가 시작할 때 숫자로 바꾼다 (지운 칸이 원래 값으로 되돌아가지 않게)
   const [text, setText] = useState<Partial<Record<EditKey, string>>>({});
   const [install, setInstall] = useState<boolean | undefined>(undefined);
@@ -171,11 +171,6 @@ export function HistoryCard({ summary }: { summary: RunSummary }) {
             {summary.reasons.map((x) => <li key={x}>{x}</li>)}
           </ul>
         )}
-        {summary.recordId && (
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => void openReplay(summary.recordId!)}>
-            <History className="size-3.5" /> 이전 검색 다시 보기
-          </Button>
-        )}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -184,7 +179,8 @@ export function HistoryCard({ summary }: { summary: RunSummary }) {
 const KIND_LABEL = { request: '견적 요청', question: '확인 질문', order: '주문 문의' } as const;
 
 export function MailCard({ draft }: { draft: MailDraft }) {
-  const { config, vendors, set } = useStore();
+  const api = useApi();
+  const { config, vendors, set } = useRunStore();
   const [edit, setEdit] = useState(draft);
   const [state, setState] = useState<'draft' | 'sending' | 'sent'>('draft');
   const [error, setError] = useState('');
@@ -287,7 +283,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function UploadCard({ vendorId }: { vendorId: VendorId }) {
-  const { vendors, vendorStatus } = useStore();
+  const api = useApi();
+  const { vendors, vendorStatus } = useRunStore();
   const [drag, setDrag] = useState(false);
   const [name, setName] = useState('');
   const vendor = vendors.find((v) => v.id === vendorId);
