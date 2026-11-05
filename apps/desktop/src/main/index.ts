@@ -28,6 +28,8 @@ function createWindow() {
     title: '돌다리',
     backgroundColor: '#07080b',
     titleBarStyle: 'hiddenInset',
+    // 창 버튼을 상단 바(높이 56px) 가운데 높이에 맞춘다
+    trafficLightPosition: { x: 20, y: 21 },
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,

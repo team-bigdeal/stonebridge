@@ -6,6 +6,7 @@ import { dropReplay } from '@/replay';
 import { cn } from '@/lib/utils';
 import { LiveFrame } from './workspace/LiveFrame';
 import { Steps } from './workspace/Steps';
+import { Mascot } from './Mascot';
 
 /** 상단 단계 이름 (디자인 표기) */
 const STAGE_LABEL: Partial<Record<(typeof STAGES)[number]['id'], string>> = {
@@ -30,11 +31,15 @@ export function TopBar() {
   const current = STAGES.findIndex((s) => s.id === stage);
 
   return (
-    <header className="drag flex shrink-0 items-center gap-6 bg-white py-2.5 pl-20 pr-6 xl:gap-12">
-      <span className="logo-type whitespace-nowrap text-[20px] leading-none text-primary" aria-label="돌다리">StoneBridge</span>
+    <header className="drag flex h-14 shrink-0 items-center border-b bg-white pr-6">
+      {/* 로고 칸은 사이드바와 같은 너비 (창 버튼 오른쪽부터). 단계는 본문이 시작하는 곳에서 */}
+      <div className="flex h-full w-64 shrink-0 items-center gap-2 pl-[88px]">
+        <Mascot size={26} className="rounded-md" />
+        <span className="logo-type whitespace-nowrap text-[19px] leading-none text-primary" aria-label="돌다리">StoneBridge</span>
+      </div>
 
       {/* 진행 단계 */}
-      <ol className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] xl:gap-3 [&::-webkit-scrollbar]:hidden">
+      <ol className="flex min-w-0 items-center gap-1 overflow-x-auto pl-6 xl:pl-8 [scrollbar-width:none] xl:gap-3 [&::-webkit-scrollbar]:hidden">
         {STAGES.map((s, i) => {
           const done = i < current;
           const now = i === current;
