@@ -241,8 +241,8 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
         )}
         <TemplateBar t={t} />
         {view === 0 && saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
-        <div className="relative min-h-0 flex-1">
-          <div className="h-full max-h-[62vh] overflow-y-auto rounded-lg bg-background p-6">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {/* 두 페이지를 계속 그려 둬서 넘겨도 고친 내용이 남는다 */}
             <div className={view === 0 ? '' : 'hidden'}>
