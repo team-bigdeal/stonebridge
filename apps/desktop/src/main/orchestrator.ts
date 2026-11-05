@@ -319,6 +319,7 @@ async function collect(slot: VendorId, gen = generation) {
 
 async function runCollector(slot: VendorId, gen: number, task: { system: string; goal: string; tools: ToolName[] }, mode: 'hunt' | 'collect') {
   if (!requirements) return;
+  const run = runOf(slot);
   const driver = getDriver(slot);
   await setHandoff(slot, undefined);
   try {
@@ -347,9 +348,9 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
           return want.filter(([k]) => !quoteStore.hasField(slot, k)).map(([, label]) => label);
         }
       },
-      { ...task, signal: { get aborted() { return halted(slot, gen); } } }
+      { ...task, signal: { get aborted() { return halted(slot, gen, run); } } }
     );
-    if (halted(slot, gen)) return;
+    if (halted(slot, gen, run)) return;
     const v = getVendor(slot);
     const hasPrice = v ? quoteStore.hasListedPrice(slot) : false;
     if (v && hasPrice) {
@@ -394,7 +395,7 @@ async function runCollector(slot: VendorId, gen: number, task: { system: string;
       }
     }
   } catch (e) {
-    if (halted(slot, gen)) return;
+    if (halted(slot, gen, run)) return;
     setVendorStatus(slot, 'failed');
     notice(`브라우저 ${slot} 오류: ${errMsg(e)}`, slot);
   }
@@ -467,8 +468,12 @@ export async function skip(slot: VendorId) {
   maybeOpenGate();
 }
 
-/** 이 브라우저의 작업을 그만둬야 하는지: 새 견적·조건 변경(generation)이거나 사용자가 멈춤 */
-const halted = (slot: VendorId, gen: number) => gen !== generation || getVendorStatus(slot) === 'stopped';
+/** 브라우저마다 실행 번호. 멈추면 올라가서, 그 전에 시작한 에이전트는 바로 이어서 하기를 눌러도 다시 살아나지 않는다 */
+const runs = new Map<VendorId, number>();
+const runOf = (slot: VendorId) => runs.get(slot) ?? 0;
+
+/** 이 브라우저의 작업을 그만둬야 하는지: 새 견적·조건 변경(generation)이거나 사용자가 멈춤(실행 번호가 바뀜) */
+const halted = (slot: VendorId, gen: number, run: number) => gen !== generation || runOf(slot) !== run;
 
 /** 사용자가 멈춤: 탐색 중인 브라우저만 멈추고, 모은 업체·견적은 그대로 두고 그걸로 비교한다.
  *  메일 회신 대기·파일 분석은 사용자가 이미 맡긴 일이라 그대로 둔다 */
@@ -478,8 +483,9 @@ export function stop() {
     say('지금 멈출 작업이 없어요.');
     return;
   }
-  // 에이전트는 다음 단계에서 이 상태를 보고 스스로 멈춘다 (halted)
+  // 에이전트는 다음 단계에서 실행 번호가 바뀐 것을 보고 스스로 멈춘다 (halted)
   for (const id of running) {
+    runs.set(id, runOf(id) + 1);
     setVendorStatus(id, 'stopped');
     void refreshState(id);
   }
@@ -742,6 +748,7 @@ function checkPriceOutliers() {
 async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSystemPrompt>[2], gen = generation) {
   const v = getVendor(slot);
   if (!requirements || !v) return;
+  const run = runOf(slot);
   const url = quoteStore.get(slot)?.listedPrice.source?.ref || v.url;
   say(`${v.name} 금액이 다른 업체와 약 ${info.ratio.toFixed(1)}배 차이 나요. 수량 기준을 잘못 읽었을 수 있어 다시 확인할게요.`);
   const driver = getDriver(slot);
@@ -765,13 +772,13 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
         goal: `${url} 에서 이 가격이 몇 개(매) 기준인지 다시 확인해 줘.`,
         tools: ['navigate', 'read_text', 'find_in_page', 'snapshot', 'click', 'select_option', 'expand_all', 'report_quote'],
         maxSteps: 12,
-        signal: { get aborted() { return halted(slot, gen); } }
+        signal: { get aborted() { return halted(slot, gen, run); } }
       }
     );
   } catch (e) {
     notice(`${v.name} 가격 재확인 실패: ${errMsg(e)}`, slot);
   }
-  if (halted(slot, gen)) return;
+  if (halted(slot, gen, run)) return;
   setVendorStatus(slot, 'done');
   // 큐가 반영된 뒤 값 비교
   setTimeout(() => {
