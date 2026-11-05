@@ -18,6 +18,7 @@ import { IntegratedDocument } from '@/doc/IntegratedDocument';
 import { DOC_CSS } from '@/doc/styles';
 import { saveDocPdf, saveHtmlPdf, saveXlsx } from '@/doc/print';
 import { EditablePaper } from '@/doc/EditablePaper';
+import { PdfViewer } from '@/components/PdfPaper';
 import { localIsoDate } from '@shared/parse';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
@@ -306,7 +307,7 @@ function OriginalsPane({ list, q }: { list: QuoteOriginal[]; q: Quote }) {
 
 const atText = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** 원본 하나를 받은 모양 그대로: PDF는 PDF 뷰어, 사진은 사진, 메일은 보낸 사람·제목·본문·첨부, 웹은 화면 캡처 */
+/** 원본 하나를 받은 모양 그대로: PDF는 종이처럼 그린 쪽, 사진은 사진, 메일은 보낸 사람·제목·본문·첨부, 웹은 화면 캡처 */
 function OriginalView({ o }: { o: QuoteOriginal }) {
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -342,30 +343,14 @@ function OriginalView({ o }: { o: QuoteOriginal }) {
       )}
       {o.image && <img src={o.image} alt={`${o.title} 화면`} className="w-full rounded border" />}
       {o.fileData && o.mime?.startsWith('image/') && <img src={o.fileData} alt={o.fileName ?? o.title} className="w-full rounded border" />}
-      {o.fileData && o.mime === 'application/pdf' && <PdfFrame title={o.fileName ?? o.title} dataUrl={o.fileData} />}
+      {o.fileData && o.mime === 'application/pdf' && <PdfViewer data={o.fileData} title={o.fileName ?? o.title} fileName={o.fileName ?? o.title} className="h-[70vh]" />}
       {o.text && <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded bg-muted p-3 font-sans text-[13px]">{o.text}</pre>}
       {o.attachments?.map((a, i) => (
         <div key={i} className="mt-3 space-y-1.5">
           <div className="text-[12px] font-semibold text-muted-foreground">첨부 · {a.name}</div>
-          {a.mime === 'application/pdf' ? <PdfFrame title={a.name} dataUrl={a.data} /> : <img src={a.data} alt={a.name} className="w-full rounded border" />}
+          {a.mime === 'application/pdf' ? <PdfViewer data={a.data} title={a.name} fileName={a.name} className="h-[70vh]" /> : <img src={a.data} alt={a.name} className="w-full rounded border" />}
         </div>
       ))}
     </div>
   );
-}
-
-/** 받은 PDF를 앱 안 PDF 뷰어로 (data: URL은 iframe에서 막히는 경우가 있어 blob: URL로 바꿔 띄운다) */
-export function PdfFrame({ title, dataUrl, className }: { title: string; dataUrl: string; className?: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    setSrc(url);
-    return () => URL.revokeObjectURL(url);
-  }, [dataUrl]);
-  if (!src) return null;
-  return <iframe title={title} src={src} className={cn('h-[70vh] w-full rounded border bg-white', className)} />;
 }

@@ -57,6 +57,8 @@ const api = {
   openLoginWindow: (url: string) => ipcRenderer.invoke('browser:login', url),
   resume: (slot: Slot) => ipcRenderer.invoke('agent:resume', slot),
   savePdf: (html: string, name: string): Promise<string | null> => ipcRenderer.invoke('report:pdf', html, name),
+  /** 받은 PDF 원본을 그대로 저장 (저장 위치를 묻는다) */
+  savePdfFile: (data: Uint8Array, name: string): Promise<string | null> => ipcRenderer.invoke('file:savePdf', data, name),
   exportXlsx: (payload: { quotes: Partial<Record<VendorId, Quote>>; req: Requirements; urls: Partial<Record<VendorId, string>>; fileName: string }): Promise<string | null> => ipcRenderer.invoke('report:xlsx', payload),
   polishApproval: (input: PolishInput): Promise<{ ok: true; result: PolishResult } | { ok: false; error: string }> => ipcRenderer.invoke('approval:polish', input),
   templateGet: (): Promise<TemplateInfo | null> => ipcRenderer.invoke('template:get'),
