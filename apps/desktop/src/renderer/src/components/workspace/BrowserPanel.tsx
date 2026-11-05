@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, FileText, Maximize2, Play, RefreshCw, Replace, ShieldAlert, SkipForward } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Maximize2, Play, RefreshCw, Replace, ShieldAlert, SkipForward, Square } from 'lucide-react';
 import type { Slot, VendorId, VendorStatus } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -99,17 +99,17 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
       </div>
 
       <Steps slot={slot} />
-      {vid && (hasDoc || status === 'failed') && (
+      {vid && (hasDoc || status === 'failed' || status === 'stopped') && (
         <div className="flex flex-wrap gap-2">
           {hasDoc && (
             <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'vendor', id: vid } })}>
               <FileText className="size-4" /> 견적서 보기
             </Button>
           )}
-          {status === 'failed' && (
+          {(status === 'failed' || status === 'stopped') && (
             <>
               <Button variant="secondary" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.retry(vid)}>
-                <RefreshCw className="size-4" /> 다시 시도
+                <RefreshCw className="size-4" /> {status === 'stopped' ? '이어서 하기' : '다시 시도'}
               </Button>
               <Button variant="outline" className="h-auto flex-1 px-4 py-2.5 text-[14px]" onClick={() => api.replace(vid)}>
                 <Replace className="size-4" /> 다른 업체로
@@ -125,11 +125,23 @@ export function BrowserPanel({ slot, title, className }: { slot: Slot; title?: s
 
 /** 브라우저 3개를 나란히 */
 export function BrowserGrid() {
+  const api = useApi();
+  const { vendorStatus, scoped } = useRunStore();
+  const running = !scoped && (['A', 'B', 'C'] as const).some((id) => vendorStatus[id] === 'browsing');
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      {(['A', 'B', 'C'] as const).map((id) => (
-        <BrowserPanel key={id} slot={id} />
-      ))}
+    <div className="space-y-3">
+      {running && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="outline" onClick={() => api.stop()} title="탐색을 멈추고 지금까지 모은 견적으로 비교해요">
+            <Square className="size-3.5" /> 멈추기
+          </Button>
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {(['A', 'B', 'C'] as const).map((id) => (
+          <BrowserPanel key={id} slot={id} />
+        ))}
+      </div>
     </div>
   );
 }
