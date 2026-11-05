@@ -215,7 +215,7 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
         {has && (
           <div className="flex justify-end gap-1">
             <Button variant="outline" className={ROW_BTN} onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
-              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 견적서
+              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0 dark:invert" /> 견적서
             </Button>
             {canAct && q.channel === 'web' && !scoped && (
               <Button variant="outline" className={ROW_BTN} disabled={opening} onClick={() => void openHere()} title="이 업체 주문 페이지를 앱 안 브라우저로 열기">
@@ -224,7 +224,7 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
             )}
             {canAct && (
               <Button variant="outline" className={ROW_BTN} onClick={() => api.draftOrder(q.vendorId)}>
-                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 주문 문의
+                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0 dark:invert" /> 주문 문의
               </Button>
             )}
           </div>
@@ -359,7 +359,7 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
         {has && (
           <div className="mt-auto flex flex-wrap gap-2">
             <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} onClick={() => set({ viewer: { kind: 'vendor', id: q.vendorId } })}>
-              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 견적서
+              <img src={docIcon} alt="" width={16} height={16} className="max-w-none shrink-0 dark:invert" /> 견적서
             </Button>
             {canAct && q.channel === 'web' && !scoped && (
               <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} disabled={opening} onClick={() => void openHere()} title="이 업체 주문 페이지를 앱 안 브라우저로 열기">
@@ -368,7 +368,7 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
             )}
             {canAct && (
               <Button variant="outline" className={cn(ROW_BTN, 'flex-1 py-2')} onClick={() => api.draftOrder(q.vendorId)}>
-                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0" /> 주문 문의
+                <img src={cartIcon} alt="" width={16} height={16} className="max-w-none shrink-0 dark:invert" /> 주문 문의
               </Button>
             )}
           </div>
@@ -589,7 +589,7 @@ function OrderPicker({ defaultVendorId, req }: { defaultVendorId: VendorId; req:
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-ink">
-        <img src={cartIcon} alt="" className="size-5" />
+        <img src={cartIcon} alt="" className="size-5 dark:invert" />
         {q.vendorName}에 주문하기
         <span className="text-[14px] font-medium text-muted-foreground">합계 {has(cur) ? won(confirmedSum(q, req)) : '미확인'}</span>
       </div>
