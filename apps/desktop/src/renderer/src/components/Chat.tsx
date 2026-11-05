@@ -48,12 +48,12 @@ export function Chat() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Conversation className="min-h-0">
-        <ConversationContent className="mx-auto w-full max-w-[1440px] gap-6 px-8 py-8">
+        <ConversationContent className="w-full gap-6 px-8 py-8">
           {timeline.map((item) => (
             <Item key={item.id} item={item} animate={!settled.current.has(item.id)} />
           ))}
           {busy && (
-            <div className="mx-auto w-full max-w-[760px] animate-in fade-in-0 duration-300 motion-reduce:animate-none">
+            <div className="w-full animate-in fade-in-0 duration-300 motion-reduce:animate-none">
               <Typing />
             </div>
           )}
@@ -63,7 +63,7 @@ export function Chat() {
 
       {replay ? (
         <div className="border-t bg-background px-8 py-4">
-          <div className="mx-auto flex max-w-[760px] animate-in items-center gap-3 rounded-xl border bg-card px-4 py-3 text-[13px] fade-in-0 slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
+          <div className="flex animate-in items-center gap-3 rounded-xl border bg-card px-4 py-3 text-[13px] fade-in-0 slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
             <History className="size-4 shrink-0 text-muted-foreground" />
             <span className="text-muted-foreground">지난 견적을 보는 중이에요. 견적서와 원본은 볼 수 있지만 이어서 진행할 수는 없어요.</span>
             <Button size="sm" className="ml-auto shrink-0" onClick={exitReplay}>
@@ -98,7 +98,7 @@ function Composer() {
 
   return (
     <div ref={box} className="border-t bg-background px-8 pb-4 pt-3">
-      <div className="mx-auto max-w-[760px] space-y-2">
+      <div className="space-y-2">
         {chips.length > 0 && (
           <Suggestions key={fresh ? 'examples' : 'follow-ups'} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
             {chips.map((c) => (
@@ -176,8 +176,9 @@ function Typing() {
 }
 
 /** 대화 폭(읽기용)과 작업 폭(표·브라우저)을 나눈다 */
-const Narrow = ({ children }: { children: React.ReactNode }) => <div className="mx-auto w-full max-w-[760px]">{children}</div>;
-const Medium = ({ children }: { children: React.ReactNode }) => <div className="mx-auto w-full max-w-[1100px]">{children}</div>;
+/** 메시지·카드 모두 좌우 폭을 다 쓴다 (어시스턴트는 왼쪽, 사용자는 오른쪽 끝으로) */
+const Narrow = ({ children }: { children: React.ReactNode }) => <div className="w-full">{children}</div>;
+const Medium = ({ children }: { children: React.ReactNode }) => <div className="w-full">{children}</div>;
 const Wide = ({ children }: { children: React.ReactNode }) => <div className="w-full">{children}</div>;
 
 /** 이전 검색에 속한 카드는 그 검색의 얼려 둔 상태로 그린다 */
@@ -198,7 +199,7 @@ function ItemBody({ item }: { item: TimelineItem }) {
     case 'user':
       return (
         <Narrow>
-          <Message from="user" className="max-w-[640px]">
+          <Message from="user" className="max-w-[75%]">
             <MessageContent className="whitespace-pre-wrap text-[14px] leading-relaxed group-[.is-user]:rounded-2xl group-[.is-user]:px-4 group-[.is-user]:py-2.5">{item.text}</MessageContent>
           </Message>
         </Narrow>
