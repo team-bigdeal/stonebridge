@@ -24,12 +24,14 @@ export function QuoteViewer() {
   // 이전 검색 카드에서 연 견적서면 그 검색의 값으로
   const { quotes, requirements, vendors, originals } = viewer?.scope ?? live;
   const [saved, setSaved] = useState('');
+  const [error, setError] = useState('');
   if (!viewer || !requirements?.deadline) return null;
   const req = requirements as Requirements;
   const urls = Object.fromEntries(vendors.map((v) => [v.id, v.url])) as Partial<Record<VendorId, string>>;
   const close = () => {
     set({ viewer: null });
     setSaved('');
+    setError('');
   };
 
   if (viewer.kind === 'approval') return <ApprovalViewer req={req} quotes={quotes} urls={urls} onClose={close} />;
@@ -48,12 +50,22 @@ export function QuoteViewer() {
               <Button size="sm" variant="outline" onClick={async () => setSaved((await saveDocPdf(el, `통합견적서_${req.item}`)) ?? '')}>
                 <Download className="size-4" /> PDF 저장
               </Button>
-              <Button size="sm" variant="outline" onClick={async () => setSaved((await saveXlsx({ quotes, req, urls, fileName: `통합견적서_${req.item}` })) ?? '')}>
+              <Button size="sm" variant="outline" onClick={async () => {
+                  setError('');
+                  try {
+                    // 화면 상태(프록시 등)를 떼어 순수 데이터로 보낸다
+                    setSaved((await saveXlsx(JSON.parse(JSON.stringify({ quotes, req, urls, fileName: `통합견적서_${req.item}` })))) ?? '');
+                  } catch (e) {
+                    setSaved('');
+                    setError(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e));
+                  }
+                }}>
                 <Download className="size-4" /> 엑셀로 저장
               </Button>
             </div>
           </DialogHeader>
           {saved && <div className="truncate text-[12px] text-ok" title={saved}>저장했어요 · {saved}</div>}
+          {error && <div className="text-[12px] text-destructive">엑셀 저장 실패 · {error}</div>}
           <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}

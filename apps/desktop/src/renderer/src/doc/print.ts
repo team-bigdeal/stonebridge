@@ -15,5 +15,7 @@ export async function saveDocPdf(el: ReactElement, fileName: string) {
 
 /** 통합 견적서를 엑셀로 저장 (main이 원본 견적으로 다시 계산해서 만든다) */
 export async function saveXlsx(payload: Parameters<typeof window.doldari.exportXlsx>[0]) {
+  // 개발 중 화면만 새로 고쳐지고 앱(preload·main)은 예전 그대로면 이 함수가 없다
+  if (typeof window.doldari.exportXlsx !== 'function') throw new Error('앱이 예전 버전으로 떠 있어요. 돌다리를 완전히 종료하고 다시 실행해 주세요.');
   return window.doldari.exportXlsx(payload);
 }

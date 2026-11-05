@@ -1,4 +1,5 @@
 // 통합 견적서 엑셀(.xlsx) 내보내기
+import fs from 'node:fs';
 import { dialog, type BrowserWindow as Win } from 'electron';
 import ExcelJS from 'exceljs';
 import type { Quote, Requirements, VendorId } from '@shared/types';
@@ -113,12 +114,25 @@ export function buildWorkbook({ quotes, req, urls }: XlsxPayload): ExcelJS.Workb
 }
 
 export async function exportXlsx(parent: Win, payload: XlsxPayload) {
+  // 저장 창을 띄우기 전에 먼저 만들어서, 만들다 실패하면 바로 오류가 드러나게 한다
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(await buildWorkbook(payload).xlsx.writeBuffer());
+  } catch (e) {
+    console.error('[xlsx] 만들기 실패', e);
+    throw new Error(`엑셀을 만들지 못했어요: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const { filePath, canceled } = await dialog.showSaveDialog(parent, {
     title: '통합 견적서 엑셀 저장',
     defaultPath: `${safeName(payload.fileName)}.xlsx`,
     filters: [{ name: 'Excel', extensions: ['xlsx'] }]
   });
   if (canceled || !filePath) return null;
-  await buildWorkbook(payload).xlsx.writeFile(filePath);
+  try {
+    fs.writeFileSync(filePath, buffer);
+  } catch (e) {
+    // 엑셀에서 같은 파일이 열려 있으면 여기서 실패한다
+    throw new Error(`파일을 쓰지 못했어요 (같은 이름 파일이 열려 있나요?): ${e instanceof Error ? e.message : String(e)}`);
+  }
   return filePath;
 }
