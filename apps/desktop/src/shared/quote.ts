@@ -2,6 +2,7 @@
 import type { Field, FieldKey, Quote, Requirements, VendorId } from './types';
 import { FIELD_KEYS } from './types';
 import { localIsoDate } from './parse';
+import { josa } from './josa';
 
 export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 
@@ -122,8 +123,8 @@ export function evaluateConditions(q: Quote, req: Requirements): ConditionResult
   else if (q.warrantyExtraFee.value !== null) warranty = 'ok';
   const violations: string[] = [];
   if (q.meta?.priceDoubt) violations.push('가격 기준(1개·묶음) 확인 필요');
-  if (budget === 'violate') violations.push(`총액 ${won(sum)}로 예산 ${won(req.budgetMax)} 초과`);
-  if (deadline === 'violate') violations.push(`납기 ${lead}일로 요청 기한(${limit}일) 초과`);
+  if (budget === 'violate') violations.push(`총액 ${josa(won(sum), '으로/로')} 예산 ${won(req.budgetMax)} 초과`);
+  if (deadline === 'violate') violations.push(`납기 ${josa(`${lead}일`, '으로/로')} 요청 기한(${limit}일) 초과`);
   // 가격 기준을 확인하지 못한 견적은 금액 비교 자체를 믿을 수 없으니 조건 위반처럼 추천에서 뺀다
   const checks = [budget, deadline, warranty, q.meta?.priceDoubt ? ('violate' as Check) : ('ok' as Check)];
   const overall: Check = checks.includes('violate') ? 'violate' : checks.includes('unknown') ? 'unknown' : 'ok';
@@ -160,9 +161,9 @@ export function recommend(quotes: Partial<Record<VendorId, Quote>>, req: Require
     if (e === pick || reasons.length >= 3) continue;
     if (e.c.violations.length > 0) {
       const lead = e === cheapest ? `총액 최저(${won(e.sum)})지만 ` : '';
-      reasons.push(`${e.q.vendorName}는 ${lead}${e.c.violations.join(', ')}`);
+      reasons.push(`${josa(e.q.vendorName, '은/는')} ${lead}${e.c.violations.join(', ')}`);
     } else {
-      reasons.push(`${e.q.vendorName}는 총액 ${won(e.sum)}로 더 비쌈`);
+      reasons.push(`${josa(e.q.vendorName, '은/는')} 총액 ${josa(won(e.sum), '으로/로')} 더 비쌈`);
     }
   }
   return { vendorId: pick?.q.vendorId ?? null, tentative: pick ? pick.c.overall !== 'ok' : true, reasons };

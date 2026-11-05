@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
+import { josa } from '@shared/josa';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, missingKeys, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
@@ -332,13 +333,6 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   if (gen === generation) maybeOpenGate();
 }
 
-/** 이름 뒤에 을/를 (받침 있으면 을). 한글로 안 끝나면 "을(를)" */
-function withEulReul(name: string) {
-  const c = name.trim().slice(-1).charCodeAt(0);
-  if (c < 0xac00 || c > 0xd7a3) return `${name}을(를)`;
-  return `${name}${(c - 0xac00) % 28 ? '을' : '를'}`;
-}
-
 /** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인 */
 async function siteName(url: string): Promise<string> {
   const host = (() => {
@@ -432,7 +426,7 @@ async function useFallback(slot: VendorId, fb: Fallback, exhausted: boolean) {
     const message = messageDraft(slot, requirements, fb.contact);
     messages.set(slot, message);
     const how = message.chatUrl && message.phone ? '카카오톡이나 문자' : message.chatUrl ? '카카오톡' : message.phone ? '문자' : '카카오톡·문자';
-    say(`${why}${fb.vendor.name}는 ${how}로 견적을 받아야 해요 (${clause(fb.reason)}). 아래 문의 초안을 확인해 보내 주세요. 받은 견적서 PDF를 올리거나 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교할게요.`);
+    say(`${why}${josa(fb.vendor.name, '은/는')} ${how}로 견적을 받아야 해요 (${clause(fb.reason)}). 아래 문의 초안을 확인해 보내 주세요. 받은 견적서 PDF를 올리거나 답장을 붙여 넣으면 웹 견적과 같은 기준으로 비교할게요.`);
     timeline({ kind: 'upload', vendorId: slot, message });
   }
 }
@@ -654,7 +648,7 @@ async function skipNow(slot: VendorId) {
     await useFallback(slot, best, true);
   } else {
     setVendorStatus(slot, 'failed');
-    say(`브라우저 ${slot}: ${v ? v.name : '이 업체'}는 건너뛰었어요. 더 시도할 업체가 없으면 업체 URL을 붙여 넣어 주세요.`);
+    say(`브라우저 ${slot}: ${v ? josa(v.name, '은/는') : '이 업체는'} 건너뛰었어요. 더 시도할 업체가 없으면 업체 URL을 붙여 넣어 주세요.`);
   }
   maybeOpenGate();
 }
@@ -710,7 +704,7 @@ export function replace(slot: VendorId) {
   if (!requirements || !VENDOR_IDS.includes(slot) || pendingSlots.has(slot) || ['browsing', 'parsing'].includes(getVendorStatus(slot))) return;
   if (old) {
     banned.add(hostKey(old.url));
-    say(`${old.name}는 빼고 브라우저 ${slot}로 다른 업체를 찾아볼게요.`);
+    say(`${josa(old.name, '은/는')} 빼고 브라우저 ${slot}로 다른 업체를 찾아볼게요.`);
   }
   dropVendor(slot);
   tries.set(slot, 0);
@@ -1044,7 +1038,7 @@ function onQuotesSettled() {
   announced = key;
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
   // 금액·이유는 아래 추천 카드에 있으니 채팅은 한 줄로
-  say(`${rec.vendorId ? `${withEulReul(vendorName(rec.vendorId))} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
+  say(`${rec.vendorId ? `${josa(vendorName(rec.vendorId), '을/를')} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
   // 통합 견적서 카드는 내용이 실시간으로 바뀌므로 한 번만 띄운다
   if (reportShown) return;
   reportShown = true;
@@ -1138,7 +1132,7 @@ async function verifyPrice(slot: VendorId, info: Parameters<typeof verifyPriceSy
       say(`${v.name} 가격을 다시 확인했어요. 수량 기준은 맞고 실제로 차이가 나요.${note ? ` ${note}` : ''}`);
     } else {
       quoteStore.mergeMeta(slot, { priceDoubt: note || '기준 수량을 확인하지 못함' });
-      say(`${v.name}는 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
+      say(`${josa(v.name, '은/는')} 금액이 몇 개 기준인지 확인하지 못해 추천에서 뺐어요. 사이트에서 직접 확인해 주세요.${note ? ` ${note}` : ''}`);
     }
     announced = '';
     onQuotesSettled();
