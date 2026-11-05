@@ -1,7 +1,8 @@
 // 웹 검색으로 고른 업체 목록 (실행 중 레지스트리)
 import type { VendorId, VendorInfo } from '@shared/types';
+import { scoped } from './session';
 
-const vendors = new Map<VendorId, VendorInfo>();
+const vendors = scoped(() => new Map<VendorId, VendorInfo>());
 
 export const setVendors = (list: VendorInfo[]) => {
   vendors.clear();

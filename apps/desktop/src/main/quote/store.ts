@@ -6,6 +6,7 @@ import { sleep } from '../config';
 import { emit, notice } from '../events';
 import { vendorName } from '../vendors';
 import { normalizeField } from './normalize';
+import { scoped } from '../session';
 
 interface Pending {
   vendorId: VendorId;
@@ -243,4 +244,4 @@ class QuoteStore {
   }
 }
 
-export const quoteStore = new QuoteStore();
+export const quoteStore = scoped(() => new QuoteStore());

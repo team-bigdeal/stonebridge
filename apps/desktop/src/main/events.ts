@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { BrowserWindow } from 'electron';
 import type { AgentEvent, AgentEventType, AgentStep, Slot, Stage, TimelineItem, VendorId, VendorStatus } from '@shared/types';
 import { maskText } from '@shared/privacy';
+import { currentSid, scoped } from './session';
 
 let win: BrowserWindow | null = null;
 export const bindWindow = (w: BrowserWindow) => (win = w);
@@ -19,7 +20,7 @@ export function onEmit(fn: (ev: AgentEvent) => void) {
 }
 
 export function emit(type: AgentEventType, fields: Omit<AgentEvent, 'type' | 'at'> = {}) {
-  const ev = { type, at: new Date().toISOString(), ...fields } satisfies AgentEvent;
+  const ev = { type, at: new Date().toISOString(), sid: currentSid(), ...fields } satisfies AgentEvent;
   send('agent:event', ev);
   for (const fn of emitListeners) fn(ev);
 }
@@ -46,16 +47,16 @@ export function step(slot: Slot, tool: string, intent: string) {
 
 export const setBusy = (busy: boolean) => emit('busy', { payload: busy });
 
-let currentStage: Stage = 'interview';
+const stageOf = scoped(() => ({ stage: 'interview' as Stage }));
 const order: Stage[] = ['interview', 'search', 'collect', 'compare', 'questions', 'draft'];
-export const getStage = () => currentStage;
+export const getStage = () => stageOf.stage;
 export function setStage(stage: Stage, force = false) {
-  if (!force && order.indexOf(stage) <= order.indexOf(currentStage)) return;
-  currentStage = stage;
+  if (!force && order.indexOf(stage) <= order.indexOf(stageOf.stage)) return;
+  stageOf.stage = stage;
   emit('stage', { payload: stage });
 }
 
-const statuses: Partial<Record<VendorId, VendorStatus>> = {};
+const statuses = scoped((): Partial<Record<VendorId, VendorStatus>> => ({}));
 export const getVendorStatus = (id: VendorId) => statuses[id] ?? 'idle';
 export function setVendorStatus(vendorId: VendorId, status: VendorStatus) {
   statuses[vendorId] = status;

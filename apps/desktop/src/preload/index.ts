@@ -32,7 +32,7 @@ const api = {
   cancelGoogle: (): Promise<void> => ipcRenderer.invoke('google:cancel'),
   disconnectGoogle: (): Promise<AppConfig> => ipcRenderer.invoke('google:disconnect'),
   onEvent: (cb: (ev: AgentEvent) => void) => on('agent:event', cb),
-  onFrame: (cb: (f: { slot: Slot; data: string }) => void) => on('browser:frame', cb),
+  onFrame: (cb: (f: { sid: string; slot: Slot; data: string }) => void) => on('browser:frame', cb),
   sendChat: (text: string) => ipcRenderer.invoke('chat:send', text),
   startSearch: (patch: Partial<Requirements>) => ipcRenderer.invoke('flow:start', patch),
   /** 요구 조건 패널에서 품목을 바꿈 → 새 품목에 맞는 세부 조건으로 다시 */

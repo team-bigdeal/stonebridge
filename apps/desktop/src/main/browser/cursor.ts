@@ -2,8 +2,10 @@
 // 좌표는 페이지 뷰포트 기준 0~1로 정규화해 내장 브라우저의 커서 뷰에 넘긴다.
 import type { Slot } from '@shared/types';
 import { sleep } from '../config';
+import { currentSid } from '../session';
 
 export interface CursorEvent {
+  sid: string;
   slot: Slot;
   x: number;
   y: number;
@@ -21,7 +23,7 @@ export const onCursor = (l: Listener) => {
 /** 커서 이동 (뷰포트 좌표 x, y와 뷰포트 크기) */
 export async function cursorTo(slot: Slot, x: number, y: number, vw: number, vh: number, click = false) {
   if (!vw || !vh) return;
-  const e: CursorEvent = { slot, x: Math.max(0, Math.min(1, x / vw)), y: Math.max(0, Math.min(1, y / vh)), click };
+  const e: CursorEvent = { sid: currentSid(), slot, x: Math.max(0, Math.min(1, x / vw)), y: Math.max(0, Math.min(1, y / vh)), click };
   for (const l of listeners) l(e);
   await sleep(click ? 180 : 320);
 }

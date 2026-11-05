@@ -160,7 +160,7 @@ export class ElectronDriver implements BrowserDriver {
   /** 사이트가 window.open으로 띄운 견적서 팝업 (보이지 않는 창). 원래 창(opener)에서 값을 읽어 채우는 견적서가 있어 실제 창으로 연다 */
   private popup: { win: BrowserWindow; at: number; timer: NodeJS.Timeout } | null = null;
 
-  constructor(readonly slot: Slot) {
+  constructor(readonly slot: Slot, readonly sid: string) {
     // disableDialogs: 사이트의 alert/confirm 창이 앱 창 전체를 덮지 않게 한다 (alert는 확인, confirm은 취소로 처리됨)
     this.view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, disableDialogs: true, session: browserSession() } });
     this.view.setBorderRadius?.(8);
@@ -211,7 +211,7 @@ export class ElectronDriver implements BrowserDriver {
     this.frameTimer = setInterval(() => void this.captureFrame(), 2000);
 
     this.offCursor = onCursor((e) => {
-      if (e.slot === this.slot) this.moveCursor(e.x, e.y, Boolean(e.click));
+      if (e.slot === this.slot && e.sid === this.sid) this.moveCursor(e.x, e.y, Boolean(e.click));
     });
   }
 
@@ -262,7 +262,7 @@ export class ElectronDriver implements BrowserDriver {
     const img = await this.view.webContents.capturePage().catch(() => null);
     if (!img || img.isEmpty()) return;
     const out = img.getSize().width > 1100 ? img.resize({ width: 1100 }) : img;
-    send('browser:frame', { slot: this.slot, data: `data:image/jpeg;base64,${out.toJPEG(65).toString('base64')}` });
+    send('browser:frame', { sid: this.sid, slot: this.slot, data: `data:image/jpeg;base64,${out.toJPEG(65).toString('base64')}` });
   }
 
   private moveCursor(nx: number, ny: number, click: boolean) {

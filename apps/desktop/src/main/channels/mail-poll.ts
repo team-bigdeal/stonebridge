@@ -6,6 +6,7 @@ import type { MailKind, VendorId } from '@shared/types';
 import { config, imapConfigured } from '../config';
 import { notice } from '../events';
 import { googleAccessToken, googleAccount } from './google-auth';
+import { bindSession, currentSid } from '../session';
 
 export interface IncomingReply {
   vendorId: VendorId;
@@ -18,6 +19,7 @@ export interface IncomingReply {
 }
 
 interface Watch {
+  sid: string;
   vendorId: VendorId;
   kind: MailKind;
   tag: string;
@@ -52,7 +54,8 @@ export function watchReply(vendorId: VendorId, kind: MailKind, tag: string, onRe
   // 기다리는 회신이 하나도 없을 때만 기준 날짜를 정한다 (기다리는 중에 앞당기면 그 사이 온 회신을 놓침).
   // IMAP SINCE는 날짜 단위라 시간대 차이에 걸리지 않도록 하루 앞에서부터 본다
   if (watches.size === 0) since = new Date(Date.now() - 24 * 3600_000);
-  watches.set(tag, { vendorId, kind, tag, resolve: onReply });
+  // 회신은 폴링 타이머에서 오므로, 기다리기 시작한 견적 세션에서 처리되게 묶어 둔다
+  watches.set(tag, { sid: currentSid(), vendorId, kind, tag, resolve: bindSession(onReply) });
   resumePolling();
 }
 
@@ -77,10 +80,11 @@ export function cancelWatch(tag: string) {
   watches.delete(tag);
 }
 
-/** 새 견적·조건 변경 때: 이전 검색의 회신은 더 기다리지 않는다 */
+/** 새 견적·조건 변경 때: 이 세션의 이전 검색 회신은 더 기다리지 않는다 (다른 세션 회신은 계속) */
 export function cancelAllWatches() {
-  watches.clear();
-  stopPolling();
+  const sid = currentSid();
+  for (const [tag, w] of watches) if (w.sid === sid) watches.delete(tag);
+  if (watches.size === 0) stopPolling();
 }
 
 /** 다음 폴링을 기다리지 않고 바로 확인 (멈춰 있었으면 다시 시작) */
