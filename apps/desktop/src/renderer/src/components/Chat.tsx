@@ -6,6 +6,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
   Message,
   MessageAction,
@@ -54,6 +55,33 @@ const FOLLOW_UPS = [
   "5일 안에 받을 수 있는 곳으로 다시 찾아 줘",
 ];
 
+/**
+ * 업체 브라우저가 탐색하는 동안에는 새 카드(메일 등)가 붙어도 맨 아래로 따라가지 않고 브라우저 칸을 화면에 둔다.
+ * 브라우저 칸이 화면에 다 보여야 실제 브라우저와 에이전트 커서가 붙기 때문이다. 탐색이 끝나면 다시 맨 아래로 간다.
+ */
+function HoldBrowsers() {
+  const { stopScroll, scrollToBottom } = useStickToBottomContext();
+  const browsing = useStore((s) => Object.values(s.vendorStatus).some((v) => v === "browsing"));
+  const count = useStore((s) => s.timeline.length);
+  const was = useRef(false);
+  useEffect(() => {
+    if (!browsing) return;
+    stopScroll();
+    // 맨 아래로 가는 부드러운 스크롤이 끝난 뒤 마지막 브라우저 칸을 위에 맞춘다
+    const t = setTimeout(() => {
+      stopScroll();
+      const grids = document.querySelectorAll("[data-browser-grid]");
+      grids[grids.length - 1]?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [browsing, count, stopScroll]);
+  useEffect(() => {
+    if (was.current && !browsing) void scrollToBottom();
+    was.current = browsing;
+  }, [browsing, scrollToBottom]);
+  return null;
+}
+
 /** 대화 하나로 이어지는 흐름 (AI Elements Conversation · Message · PromptInput · Suggestion) */
 export function Chat() {
   const { timeline, busy, replay, stage, runOf } = useStore();
@@ -94,6 +122,7 @@ export function Chat() {
             )}
           </ConversationContent>
           <ConversationScrollButton />
+          {!replay && <HoldBrowsers />}
         </Conversation>
       )}
 
