@@ -165,7 +165,9 @@ showInstall·showWarranty·showRegion은 이 품목에서 설치 여부·A/S 기
     const prev = new Map((this.req.specs ?? []).map((s) => [s.label, s]));
     const merged = next.slice(0, 4).map((s) => {
       const old = prev.get(s.label);
-      return { label: s.label, value: old?.value ?? s.value, ...(s.unit ? { unit: s.unit } : {}), ...(s.options?.length ? { options: s.options.slice(0, 4) } : {}) };
+      // 고를 값이 정해진 항목에 선택지에 없는 값(예: 재질 선택지 유포지/PVC/투명인데 "방수")이 오면 비워 둔다
+      const fits = !s.options?.length || s.value === null || s.options.some((o) => o.replace(/\s/g, '') === s.value!.replace(/\s/g, ''));
+      return { label: s.label, value: old?.value ?? (fits ? s.value : null), ...(s.unit ? { unit: s.unit } : {}), ...(s.options?.length ? { options: s.options.slice(0, 4) } : {}) };
     });
     if (merged.length) this.req.specs = merged;
   }
