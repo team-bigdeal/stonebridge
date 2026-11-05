@@ -50,6 +50,7 @@ export async function readText(d: BrowserDriver, maxChars = 12000) {
   const body = (text ?? '').replace(/\n{3,}/g, '\n\n');
   const prices = await priceCandidates(d).catch(() => '');
   const hints = await findInPage(d, INFO_KEYWORDS, 10).catch(() => '');
+  const contacts = await contactLinks(d).catch(() => '');
   // 길면 앞부분과 끝부분(사업자 정보·배송 안내가 주로 맨 아래)을 같이 준다
   const shown =
     body.length > maxChars
@@ -58,7 +59,37 @@ export async function readText(d: BrowserDriver, maxChars = 12000) {
   // 다른 출처 iframe 안(옵션 선택·가격 계산기)도 함께 준다
   const frames = (await d.frameTexts?.().catch(() => [])) ?? [];
   const frameText = frames.map((f) => `\n\n## iframe (${f.host}) 안 내용\n${f.text}`).join('');
-  return `URL: ${await d.url()}${prices}${hints ? `\n\n## 배송·납기·비용 관련 문구 (탭·접힌 영역 포함)\n${hints}` : ''}\n\n## 본문\n${shown}${frameText}`;
+  return `URL: ${await d.url()}${prices}${hints ? `\n\n## 배송·납기·비용 관련 문구 (탭·접힌 영역 포함)\n${hints}` : ''}${contacts}\n\n## 본문\n${shown}${frameText}`;
+}
+
+// 카톡·톡톡·메일·전화 버튼은 아이콘만 있는 경우가 많아 innerText에 주소가 안 나온다. 링크 주소와 카카오 SDK 채널 id를 따로 뽑는다
+const CONTACT_LINKS_JS = `(() => {
+  const out = new Set();
+  const docs = [document];
+  for (const f of document.querySelectorAll('iframe')) { try { if (f.contentDocument && f.contentDocument.body) docs.push(f.contentDocument); } catch (e) {} }
+  const chat = /https?:\\/\\/(?:pf\\.kakao\\.com|open\\.kakao\\.com|talk\\.naver\\.com)\\/[^\\s'"<>)]+/;
+  const dec = (s) => { try { return decodeURIComponent(s); } catch (e) { return s; } };
+  for (const doc of docs) {
+    for (const a of doc.querySelectorAll('a[href], [onclick]')) {
+      const href = a.getAttribute('href') || '';
+      const m = (href + ' ' + (a.getAttribute('onclick') || '')).match(chat);
+      const v = m ? m[0] : /^(mailto|tel|sms):/i.test(href) ? href.split('?')[0] : '';
+      if (!v) continue;
+      const img = a.querySelector('img');
+      const label = (a.innerText || a.getAttribute('aria-label') || a.getAttribute('title') || (img && img.alt) || '').replace(/\\s+/g, ' ').trim().slice(0, 30);
+      out.add((label ? label + ' → ' : '') + dec(v));
+    }
+    for (const e of doc.querySelectorAll('[data-channel-public-id]')) out.add('카카오톡 채널 → https://pf.kakao.com/' + e.getAttribute('data-channel-public-id'));
+    for (const s of doc.querySelectorAll('script:not([src])')) {
+      for (const m of (s.textContent || '').matchAll(/channelPublicId\\s*:\\s*['"](_\\w+)['"]/g)) out.add('카카오톡 채널 → https://pf.kakao.com/' + m[1]);
+    }
+  }
+  return [...out].slice(0, 15);
+})()`;
+
+async function contactLinks(d: BrowserDriver) {
+  const links = await d.evaluate<string[]>(CONTACT_LINKS_JS);
+  return links?.length ? `\n\n## 연락처 링크 (아이콘 버튼 포함)\n${links.map((l) => `- ${l}`).join('\n')}` : '';
 }
 
 /** 견적에 자주 빠지는 정보의 키워드 */
