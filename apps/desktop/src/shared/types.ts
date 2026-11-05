@@ -136,6 +136,8 @@ export interface QuoteOriginal {
 export interface QuoteMeta {
   /** 표시가가 몇 개(매) 기준 가격인지 (1000매 묶음이면 1000) */
   priceQty?: number;
+  /** 주문할 상품 페이지 주소 (가격을 본 상품·주문 화면. FAQ·안내 페이지는 넣지 않음) */
+  productUrl?: string;
   /** 견적서에 적힌 최종 합계 (앱 계산과 맞는지 확인용) */
   statedTotal?: number;
   /** 앱이 계산한 합계가 견적서 합계와 달라서 알린 경우 */

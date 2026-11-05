@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, ChevronRight, ExternalLink, FileText, ImageOff, Info, LayoutGrid, Package, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
-import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
+import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
@@ -602,8 +602,7 @@ export function OrderActions({ vendorId }: { vendorId: VendorId }) {
   const [msg, setMsg] = useState('');
   const q = quotes[vendorId];
   if (!q) return null;
-  const src = q.listedPrice.source;
-  const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : vendors.find((v) => v.id === vendorId)?.url;
+  const url = orderUrl(q, vendors.find((v) => v.id === vendorId)?.url);
   const web = q.channel === 'web' && Boolean(url);
   const openHere = async () => {
     setOpening(true);
