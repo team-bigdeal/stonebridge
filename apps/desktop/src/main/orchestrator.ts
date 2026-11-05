@@ -6,7 +6,7 @@ import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, Quote, Qu
 import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
 import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
-import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
+import { isDemoAddress } from '@shared/mail';
 import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { demoMailTo, hasApiKey, imapConfigured, mailUser, sleep } from './config';
 import {
@@ -27,7 +27,7 @@ import { collectSystemPrompt, formSystemPrompt, huntSystemPrompt, verifyPriceSys
 import type { PickedVendor, ToolName } from './agent/tools';
 import { formMessage, messageDraft, orderDraft, parseContact, questionDraft, requestDraft } from './drafts';
 import { recordMail, sendMail, subjectTag } from './channels/mail-send';
-import { appendToInbox, cancelAllWatches, cancelWatch, checkNow, isWatching, watchReply, type IncomingReply } from './channels/mail-poll';
+import { appendToInbox, cancelAllWatches, cancelWatch, watchReply, type IncomingReply } from './channels/mail-poll';
 import { demoReply, demoReplyMessage } from './channels/demo-mail';
 import { extractQuote } from './channels/extract';
 import { fillLeadTimeFromText } from './quote/normalize';
@@ -1014,6 +1014,10 @@ export async function onMailSend(input: MailDraft) {
   // 연달아 눌러도 한 번만 보내도록 보내는 동안 초안을 빼 둔다 (실패하면 되돌림)
   const stored = drafts.get(draft.id)!;
   drafts.delete(draft.id);
+  // 시연용 주소면 보내는 동안 회신(견적서 PDF)을 미리 만든다
+  const demo = isDemoAddress(draft.to);
+  const req = requirements;
+  const prepared = demo && req ? demoReply(draft, req, vendorName(draft.vendorId), marketTotal(draft.vendorId, req)).catch(() => null) : null;
   let sent: Awaited<ReturnType<typeof sendMail>>;
   try {
     sent = await sendMail(draft);
@@ -1025,16 +1029,9 @@ export async function onMailSend(input: MailDraft) {
   afterSent(draft, !sent.simulated);
   // 시연용 주소인데 계정으로 못 보냈으면(토큰 만료 등) 시연이 멈추지 않게 회신만 흉내 낸다
   if (sent.simulated) notice(`메일 계정으로 보내지 못해 실제 발송 없이 시연용 회신만 받을게요 (${sent.simulated})`, draft.vendorId);
-  const demo = isDemoAddress(draft.to);
-  if (demo) scheduleDemoReply(draft, sent);
+  if (prepared) scheduleDemoReply(draft, sent, prepared);
   return { ok: true, imap: imapConfigured() || demo };
 }
-
-/** 받은편지함 경로: 회신이 약속한 시각(보낸 뒤 DEMO_REPLY_DELAY_MS)쯤 읽히도록 이만큼 먼저 받은편지함에 넣기 시작한다 */
-const DEMO_IMAP_LEAD_MS = 2000;
-/** 받은편지함에 넣은 시연 회신을 약속한 시각 뒤 이 시간 안에 못 읽으면 바로 반영한다 */
-const DEMO_IMAP_WATCHDOG_MS = 3000;
-const waitMs = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
 
 /** 시연용 회신 가격 기준: 다른 업체의 최저 총액 (총액이 다 나온 업체 우선, 없으면 표시가가 있는 업체의 확인된 합계) */
 function marketTotal(self: VendorId, req: Requirements): number | undefined {
@@ -1044,50 +1041,30 @@ function marketTotal(self: VendorId, req: Requirements): number | undefined {
   return sums.length ? Math.min(...sums) : undefined;
 }
 
-/** 시연용 주소(.test)로 보낸 메일: 잠시 뒤 목업 업체가 견적서 PDF를 붙여 답장한 것처럼 회신을 넣는다.
- *  메일 계정이 있으면 진짜 받은편지함에 넣어 평소처럼 IMAP으로 읽게 하고, 없으면 바로 회신으로 처리한다 */
-function scheduleDemoReply(draft: MailDraft, sent: MailRecord) {
-  if (!requirements) return;
-  const req = requirements;
+/** 시연용 주소(.test)로 보낸 메일: 목업 업체가 견적서 PDF를 붙여 답장한 것처럼 회신을 바로 반영한다.
+ *  회신(견적서 PDF)은 메일을 보내는 동안 미리 만들어 두고(prepared), 보내자마자 넣는다.
+ *  메일 계정이 있으면 같은 회신을 받은편지함에도 넣어 두지만, 그쪽은 기다리지 않는다 (IMAP으로 다시 읽지 않게 기다림을 먼저 거둔다) */
+function scheduleDemoReply(draft: MailDraft, sent: MailRecord, prepared: ReturnType<typeof demoReply>) {
   const gen = generation;
   const tag = subjectTag(draft);
-  const due = Date.now() + DEMO_REPLY_DELAY_MS;
+  cancelWatch(tag);
   void (async () => {
-    // 기다리는 동안 회신(견적서 PDF 포함)을 미리 만든다
-    const reply = await demoReply(draft, req, vendorName(draft.vendorId), marketTotal(draft.vendorId, req));
-    if (!reply) return;
-    const inject = () =>
-      handleReply(draft.vendorId, draft.kind, {
-        vendorId: draft.vendorId,
-        tag,
-        messageId: `<demo-${randomUUID()}@doldari.local>`,
-        from: `${reply.fromName} <${draft.to}>`,
-        subject: `Re: ${sent.subject}`,
-        text: reply.text,
-        attachments: reply.attachments
-      });
-    // 보낼 때 IMAP으로 회신을 기다리기 시작한 경우에만 받은편지함 경로를 쓴다 (그 사이 계정 연결이 바뀌어도 회신이 묻히지 않게)
-    if (isWatching(tag) && imapConfigured()) {
-      await waitMs(due - DEMO_IMAP_LEAD_MS - Date.now());
-      if (gen !== generation) return cancelWatch(tag);
-      try {
-        await appendToInbox(await demoReplyMessage({ vendorAddress: draft.to, fromName: reply.fromName, to: mailUser(), subject: sent.subject, inReplyTo: sent.id, text: reply.text, attachments: reply.attachments }));
-        checkNow();
-        // 폴링이 끝내 못 읽으면 기다림을 거두고 바로 반영한다
-        await waitMs(Math.max(due, Date.now()) + DEMO_IMAP_WATCHDOG_MS - Date.now());
-        if (gen !== generation || !isWatching(tag)) return;
-        cancelWatch(tag);
-        await inject();
-        return;
-      } catch (e) {
-        notice(`받은편지함에 시연용 회신을 넣지 못해 바로 반영할게요: ${errMsg(e)}`, draft.vendorId);
-      }
+    const reply = await prepared;
+    if (!reply || gen !== generation) return;
+    if (imapConfigured()) {
+      void demoReplyMessage({ vendorAddress: draft.to, fromName: reply.fromName, to: mailUser(), subject: sent.subject, inReplyTo: sent.id, text: reply.text, attachments: reply.attachments })
+        .then(appendToInbox)
+        .catch((e) => console.warn('[demo-mail] 받은편지함에 넣지 못함:', errMsg(e)));
     }
-    await waitMs(due - Date.now());
-    // 기다리던 IMAP 회신을 거두고 바로 반영한다
-    cancelWatch(tag);
-    if (gen !== generation) return;
-    await inject();
+    await handleReply(draft.vendorId, draft.kind, {
+      vendorId: draft.vendorId,
+      tag,
+      messageId: `<demo-${randomUUID()}@doldari.local>`,
+      from: `${reply.fromName} <${draft.to}>`,
+      subject: `Re: ${sent.subject}`,
+      text: reply.text,
+      attachments: reply.attachments
+    });
   })().catch((e) => notice(`시연용 회신을 처리하지 못했어요: ${errMsg(e)}`, draft.vendorId));
 }
 
