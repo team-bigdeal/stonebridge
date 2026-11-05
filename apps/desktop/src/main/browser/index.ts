@@ -1,73 +1,20 @@
-// 슬롯별 브라우저 드라이버 관리. 기본은 Aside(사용자의 실제 브라우저), 없거나 설정에서 고르면 앱 안 내장 브라우저.
-import { BrowserWindow, nativeImage } from 'electron';
-import type { BrowserInput, BrowserState, Slot } from '@shared/types';
-import { emit, send } from '../events';
-import { AsideDriver } from './aside';
+// 슬롯별 브라우저 드라이버 관리. 브라우저는 앱 안 내장 브라우저(Electron WebContentsView) 하나만 쓴다.
+import { BrowserWindow } from 'electron';
+import type { BrowserState, Slot } from '@shared/types';
+import { emit } from '../events';
 import type { BrowserDriver } from './driver';
 import { browserSession, ElectronDriver, type Rect } from './electron';
-import { findAsideBin } from './mcp';
 
-const drivers = new Map<Slot, BrowserDriver>();
+const drivers = new Map<Slot, ElectronDriver>();
 const states = new Map<Slot, BrowserState>();
-let backend: 'aside' | 'electron' | null = null;
-let frameTimer: NodeJS.Timeout | null = null;
-const capturing = new Set<Slot>();
-
-/** 앱 시작 시 한 번: Aside가 실행 가능한지 확인 */
-export async function detectBackend(): Promise<'aside' | 'electron'> {
-  if (backend) return backend;
-  // 설정의 BROWSER_BACKEND=electron 이면 Aside가 있어도 내장 브라우저
-  const pref = (process.env.DOLDARI_BROWSER || process.env.BROWSER_BACKEND || 'auto').toLowerCase();
-  const bin = pref === 'electron' ? null : findAsideBin();
-  if (bin) {
-    const probe = new AsideDriver('search', bin);
-    try {
-      const ok = await Promise.race([probe.ping(), new Promise<boolean>((r) => setTimeout(() => r(false), 15000))]);
-      if (ok) {
-        backend = 'aside';
-        drivers.set('search', probe);
-        startFrames();
-        return backend;
-      }
-    } catch {
-      /* Electron으로 대체 */
-    }
-    probe.close().catch(() => undefined);
-  }
-  backend = 'electron';
-  return backend;
-}
-
-export const getBackend = () => backend;
 
 export function getDriver(slot: Slot): BrowserDriver {
   let d = drivers.get(slot);
   if (!d) {
-    const bin = findAsideBin();
-    d = backend === 'aside' && bin ? new AsideDriver(slot, bin) : new ElectronDriver(slot);
+    d = new ElectronDriver(slot);
     drivers.set(slot, d);
   }
   return d;
-}
-
-/** Aside 탭은 스크린샷을 주기적으로 받아 카드에 보낸다 */
-function startFrames() {
-  if (frameTimer) return;
-  frameTimer = setInterval(() => {
-    for (const [slot, d] of drivers) {
-      if (d.kind !== 'aside' || capturing.has(slot)) continue;
-      capturing.add(slot);
-      void d
-        .screenshot()
-        .then((buf) => {
-          if (!buf) return;
-          const img = nativeImage.createFromBuffer(buf);
-          const out = img.getSize().width > 1200 ? img.resize({ width: 1200 }) : img;
-          send('browser:frame', { slot, data: `data:image/jpeg;base64,${out.toJPEG(62).toString('base64')}` });
-        })
-        .finally(() => capturing.delete(slot));
-    }
-  }, 450);
 }
 
 /** 주소·제목·handoff 상태를 카드에 반영 */
@@ -90,8 +37,7 @@ export async function setHandoff(slot: Slot, reason: string | undefined) {
 /** renderer 카드 자리에 내장 브라우저 뷰를 맞춘다 */
 /** renderer가 보낸 카드 자리(CSS px)를 창 좌표(DIP)로 바꿔 뷰를 맞춘다. 앱 화면이 ⌘+/⌘-로 확대·축소돼 있으면 그 배율을 곱한다 */
 export function setViewBounds(slot: Slot, rect: Rect | null, zoom = 1) {
-  const d = drivers.get(slot) ?? (backend === 'electron' ? getDriver(slot) : undefined);
-  if (!(d instanceof ElectronDriver)) return;
+  const d = drivers.get(slot) ?? (getDriver(slot) as ElectronDriver);
   const z = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
   void d.setBounds(
     rect && { x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) }
@@ -115,11 +61,6 @@ export function openLoginWindow(url: string) {
   void win.loadURL(target);
 }
 
-export async function userInput(input: BrowserInput) {
-  await getDriver(input.slot).userInput(input);
-  setTimeout(() => void refreshState(input.slot), 600);
-}
-
 export async function goBack(slot: Slot) {
   await getDriver(slot).back();
   await refreshState(slot);
@@ -137,17 +78,6 @@ export async function resetAll() {
 }
 
 export async function closeAll() {
-  if (frameTimer) clearInterval(frameTimer);
-  frameTimer = null;
   await Promise.all([...drivers.values()].map((d) => d.close().catch(() => undefined)));
   drivers.clear();
-}
-
-/** 설정에서 브라우저를 바꾸면 재시작 없이 바로 적용: 기존 브라우저(Aside 탭 포함)를 닫고 다시 고른다 */
-export async function switchBackend(): Promise<'aside' | 'electron'> {
-  await closeAll();
-  for (const slot of states.keys()) emit('browser', { payload: { slot, url: '', title: '', locked: false } });
-  states.clear();
-  backend = null;
-  return detectBackend();
 }

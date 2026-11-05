@@ -1,6 +1,6 @@
 // renderer에 노출하는 안전한 API (API 키 등 비밀값은 노출하지 않는다)
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, Quote, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
+import type { AgentEvent, AppConfig, HistoryRecord, HistorySummary, MailDraft, MailKind, Quote, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
 
 import type { PolishInput, PolishResult } from '../shared/approval';
 import type { FieldDef, TemplateFillResult, TemplateInfo, TemplatePreviewResult, TemplateResult } from '../shared/template';
@@ -51,7 +51,6 @@ const api = {
   skip: (id: VendorId) => ipcRenderer.invoke('agent:skip', id),
   setViewBounds: (slot: Slot, rect: { x: number; y: number; width: number; height: number } | null) => ipcRenderer.send('browser:bounds', slot, rect),
   openLoginWindow: (url: string) => ipcRenderer.invoke('browser:login', url),
-  onCursor: (cb: (c: { slot: Slot; x: number; y: number; click?: boolean }) => void) => on('browser:cursor', cb),
   resume: (slot: Slot) => ipcRenderer.invoke('agent:resume', slot),
   savePdf: (html: string, name: string): Promise<string | null> => ipcRenderer.invoke('report:pdf', html, name),
   exportXlsx: (payload: { quotes: Partial<Record<VendorId, Quote>>; req: Requirements; urls: Partial<Record<VendorId, string>>; fileName: string }): Promise<string | null> => ipcRenderer.invoke('report:xlsx', payload),
@@ -62,7 +61,6 @@ const api = {
   templateClear: (): Promise<boolean> => ipcRenderer.invoke('template:clear'),
   templatePreview: (values: Record<string, string>): Promise<TemplatePreviewResult> => ipcRenderer.invoke('template:preview', values),
   templateFill: (values: Record<string, string>): Promise<TemplateFillResult> => ipcRenderer.invoke('template:fill', values),
-  browserInput: (input: BrowserInput) => ipcRenderer.invoke('browser:input', input),
   browserBack: (slot: Slot) => ipcRenderer.invoke('browser:back', slot),
   openExternal: (url: string) => ipcRenderer.invoke('browser:openExternal', url),
   /** 추천 업체의 주문 페이지를 그 업체 브라우저에 연다 (주문·결제는 사용자가 직접) */

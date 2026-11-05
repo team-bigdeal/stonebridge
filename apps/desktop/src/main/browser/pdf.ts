@@ -31,28 +31,6 @@ export function checkPdf(data: Buffer, url: string, name?: string): PdfFile {
   return { data, url, name: name && /\.pdf$/i.test(name) ? name : pdfName(url) };
 }
 
-/** 페이지 안에서 쿠키를 포함해 fetch (같은 출처 링크용). Aside처럼 브라우저 밖에서 받을 수 없을 때 쓴다 */
-export async function fetchInPage(d: BrowserDriver, url: string, maxBytes = MAX_PDF_BYTES): Promise<PdfFile> {
-  const r = await d.evaluate<{ b64?: string; error?: string; ct?: string }>(`(async () => {
-    try {
-      const res = await fetch(${JSON.stringify(url)}, { credentials: 'include' });
-      if (!res.ok) return { error: 'HTTP ' + res.status };
-      const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.length > ${maxBytes}) return { error: 'too_big' };
-      let s = '';
-      for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-      return { b64: btoa(s), ct: res.headers.get('content-type') || '' };
-    } catch (e) {
-      return { error: String(e && e.message || e) };
-    }
-  })()`);
-  if (!r?.b64) {
-    if (r?.error === 'too_big') throw new ToolError('파일이 너무 큽니다. 15MB 이하 PDF만 받습니다.');
-    throw new ToolError(`PDF를 받지 못했습니다 (${r?.error ?? '알 수 없음'}). 다른 출처의 파일이면 이 브라우저에서는 받을 수 없을 수 있습니다.`);
-  }
-  return checkPdf(Buffer.from(r.b64, 'base64'), url);
-}
-
 /** 지금 탭이 PDF를 보여 주는 중인지 (클릭 뒤 PDF로 이동한 경우) */
 export async function showingPdf(d: BrowserDriver): Promise<string | null> {
   const url = await d.url().catch(() => '');

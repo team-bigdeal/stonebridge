@@ -4,7 +4,6 @@ import path from 'node:path';
 import { app } from 'electron';
 import dotenv from 'dotenv';
 import type { AppConfig, SettingsInput, ThemeMode } from '@shared/types';
-import { getBackend } from './browser';
 import { googleAccount, googleClientConfigured } from './channels/google-auth';
 
 // 빌드한 앱(이름 "돌다리")도 개발 때와 같은 데이터 폴더를 써서 견적 히스토리·설정을 같이 본다
@@ -44,7 +43,7 @@ function fromEnv() {
 export const config = fromEnv();
 
 const SETTING_KEYS = [
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'BROWSER_BACKEND', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'SMTP_USER', 'SMTP_PASS', 'IMAP_USER', 'IMAP_PASS', 'THEME', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'
 ] as const;
 
 /** 화면 테마 설정. 값이 이상하면 system */
@@ -96,8 +95,6 @@ export const hasApiKey = () => Boolean(config.apiKey);
 export function publicConfig(): AppConfig {
   return {
     theme: themeMode(),
-    browser: getBackend(),
-    browserPref: env.BROWSER_BACKEND === 'electron' ? 'electron' : 'auto',
     hasApiKey: hasApiKey(),
     model: config.model,
     smtpConfigured: smtpConfigured(),

@@ -1,8 +1,7 @@
 // 에이전트 커서는 페이지에 주입하지 않고 앱 레이어에서 그린다.
-// 좌표는 페이지 뷰포트 기준 0~1로 정규화해 보낸다 (Aside 화면 이미지·내장 브라우저 공용).
+// 좌표는 페이지 뷰포트 기준 0~1로 정규화해 내장 브라우저의 커서 뷰에 넘긴다.
 import type { Slot } from '@shared/types';
 import { sleep } from '../config';
-import { send } from '../events';
 
 export interface CursorEvent {
   slot: Slot;
@@ -23,7 +22,6 @@ export const onCursor = (l: Listener) => {
 export async function cursorTo(slot: Slot, x: number, y: number, vw: number, vh: number, click = false) {
   if (!vw || !vh) return;
   const e: CursorEvent = { slot, x: Math.max(0, Math.min(1, x / vw)), y: Math.max(0, Math.min(1, y / vh)), click };
-  send('browser:cursor', e);
   for (const l of listeners) l(e);
   await sleep(click ? 180 : 320);
 }

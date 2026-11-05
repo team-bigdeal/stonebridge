@@ -9,7 +9,7 @@ Electron 견적 비교 에이전트 앱. 브라우저 3개가 업체를 찾아 �
 ```
 apps/desktop/src
 ├─ main/        Electron main: orchestrator.ts(전체 흐름), agent/(Claude 루프·도구·프롬프트),
-│               browser/(Aside·내장 브라우저 드라이버), cdp/, channels/(메일·파일), quote/
+│               browser/(내장 브라우저 드라이버), cdp/, channels/(메일·파일), quote/
 ├─ preload/     window.doldari API (IPC)
 ├─ shared/      타입, 총액·순위·추천, 견적서 계산(buildDoc) — main과 renderer가 같이 씀
 └─ renderer/    React + shadcn/ui + AI Elements UI

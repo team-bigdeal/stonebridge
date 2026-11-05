@@ -1,9 +1,9 @@
-// 브라우저 드라이버 공통 인터페이스. 기본은 Aside(사용자의 실제 브라우저), 없으면 Electron 오프스크린.
+// 브라우저 드라이버 인터페이스 (구현: 앱 안 내장 브라우저 ElectronDriver). 에이전트 도구는 이 인터페이스만 쓴다.
 import type { Slot } from '@shared/types';
 
 export interface BrowserDriver {
   readonly slot: Slot;
-  readonly kind: 'aside' | 'electron';
+  readonly kind: 'electron';
   /** handoff 이후 click/fill 금지 */
   locked: boolean;
   navigate(url: string): Promise<string>;
@@ -20,8 +20,6 @@ export interface BrowserDriver {
   url(): Promise<string>;
   title(): Promise<string>;
   back(): Promise<void>;
-  /** 사용자 직접 조작 (x, y는 0~1) */
-  userInput(input: { type: 'click' | 'wheel' | 'text' | 'key'; x?: number; y?: number; deltaY?: number; text?: string; key?: string }): Promise<void>;
   reset(): Promise<void>;
   close(): Promise<void>;
   /** 가견적서 PDF 받기: PDF 링크 URL, 링크·버튼 ref (버튼이면 눌러서 내려오는 PDF를 받는다) */

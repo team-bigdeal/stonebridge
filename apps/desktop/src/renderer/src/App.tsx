@@ -3,7 +3,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useStore } from './store';
 import { Chat } from './components/Chat';
 import { ExpandedBrowser, Notices, SidebarToggle, TopBar } from './components/Shell';
-import { pushCursor, pushFrame } from './components/workspace/LiveFrame';
+import { pushFrame } from './components/workspace/LiveFrame';
 import { QuoteViewer } from './components/QuoteViewer';
 import SettingsModal from './components/SettingsModal';
 import { HistorySidebar } from './components/HistorySidebar';
@@ -18,15 +18,13 @@ export default function App() {
   useTheme(useStore((s) => s.config?.theme));
 
   useEffect(() => {
-    window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey, backend: c.browser }));
+    window.doldari.config().then((c) => set({ config: c, settingsOpen: !c.hasApiKey }));
     const offEvent = window.doldari.onEvent(handle);
     const offFrame = window.doldari.onFrame(({ slot, data }) => pushFrame(slot, data));
-    const offCursor = window.doldari.onCursor(pushCursor);
     const offSave = startAutosave();
     return () => {
       offEvent();
       offFrame();
-      offCursor();
       offSave();
     };
   }, [handle, set]);
