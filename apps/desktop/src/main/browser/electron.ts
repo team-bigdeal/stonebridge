@@ -159,6 +159,7 @@ export class ElectronDriver implements BrowserDriver {
   private bounds: Rect | null = null;
   private frameTimer: NodeJS.Timeout | null = null;
   private cursorTimer: NodeJS.Timeout | null = null;
+  private lastFrameAt = 0;
   private offCursor: () => void;
   /** 사이트가 window.open으로 띄운 견적서 팝업 (보이지 않는 창). 원래 창(opener)에서 값을 읽어 채우는 견적서가 있어 실제 창으로 연다 */
   private popup: { win: BrowserWindow; at: number; timer: NodeJS.Timeout } | null = null;
@@ -213,8 +214,11 @@ export class ElectronDriver implements BrowserDriver {
     wc.on('did-navigate', () => this.applyZoom());
     wc.on('did-navigate-in-page', () => this.applyZoom());
     void wc.loadURL('about:blank').then(() => this.cdp.init());
-    // 화면 캡처는 카드가 보이든 말든 2초마다
-    this.frameTimer = setInterval(() => void this.captureFrame(), 2000);
+    // 화면 캡처: 실제 뷰가 카드에 붙어 있으면 2초마다(썸네일·기록용), 안 붙어 있으면(나란히 보기의 좁은 칸·화면 밖) 카드에 보이는 화면이라 0.7초마다
+    this.frameTimer = setInterval(() => {
+      if (this.bounds && Date.now() - this.lastFrameAt < 2000) return;
+      void this.captureFrame();
+    }, 700);
 
     this.offCursor = onCursor((e) => {
       if (e.slot === this.slot && e.sid === this.sid) this.moveCursor(e.x, e.y, Boolean(e.click));
@@ -267,6 +271,7 @@ export class ElectronDriver implements BrowserDriver {
     if (this.view.webContents.isDestroyed() || !/^https?:/.test(this.view.webContents.getURL())) return;
     const img = await this.view.webContents.capturePage().catch(() => null);
     if (!img || img.isEmpty()) return;
+    this.lastFrameAt = Date.now();
     const out = img.getSize().width > 1100 ? img.resize({ width: 1100 }) : img;
     send('browser:frame', { sid: this.sid, slot: this.slot, data: `data:image/jpeg;base64,${out.toJPEG(65).toString('base64')}` });
   }
