@@ -1,4 +1,4 @@
-import { Check, Maximize, PanelLeft, RotateCcw, Settings, X } from 'lucide-react';
+import { Check, Maximize, PanelLeft, Plus, Settings, X } from 'lucide-react';
 import { STAGES } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { saveSidebar, useStore, VENDOR_DOT } from '@/store';
@@ -14,17 +14,22 @@ const STAGE_LABEL: Partial<Record<(typeof STAGES)[number]['id'], string>> = {
   questions: '확인 추천'
 };
 
-export function TopBar() {
-  const { stage, config, timeline, set, resetAll } = useStore();
-  const current = STAGES.findIndex((s) => s.id === stage);
+/** 새 견적 시작. 진행 중이면 확인 후 초기화 (헤더·사이드바 공용) */
+export function useRestart() {
+  const { timeline, resetAll } = useStore();
   const started = timeline.length > 1;
-
-  async function restart() {
+  return async function restart() {
     if (started && !window.confirm('지금까지 모은 견적이 사라져요. 새 견적을 시작할까요?')) return;
     dropReplay();
     await window.doldari.reset();
     resetAll();
-  }
+  };
+}
+
+export function TopBar() {
+  const { stage, config, sidebarOpen, set } = useStore();
+  const restart = useRestart();
+  const current = STAGES.findIndex((s) => s.id === stage);
 
   return (
     <header className="drag flex shrink-0 items-center gap-6 bg-white py-2.5 pl-20 pr-6 xl:gap-12">
@@ -54,9 +59,12 @@ export function TopBar() {
 
       <div className="no-drag ml-auto flex items-center gap-2">
         {/* 브라우저·모델 상태는 설정 창 안에서 본다. API 키가 없을 때만 상단에 알린다 */}
-        <Button variant="outline" size="sm" className="h-8 px-3 text-[13px]" onClick={() => void restart()}>
-          <RotateCcw className="size-3.5" /> 새 견적 추가하기
-        </Button>
+        {/* 사이드바가 닫혀 있을 때만 새 견적 버튼을 헤더에 둔다 */}
+        {!sidebarOpen && (
+          <Button variant="ghost" size="icon" title="새 견적 추가하기" aria-label="새 견적 추가하기" onClick={() => void restart()} className="size-auto p-2 text-muted-foreground hover:text-ink">
+            <Plus className="size-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" title="전체 화면 (켜고 끄기)" aria-label="전체 화면" onClick={() => void window.doldari.toggleFullScreen()} className="size-auto p-2 text-muted-foreground hover:text-ink">
           <Maximize className="size-4" />
         </Button>
