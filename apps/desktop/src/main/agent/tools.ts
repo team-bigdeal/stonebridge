@@ -155,6 +155,21 @@ export interface ToolResult {
   outcome?: AgentOutcome;
 }
 
+/** 견적서 버튼 글자로 화면에서 그 버튼을 찾아 눌러 견적서 PDF를 받는다 (다운로드·팝업·모달 모두 downloadPdf가 처리) */
+async function autoQuoteDoc(ctx: ToolContext, label: string): Promise<{ name: string; added: string[] } | null> {
+  if (!ctx.onPdf) return null;
+  const snap = await ctx.driver.snapshot();
+  const norm = (t: string) => t.replace(/\s+/g, '');
+  const want = norm(label);
+  const line = snap.split('\n').find((l) => /\[ref=\d+\]/.test(l) && norm(l).includes(want));
+  const ref = line ? /\[ref=(\d+)\]/.exec(line)?.[1] : undefined;
+  if (!ref) return null;
+  const file = await ctx.driver.downloadPdf({ ref });
+  const added = await ctx.onPdf(file);
+  ctx.pdfGot = true;
+  return { name: file.name, added };
+}
+
 /** 배송비 0원의 근거가 조건부 무료(금액 기준·회원 혜택)면 다시 확인하라는 안내. 아니면 null */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function freeShippingDoubt(fields: any): string | null {
@@ -257,7 +272,17 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
           doc = await pageTools.findQuoteDocButton(d);
           ctx.noDocHosts ??= new Set();
           const skips = ctx.noDocSkips ?? 0;
-          if (!doc && skips < 2 && !ctx.noDocHosts.has(host(v.url))) {
+          // 업체 주소가 사이트 첫 화면이면 견적서 버튼이 없는 게 당연하므로 되돌리지 않는다 (상품 페이지에서 다시 확인)
+          const here = await d.url().catch(() => v.url);
+          const home = (() => {
+            try {
+              const u = new URL(here);
+              return /^\/?(index\.\w+|main(\.\w+)?)?$/i.test(u.pathname.replace(/\/$/, '')) && !u.search;
+            } catch {
+              return false;
+            }
+          })();
+          if (!doc && !home && skips < 2 && !ctx.noDocHosts.has(host(v.url))) {
             ctx.noDocSkips = skips + 1;
             ctx.noDocHosts.add(host(v.url));
             ctx.onNoQuoteDoc?.(v);
@@ -294,8 +319,20 @@ async function runToolInner(ctx: ToolContext, name: string, input: any): Promise
           return { text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}${shipDoubt}` };
         }
         // 견적서 버튼이 있는 사이트인데 아직 견적서를 받지 않았으면 끝내기 전에 한 번 받게 한다
+        // (사용자가 주소로 정한 업체처럼 확정 단계를 거치지 않은 경우엔 지금 페이지에서 버튼을 찾아 본다)
+        if (input.done && !ctx.pdfGot && !ctx.docNudged && ctx.quoteDoc === undefined && ctx.onPdf) {
+          ctx.quoteDoc = await pageTools.findQuoteDocButton(d).catch(() => null);
+        }
         if (input.done && ctx.quoteDoc && !ctx.pdfGot && !ctx.docNudged) {
           ctx.docNudged = true;
+          // 에이전트가 견적서를 받지 않고 끝내려 하면 앱이 그 버튼을 한 번 직접 눌러 받아 본다
+          const got = await autoQuoteDoc(ctx, ctx.quoteDoc).catch(() => null);
+          if (got) {
+            return {
+              text: `견적서 버튼("${ctx.quoteDoc}")을 대신 눌러 견적서를 받아 읽었습니다 (${got.name}). ${got.added.length ? `반영된 항목: ${got.added.join(', ')}.` : ''}`,
+              outcome: { kind: 'reported' }
+            };
+          }
           return {
             text: `${added.length ? `보고 완료: ${added.join(', ')}. ` : ''}이 사이트에는 "${ctx.quoteDoc}" 기능이 있는데 아직 견적서를 받지 않았습니다. 옵션이 요구 조건과 맞는지 확인하고 download_quote_pdf(그 버튼의 ref)로 견적서를 받은 뒤 끝내세요. 받을 수 없으면(로그인·개인정보 요구 등) report_quote(done=true)를 다시 호출하세요.`
           };

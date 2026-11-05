@@ -5,6 +5,7 @@ import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } fr
 import { FIELD_LABELS } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent } from '@/components/ui/card';
 import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
 import { cn } from '@/lib/utils';
@@ -82,7 +83,9 @@ export function CompareCard() {
             <span className="flex items-center gap-1.5">
               견적 비교
               {/* 합계 계산 방법은 아이콘에 마우스를 올리면 보임 */}
-              <span title={TOTAL_HINT} aria-label="합계 계산 방법" className="inline-flex cursor-help"><Info className="size-3.5 text-muted-foreground" /></span>
+              <Hint text={TOTAL_HINT}>
+                <span aria-label="합계 계산 방법" className="inline-flex cursor-help"><Info className="size-3.5 text-muted-foreground" /></span>
+              </Hint>
             </span>
           }
           hint={view === 'chart' ? '항목을 골라 업체별로 비교해 보세요. 막대에 마우스를 올리면 세부 내역이 보여요.' : undefined}
@@ -203,7 +206,7 @@ function Row({ q, rank, req, hide, leader, onSource, canAct }: { q: Quote; rank:
       {td(['shippingFee'], n(q.shippingFee.value, '무료'))}
       {!hide.warranty && td(['warrantyMonths', 'warrantyExtraFee'], (
         <span>
-          {wm !== null ? (wm % 12 === 0 && wm >= 12 ? `${wm / 12}년` : `${wm}개월`) : '?'}
+          {wm !== null ? (wm % 12 === 0 && wm >= 12 ? `${wm / 12}년` : `${wm}개월`) : <Hint text="기본 A/S 기간을 업체 자료에서 찾지 못했어요. 확인 질문 메일로 물어볼 수 있어요."><span className="cursor-help">?</span></Hint>}
           {q.warrantyExtraFee.value ? <span className="block text-[11px] text-muted-foreground">연장 +{q.warrantyExtraFee.value.toLocaleString('ko-KR')}</span> : null}
         </span>
       ))}
@@ -352,7 +355,7 @@ function VendorCard({ q, rank, req, hide, onSource, canAct }: { q: Quote; rank: 
           {line('제품가', ['listedPrice'], n(productAmount(q, req)))}
           {!hide.install && line('설치비', ['installFee'], n(q.installFee.value, '포함'))}
           {line('배송비', ['shippingFee'], n(q.shippingFee.value, '무료'))}
-          {!hide.warranty && line('A/S', ['warrantyMonths', 'warrantyExtraFee'], wm !== null ? fmtWarranty(wm) : '?')}
+          {!hide.warranty && line('A/S', ['warrantyMonths', 'warrantyExtraFee'], wm !== null ? fmtWarranty(wm) : <Hint text="기본 A/S 기간을 업체 자료에서 찾지 못했어요. 확인 질문 메일로 물어볼 수 있어요."><span className="cursor-help">?</span></Hint>)}
           {!hide.extra && (
             <div className="flex items-center justify-between gap-3 px-1 py-1">
               <span className="text-muted-foreground">추가 비용</span>
@@ -394,15 +397,38 @@ const Pending = () => <span className="text-[12px] text-muted-foreground/50">확
 function Unsettled({ q, className }: { q: Quote; className?: string }) {
   const labels = [...new Set(q.missing.map((k) => FIELD_LABELS[k as FieldKey] ?? k))].join('·');
   return (
-    <Pill tone="warn" className={className} title={`${labels}을(를) 아직 몰라서 합계·순위가 바뀔 수 있어요`}>
-      미확정 — {labels} 확인 필요
-    </Pill>
+    <Hint text={`${labels}을(를) 아직 몰라서 합계·순위가 바뀔 수 있어요. 확인 질문 메일로 채울 수 있어요.`}>
+      <span className="inline-flex cursor-help">
+        <Pill tone="warn" className={className}>
+          미확정 — {labels} 확인 필요
+        </Pill>
+      </span>
+    </Hint>
   );
 }
 
 function CheckPill({ c, title }: { c: Check; title: string }) {
   const map = { ok: ['충족', 'ok'], violate: ['안 맞음', 'bad'], unknown: ['확인 필요', 'warn'] } as const;
-  return <Pill tone={map[c][1]} title={title || undefined}>{map[c][0]}</Pill>;
+  const pill = <Pill tone={map[c][1]}>{map[c][0]}</Pill>;
+  return title ? (
+    <Hint text={title}>
+      <span className="inline-flex cursor-help">{pill}</span>
+    </Hint>
+  ) : (
+    pill
+  );
+}
+
+/** 마우스를 올리면 설명이 뜨는 말풍선 (앱 창에서는 기본 title 말풍선이 잘 안 떠서 직접 그린다) */
+function Hint({ text, children }: { text: string; children: React.ReactElement }) {
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent className="max-w-[320px] text-[12px] leading-snug">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export function Recommend() {

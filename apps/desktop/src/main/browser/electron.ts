@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { session as electronSession, WebContentsView, type BrowserWindow, type DownloadItem, type WebContents } from 'electron';
+import { app, session as electronSession, WebContentsView, type BrowserWindow, type DownloadItem, type WebContents } from 'electron';
 import type { Slot } from '@shared/types';
 import { CdpSession } from '../cdp/session';
 import * as act from '../cdp/actions';
@@ -24,6 +24,9 @@ export function browserSession() {
     sessionReady = true;
     // 위치·알림·카메라 등 권한 요청은 모두 거부
     ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    // User-Agent에서 앱 이름(doldari-desktop/1.0.0, StoneBridge/1.0.0)만 뺀다. 이 낱말 때문에 브라우저 판별이 틀려
+    // 모바일 페이지로 보내는 사이트가 있다(와우프레스). Chrome·Electron 표기는 그대로 둔다 (자동화를 숨기려는 게 아님)
+    ses.setUserAgent(ses.getUserAgent().replace(new RegExp(`\\s*${app.getName().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[\\d.]+`, 'i'), ''));
     // 다운로드: 에이전트가 가견적서를 기다리는 중인 PDF만 받고, 나머지(실행 파일 등)는 모두 취소
     ses.on('will-download', (_e, item, wc) => handleDownload(item, wc));
   }
@@ -68,9 +71,29 @@ function handleDownload(item: DownloadItem, wc: WebContents | undefined) {
 
 /** 화면을 PDF로 저장하기 전에 그 화면이 견적서인지 본다 (상품 페이지를 통째로 PDF로 만들어 견적서처럼 쓰지 않게).
  *  "견적서"와 함께 견적서 양식에만 있는 말(아래와 같이 견적합니다·견적일·견적번호·공급자·귀하·유효기간)이 보여야 한다 */
-async function assertQuoteDoc(wc: WebContents) {
-  const text = await wc.executeJavaScript('document.body ? document.body.innerText : ""').catch(() => '');
-  const doc = /견\s*적\s*서/.test(text) && /아래와\s*같이\s*견적|견\s*적\s*일|견적\s*번호|공\s*급\s*자|귀\s*하|유효\s*기간/.test(text);
+/** 화면에 보이는 글자 (같은 출처 iframe 안 — 모달 안 견적서 등 — 포함) */
+const VISIBLE_TEXT = `(() => {
+  const parts = [document.body ? document.body.innerText : ''];
+  for (const f of document.querySelectorAll('iframe')) {
+    try {
+      const r = f.getBoundingClientRect();
+      if (r.width > 50 && r.height > 50 && f.contentDocument && f.contentDocument.body) parts.push(f.contentDocument.body.innerText);
+    } catch (e) {}
+  }
+  return parts.join('\\n');
+})()`;
+
+/** 견적서 양식 글자인지: "견적서"와 견적서에만 있는 말(아래와 같이 견적합니다·견적일·견적번호·공급자·귀하·유효기간) */
+const QUOTE_MARKS = [/아래와\s*같이\s*견적/, /견\s*적\s*일/, /견적\s*번호/, /공\s*급\s*자/, /귀\s*하/, /유효\s*기간/];
+/** "견적서"와 견적서 항목 하나, 또는 (제목이 그림이라 "견적서" 글자가 없어도) 견적서 항목 두 개 이상 */
+const isQuoteDocText = (text: string) => {
+  const marks = QUOTE_MARKS.filter((re) => re.test(text)).length;
+  return (/견\s*적\s*서/.test(text) && marks >= 1) || marks >= 2;
+};
+
+async function assertQuoteDoc(wc: WebContents, extra = '') {
+  const text = (await wc.executeJavaScript(VISIBLE_TEXT).catch(() => '')) + '\n' + extra;
+  const doc = isQuoteDocText(text);
   if (!doc) throw new ToolError('지금 화면은 견적서가 아닙니다 (상품 페이지를 PDF로 저장하지 않습니다). "견적서 출력" 버튼을 눌러 견적서 화면·창이 열렸을 때만 save_page_pdf를 쓰세요. 견적서를 받을 수 없으면 페이지의 가격으로 report_quote 하세요.');
 }
 
@@ -132,7 +155,9 @@ export class ElectronDriver implements BrowserDriver {
     // 예외: 빈 창(window.open('', 이름))이나 POST 폼을 새 창으로 보내는 경우는 견적서·인쇄 팝업이 대부분이고
     // 팝업이 원래 창(opener)의 금액·옵션을 읽어 채우므로, 보이지 않는 실제 창으로 열어 둔다 (save_page_pdf로 저장)
     wc.setWindowOpenHandler(({ url, postBody }) => {
-      if (url === '' || url === 'about:blank' || (postBody && /^https?:/.test(url))) {
+      // 견적서·인쇄 창 주소(estimate_print 등)도 원래 창(opener) 값을 읽어 채우는 곳이 많아 실제 팝업으로 연다 (성원애드피아)
+      const quoteWindow = /^https?:/.test(url) && /estimat|print|quot|invoice|견적/i.test(decodeURIComponent(url));
+      if (url === '' || url === 'about:blank' || (postBody && /^https?:/.test(url)) || quoteWindow) {
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {
@@ -287,8 +312,26 @@ export class ElectronDriver implements BrowserDriver {
     this.cdp.locked = v;
   }
 
-  navigate(url: string) {
+  async navigate(url: string) {
+    // 앱 브라우저는 데스크톱 화면이라 모바일 주소(m.)는 데스크톱 주소로 먼저 연다 (모바일 페이지에는 견적서 출력·옵션 계산이 없는 곳이 많다)
+    const desktop = /^https?:\/\/m\.[^/]+/i.test(url) ? url.replace(/^(https?:\/\/)m\./i, '$1') : null;
+    if (desktop) {
+      try {
+        const r = await act.navigate(this.cdp, desktop);
+        if (!/^chrome-error:/.test(this.view.webContents.getURL())) return `${r} (모바일 주소 대신 데스크톱 페이지로 열었습니다)`;
+      } catch {
+        /* 데스크톱 주소가 없으면 원래 주소로 */
+      }
+    }
     return act.navigate(this.cdp, url);
+  }
+
+  /** 지금 화면(또는 모달 iframe)에 견적서가 떠 있는지 */
+  private async showsQuoteDoc(): Promise<boolean> {
+    const wc = this.view.webContents;
+    const text = await wc.executeJavaScript(VISIBLE_TEXT).catch(() => '');
+    const frames = (await this.frameTexts().catch(() => [])).map((f) => f.text).join('\n');
+    return isQuoteDocText(`${text}\n${frames}`);
   }
   snapshot() {
     return takeSnapshot(this.cdp);
@@ -406,6 +449,11 @@ export class ElectronDriver implements BrowserDriver {
         // 견적서를 팝업 창(HTML)으로 띄우는 사이트: 그 창을 PDF로 저장한다
         const popup = await this.readyPopup(start);
         if (popup) return this.printPopup(popup);
+        // 견적서를 모달(같은 화면 안 창·iframe)로 띄우는 사이트: 그 화면을 PDF로 저장한다
+        if (Date.now() - start > 1500 && (await this.showsQuoteDoc())) {
+          await new Promise((r) => setTimeout(r, 800));
+          return this.printPdf();
+        }
       }
       throw new ToolError('버튼을 눌렀지만 PDF가 내려오지 않았습니다. 인쇄용 견적서 화면이 열렸다면 save_page_pdf로 그 화면을 PDF로 저장하세요.');
     } finally {
@@ -419,7 +467,8 @@ export class ElectronDriver implements BrowserDriver {
     if (popup) return this.printPopup(popup);
     const wc = this.view.webContents;
     if (wc.isDestroyed() || !/^https?:/.test(wc.getURL())) throw new ToolError('저장할 페이지가 없습니다.');
-    await assertQuoteDoc(wc);
+    const frames = (await this.frameTexts().catch(() => [])).map((f) => f.text).join('\n');
+    await assertQuoteDoc(wc, frames);
     const data = await wc.printToPDF({ printBackground: true, pageSize: 'A4' });
     return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서 화면'));
   }
