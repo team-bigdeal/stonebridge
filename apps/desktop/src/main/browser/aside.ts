@@ -2,6 +2,7 @@
 import type { Slot } from '@shared/types';
 import { cursorTo } from './cursor';
 import { type BrowserDriver, ToolError } from './driver';
+import { fetchInPage, showingPdf, type PdfFile } from './pdf';
 import { McpClient, pickJson } from './mcp';
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -18,7 +19,7 @@ const SUBMIT_CHECK = `(el) => {
   const text = ((el.innerText || el.value || el.getAttribute('aria-label') || '') + '').trim();
   const role = el.getAttribute && el.getAttribute('role');
   const buttonLike = tag === 'BUTTON' || role === 'button' || (tag === 'INPUT' && (type === 'button' || type === 'submit'));
-  const calc = /계산|견적\s*보기|견적\s*확인|가격\s*(확인|조회)|금액\s*(확인|조회)|조회|적용/.test(text) && !/결제|구매|주문|장바구니|제출|전송|보내기/.test(text);
+  const calc = /계산|견적\\s*보기|견적\\s*확인|가격\\s*(확인|조회)|금액\\s*(확인|조회)|조회|적용|견적서\\s*(출력|다운|발행|인쇄|받기|보기|저장)|가견적|PDF|인쇄/i.test(text) && !/결제|구매|주문|장바구니|제출|전송|보내기/.test(text);
   const isSubmit = !calc && ((tag === 'BUTTON' && (type === '' || type === 'submit') && !!el.form) || (tag === 'INPUT' && type === 'submit') ||
     (buttonLike && /제출|보내기|전송|문의하기|결제|구매하기|주문하기|장바구니/.test(text)));
   return { text: text.slice(0, 40), isSubmit };
@@ -190,5 +191,35 @@ export class AsideDriver implements BrowserDriver {
   async ping() {
     const tools = await this.mcp.listTools();
     return tools.includes('repl');
+  }
+
+  /** 가견적서 PDF: 링크·주소는 탭 안에서 받고, 버튼은 눌러서 PDF 화면으로 바뀌면 그 주소를 받는다 */
+  async downloadPdf(target: { ref?: string; url?: string }): Promise<PdfFile> {
+    this.requireTab();
+    if (target.url) return fetchInPage(this, target.url, 10 * 1024 * 1024);
+    if (!target.ref) throw new ToolError('ref나 url 중 하나가 필요합니다.');
+    const href = await this.run<string>(
+      OUT(`await ${T}.locator(${J(target.ref)}).evaluate((el) => { const a = el.closest('a'); return a && a.href && !/^javascript:/i.test(a.href) ? a.href : ''; })`),
+      '링크 확인'
+    ).catch(() => '');
+    if (href && /^https?:/.test(href)) {
+      try {
+        return await fetchInPage(this, href, 10 * 1024 * 1024);
+      } catch {
+        /* PDF가 아니면 눌러 본다 */
+      }
+    }
+    const before = await this.url();
+    await this.click(target.ref);
+    for (let i = 0; i < 16; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const pdfUrl = (await this.url()) !== before ? await showingPdf(this) : null;
+      if (pdfUrl) return fetchInPage(this, pdfUrl, 10 * 1024 * 1024);
+    }
+    throw new ToolError('버튼을 눌렀지만 PDF 화면이 열리지 않았습니다. 이 브라우저(Aside)에서는 버튼으로 내려받는 파일을 직접 받을 수 없어요. PDF 링크를 찾거나 설정에서 내장 브라우저로 바꿔 주세요.');
+  }
+
+  async printPdf(): Promise<PdfFile> {
+    throw new ToolError('Aside 브라우저에서는 화면을 PDF로 저장할 수 없습니다. 견적서 PDF 링크·버튼을 찾거나, 화면의 금액을 read_text로 읽어 보고하세요.');
   }
 }

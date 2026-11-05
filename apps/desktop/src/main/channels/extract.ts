@@ -15,7 +15,7 @@ export async function extractQuote(params: {
   channel: 'mail' | 'file';
 }): Promise<{ fields: ReportedFields; meta: QuoteMeta }> {
   const system = `너는 견적서 정규화기다. ${vendorName(params.vendorId)}의 ${params.hint}에서 견적 항목을 추출한다.
-- 금액은 원 단위 정수. 부가세 별도 금액이면 vat_included=false, 포함이면 true.
+- 금액은 원 단위 정수. 그 항목에 "부가세 별도/VAT 별도"라고 적혀 있거나 공급가액 줄에 들어 있을 때만 vat_included=false, 그 밖에는 true. 배송비·택배비는 따로 "별도"라는 말이 없으면 적힌 금액 그대로(vat_included=true).
 - listedPrice는 제품 1개 표시가(설치비·배송비 제외).
 - installFee: 설치 포함이면 0. shippingFee: 무료면 0.
 - warrantyMonths: 기본 무상 A/S 개월 수. warrantyExtraFee: 요구 A/S ${params.requirements.minWarrantyMonths}개월을 맞추는 데 드는 추가비 (기본으로 충족하면 0).

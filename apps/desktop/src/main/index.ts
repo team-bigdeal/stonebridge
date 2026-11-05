@@ -25,7 +25,9 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       sandbox: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 받은 견적서 PDF를 앱 안에서 보여 주는 Chromium 내장 PDF 뷰어 (앱 창에만, 외부 사이트 뷰에는 켜지 않음)
+      plugins: true
     }
   });
   mainWindow = win;
