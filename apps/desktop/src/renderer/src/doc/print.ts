@@ -12,3 +12,8 @@ export async function saveHtmlPdf(bodyHtml: string, fileName: string) {
 export async function saveDocPdf(el: ReactElement, fileName: string) {
   return saveHtmlPdf(renderToStaticMarkup(el), fileName);
 }
+
+/** 통합 견적서를 엑셀로 저장 (main이 원본 견적으로 다시 계산해서 만든다) */
+export async function saveXlsx(payload: Parameters<typeof window.doldari.exportXlsx>[0]) {
+  return window.doldari.exportXlsx(payload);
+}

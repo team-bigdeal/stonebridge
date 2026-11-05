@@ -14,7 +14,7 @@ import { useStore } from '@/store';
 import { QuoteDocument } from '@/doc/QuoteDocument';
 import { IntegratedDocument } from '@/doc/IntegratedDocument';
 import { DOC_CSS } from '@/doc/styles';
-import { saveDocPdf, saveHtmlPdf } from '@/doc/print';
+import { saveDocPdf, saveHtmlPdf, saveXlsx } from '@/doc/print';
 import { EditablePaper } from '@/doc/EditablePaper';
 
 /** 업체 견적서(통일 양식 ↔ 원본) / 통합 견적서 보기 */
@@ -44,11 +44,16 @@ export function QuoteViewer() {
               <DialogTitle>통합 견적서</DialogTitle>
               <DialogDescription>{req.item} · 업체별 견적을 같은 기준으로 한 장에 모았어요</DialogDescription>
             </div>
-            <Button size="sm" variant="outline" className="ml-auto mr-8" onClick={async () => setSaved((await saveDocPdf(el, `통합견적서_${req.item}`)) ?? '')}>
-              <Download className="size-4" /> PDF 저장
-            </Button>
+            <div className="ml-auto mr-8 flex gap-2">
+              <Button size="sm" variant="outline" onClick={async () => setSaved((await saveDocPdf(el, `통합견적서_${req.item}`)) ?? '')}>
+                <Download className="size-4" /> PDF 저장
+              </Button>
+              <Button size="sm" variant="outline" onClick={async () => setSaved((await saveXlsx({ quotes, req, urls, fileName: `통합견적서_${req.item}` })) ?? '')}>
+                <Download className="size-4" /> 엑셀로 저장
+              </Button>
+            </div>
           </DialogHeader>
-          {saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
+          {saved && <div className="truncate text-[12px] text-ok" title={saved}>저장했어요 · {saved}</div>}
           <div className="min-h-0 flex-1 overflow-y-auto rounded-lg bg-background p-6">
             <style>{DOC_CSS}</style>
             {el}

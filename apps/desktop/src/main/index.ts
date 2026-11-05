@@ -1,4 +1,5 @@
 // Electron main: 창, IPC
+import { exportXlsx, type XlsxPayload } from './export-xlsx';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import type { BrowserInput, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '@shared/types';
@@ -127,6 +128,7 @@ function registerIpc() {
   ipcMain.handle('browser:login', (_e, url: string) => openLoginWindow(url));
   ipcMain.handle('agent:resume', (_e, slot: Slot) => flow.resume(slot));
   ipcMain.handle('report:pdf', (_e, html: string, name: string) => (mainWindow ? flow.onSavePdf(mainWindow, html, name) : null));
+  ipcMain.handle('report:xlsx', (_e, payload: XlsxPayload) => (mainWindow ? exportXlsx(mainWindow, payload) : null));
   ipcMain.handle('approval:polish', (_e, input: PolishInput) => polishApproval(input));
   ipcMain.handle('template:get', () => loadTemplate());
   ipcMain.handle('template:analyze', (_e, file: { name: string; data: Uint8Array }, fields: FieldDef[]) => analyzeTemplate(file, fields));
