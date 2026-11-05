@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Copy, History } from 'lucide-react';
+import { ArrowLeft, Check, Copy, History, Loader2 } from 'lucide-react';
 import type { TimelineItem } from '@shared/types';
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation';
 import { Message, MessageAction, MessageActions, MessageContent } from '@/components/ai-elements/message';
@@ -153,9 +153,17 @@ function Composer() {
             status={busy ? 'submitted' : undefined}
             disabled={empty || busy}
             aria-label="보내기"
-            className="size-auto min-h-[50px] self-stretch rounded-lg bg-primary px-4 py-3 text-white hover:bg-primary/90 disabled:opacity-60 [&_svg]:size-[26px]"
+            className="size-auto min-h-[50px] w-[58px] shrink-0 justify-center self-stretch rounded-lg bg-primary px-4 py-3 text-white hover:bg-primary/90 disabled:opacity-60"
           >
-            {busy ? undefined : <img src={arrowUp} alt="" width={26} height={26} className="max-w-none shrink-0" />}
+            {/* 아이콘을 항상 26px 상자에 넣는다. svg가 버튼의 직계 자식이 되면 InputGroupButton의 has-[>svg]:p-0이
+                padding을 없애 로딩 중에 버튼 폭이 확 줄어든다 */}
+            <span className="flex size-[26px] shrink-0 items-center justify-center">
+              {busy ? (
+                <Loader2 className="size-[22px] animate-spin" />
+              ) : (
+                <img src={arrowUp} alt="" width={26} height={26} className="max-w-none shrink-0" />
+              )}
+            </span>
           </PromptInputSubmit>
         </PromptInput>
         <div className="px-1 text-right text-[12px] text-muted-foreground">Enter 보내기 · Shift+Enter 줄바꿈</div>
