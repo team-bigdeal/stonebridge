@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, ChevronDown, ChevronRight, ExternalLink, FileText, SlidersHorizontal, Table2, X } from 'lucide-react';
-import type { Field, FieldKey, Quote, Requirements } from '@shared/types';
+import type { Field, FieldKey, Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -214,9 +214,7 @@ function CheckPill({ c, title }: { c: Check; title: string }) {
 
 export function Recommend() {
   const api = useApi();
-  const { quotes, requirements, vendorStatus, vendors, backend, set, scoped } = useRunStore();
-  const [opening, setOpening] = useState(false);
-  const [orderMsg, setOrderMsg] = useState('');
+  const { quotes, requirements, vendorStatus } = useRunStore();
   if (!requirements?.deadline || requirements.budgetMax === undefined) return null;
   const req = requirements as Requirements;
   const rec = recommend(quotes, req);
@@ -255,46 +253,7 @@ export function Recommend() {
         <ol className="list-decimal space-y-3 pl-6 text-[16px] font-medium leading-normal text-ink">
           {rec.reasons.map((r) => <li key={r}>{r}</li>)}
         </ol>
-        {pick && (() => {
-          // 견적을 받은 상품 페이지 (없으면 업체 주소)
-          const src = pick.listedPrice.source;
-          const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : vendors.find((v) => v.id === pick.vendorId)?.url;
-          const openHere = async () => {
-            setOpening(true);
-            try {
-              const r = await api.openOrder(pick.vendorId);
-              if (r) {
-                setOrderMsg(r.message);
-                // 내장 브라우저면 크게 띄워 바로 확인하고 주문할 수 있게
-                if (r.ok && backend === 'electron') set({ expanded: pick.vendorId });
-              }
-            } finally {
-              setOpening(false);
-            }
-          };
-          return (
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {pick.channel === 'web' && url && !scoped && (
-                  <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={opening} onClick={() => void openHere()}>
-                    <img src={cartIcon} alt="" className="size-4 brightness-0 invert" /> 주문 페이지 열기
-                  </Button>
-                )}
-                {url && (
-                  <Button variant="outline" className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => void window.doldari.openExternal(url)} title="로그인·결제 정보가 있는 내 브라우저에서 주문">
-                    <ExternalLink className="size-4" /> 내 브라우저로 열기
-                  </Button>
-                )}
-                <Button variant="secondary" className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(pick.vendorId)}>
-                  주문 문의 작성 <ChevronRight className="size-4" />
-                </Button>
-              </div>
-              <p className="text-[13px] text-muted-foreground">
-                {orderMsg ? `${orderMsg} ` : ''}옵션·수량이 견적과 같은지 확인하고 주문·결제는 직접 해 주세요. 돌다리는 주문 버튼을 누르지 않아요.
-              </p>
-            </div>
-          );
-        })()}
+        {pick && <OrderActions vendorId={pick.vendorId} />}
       </div>
       {questions.length > 0 && (
         <div className="rounded-lg bg-row-alt p-6">
@@ -374,10 +333,13 @@ export function DocsCard() {
 
 export function ReportCard() {
   const api = useApi();
-  const { set, quotes, busy } = useRunStore();
+  const { set, quotes, busy, requirements } = useRunStore();
   const count = Object.values(quotes).filter((q) => q && q.listedPrice.value !== null).length;
+  const rec = requirements?.deadline && requirements.budgetMax !== undefined ? recommend(quotes, requirements as Requirements) : null;
+  const pick = rec?.vendorId ? quotes[rec.vendorId] : null;
   return (
-    <Card className="flex-row flex-wrap items-center gap-4 p-6">
+    <Card className="gap-5 p-6">
+    <div className="flex flex-row flex-wrap items-center gap-4">
       <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary">
         <FileText className="size-6" />
       </div>
@@ -390,6 +352,18 @@ export function ReportCard() {
       </Button>
       <Button variant="outline" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'approval' } })}>품의서 초안</Button>
       <Button variant="secondary" className="h-auto px-4 py-2.5 text-[14px]" onClick={() => set({ viewer: { kind: 'integrated' } })}>통합 견적서 보기</Button>
+    </div>
+      {/* 견적에서 끝내지 않고 실제 주문까지: 추천 업체의 주문 페이지 또는 주문 메일 */}
+      {pick && (
+        <div className="flex flex-col gap-3 border-t pt-5">
+          <div className="flex items-center gap-2 text-[16px] font-semibold text-black">
+            <img src={cartIcon} alt="" className="size-5" />
+            {pick.vendorName}에 주문하기
+            <span className="text-[14px] font-medium text-muted-foreground">합계 {won(confirmedSum(pick, requirements as Requirements))}</span>
+          </div>
+          <OrderActions vendorId={pick.vendorId} />
+        </div>
+      )}
     </Card>
   );
 }
@@ -424,5 +398,57 @@ function QuoteSources({ q }: { q: Quote }) {
         ))}
       </SourcesContent>
     </Sources>
+  );
+}
+
+/** 주문 버튼 묶음: 웹 견적이면 주문 페이지(앱 안 브라우저·내 브라우저), 메일·파일 견적이면 주문 메일.
+ *  주문·결제 버튼은 사용자가 직접 누르고, 메일도 사용자가 확인하고 보낸다 */
+export function OrderActions({ vendorId }: { vendorId: VendorId }) {
+  const api = useApi();
+  const { quotes, vendors, backend, set, scoped } = useRunStore();
+  const [opening, setOpening] = useState(false);
+  const [msg, setMsg] = useState('');
+  const q = quotes[vendorId];
+  if (!q) return null;
+  const src = q.listedPrice.source;
+  const url = src?.channel === 'web' && /^https?:\/\//.test(src.ref) ? src.ref : vendors.find((v) => v.id === vendorId)?.url;
+  const web = q.channel === 'web' && Boolean(url);
+  const openHere = async () => {
+    setOpening(true);
+    try {
+      const r = await api.openOrder(vendorId);
+      if (r) {
+        setMsg(r.message);
+        // 내장 브라우저면 크게 띄워 바로 확인하고 주문할 수 있게
+        if (r.ok && backend === 'electron') set({ expanded: vendorId });
+      }
+    } finally {
+      setOpening(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {web && !scoped && (
+          <Button className="h-auto w-fit px-4 py-2.5 text-[14px]" disabled={opening} onClick={() => void openHere()}>
+            <img src={cartIcon} alt="" className="size-4 brightness-0 invert" /> 주문 페이지 열기
+          </Button>
+        )}
+        {url && (
+          <Button variant="outline" className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => void window.doldari.openExternal(url)} title="로그인·결제 정보가 있는 내 브라우저에서 주문">
+            <ExternalLink className="size-4" /> 내 브라우저로 열기
+          </Button>
+        )}
+        {!scoped && (
+          <Button variant={web ? 'secondary' : 'default'} className="h-auto w-fit px-4 py-2.5 text-[14px]" onClick={() => api.draftOrder(vendorId)}>
+            {web ? '주문 문의 폼·메일' : '주문 메일 쓰기'} <ChevronRight className="size-4" />
+          </Button>
+        )}
+      </div>
+      <p className="text-[13px] text-muted-foreground">
+        {msg ? `${msg} ` : ''}
+        {web ? '옵션·수량이 견적과 같은지 확인하고 주문·결제는 직접 해 주세요. 돌다리는 주문 버튼을 누르지 않아요.' : '견적 내용으로 주문 메일을 써 둘게요. 확인하고 보내기를 누르면 발송돼요.'}
+      </p>
+    </div>
   );
 }
