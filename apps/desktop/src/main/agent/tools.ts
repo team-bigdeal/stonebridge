@@ -80,10 +80,10 @@ export const TOOL_DEFS = {
   ),
   switch_channel: T(
     'switch_channel',
-    '웹에 가격이 없을 때 다른 채널로 전환한다. mail = 견적 요청 메일(사이트에 적힌 메일 주소 필요), file = 카톡·전화 상담 후 견적서 파일로 받는 경우.',
+    '웹에 가격이 없을 때 다른 채널로 전환한다. mail = 견적 요청 메일(사이트에 적힌 메일 주소 필요), file = 카톡·문자·전화 상담 후 견적서 파일로 받는 경우.',
     {
       channel: { type: 'string', enum: ['mail', 'file'] },
-      contact: { type: 'string', description: '사이트에 적힌 메일 주소 또는 연락 방법' },
+      contact: { type: 'string', description: 'mail이면 메일 주소. file이면 카카오톡 채널·오픈채팅·네이버 톡톡 링크와 전화번호를 사이트에 적힌 그대로' },
       reason: { type: 'string', description: '전환 이유 한 줄' }
     },
     ['channel', 'reason']
