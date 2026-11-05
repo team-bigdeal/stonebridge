@@ -33,6 +33,8 @@ const api = {
   onFrame: (cb: (f: { slot: Slot; data: string }) => void) => on('browser:frame', cb),
   sendChat: (text: string) => ipcRenderer.invoke('chat:send', text),
   startSearch: (patch: Partial<Requirements>) => ipcRenderer.invoke('flow:start', patch),
+  /** 요구 조건 패널에서 품목을 바꿈 → 새 품목에 맞는 세부 조건으로 다시 */
+  changeItem: (item: string): Promise<void> => ipcRenderer.invoke('req:item', item),
   revise: () => ipcRenderer.invoke('flow:revise'),
   uploadFile: (vendorId: VendorId, file: { name: string; mime: string; data: Uint8Array }) => ipcRenderer.invoke('file:upload', vendorId, file),
   sendMail: (draft: MailDraft): Promise<MailResult> => ipcRenderer.invoke('mail:send', draft),
