@@ -42,7 +42,6 @@ onEmit((ev) => {
 
 let interview: Interview | null = null;
 let requirements: Requirements | null = null;
-let docsShown = false;
 let compareShown = false;
 let generation = 0;
 const drafts = new Map<string, MailDraft>();
@@ -1193,10 +1192,6 @@ function onQuotesSettled() {
   if (!allSettled()) return;
   const priced = listVendors().filter((v) => quoteStore.get(v.id)?.listedPrice.value !== null);
   if (priced.length === 0) return;
-  if (!docsShown) {
-    docsShown = true;
-    timeline({ kind: 'docs' });
-  }
   setStage('questions');
   // 비교가 바뀔 때마다 히스토리에 저장 (같은 견적 건은 같은 파일을 덮어씀)
   saveRecord(requirements, listVendors(), quoteStore.quotes);
@@ -1412,7 +1407,6 @@ let resetting: Promise<void> = Promise.resolve();
  *  상태는 바로 비우고, 시간이 걸리는 브라우저 정리는 돌려주는 Promise로 기다린다 */
 function clearRun() {
   generation++;
-  docsShown = false;
   compareShown = false;
   announced = '';
   reportShown = false;
@@ -1459,7 +1453,7 @@ export async function resumeHistory(id: string): Promise<{ ok: boolean; message?
   quoteStore.restore(requirements, rec.quotes);
   for (const v of rec.vendors) setVendorStatus(v.id, quoteStore.get(v.id) ? 'done' : 'failed');
   // 비교·견적서·추천은 이미 보여 준 견적이라 다시 띄우지 않는다
-  docsShown = compareShown = reportShown = true;
+  compareShown = reportShown = true;
   setStage('draft', true);
   emit('requirements', { payload: requirements });
   // 업체 브라우저는 그 업체 상품 페이지로 다시 열어 둔다 (주문 페이지 열기·직접 확인용)

@@ -42,7 +42,6 @@ function fromRecord(r: HistoryRecord): SessionSnapshot {
       ? []
       : ([
           { id: id('compare'), kind: 'compare' },
-          { id: id('docs'), kind: 'docs' },
           { id: id('report'), kind: 'report' }
         ] as TimelineItem[]))
   ];

@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, Check as CheckIcon, ChevronRight, ExternalLink, FileText, HelpCircle, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
 import { FIELD_LABELS } from '@shared/types';
-import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, daysUntil, type Check, type ConditionResult } from '@shared/quote';
+import { confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, daysUntil, type Check, type ConditionResult } from '@shared/quote';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -643,57 +643,6 @@ export function Recommend() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/** 업체별 통일 견적서 요약 타일 */
-export function DocsCard() {
-  const { quotes, requirements, vendors, set } = useRunStore();
-  if (!requirements?.deadline) return null;
-  const req = requirements as Requirements;
-  const list = rankQuotes(quotes, req).filter((id) => quotes[id]?.listedPrice.value !== null);
-  return (
-    <div className="space-y-3">
-      <SectionHead title="업체별 견적서" />
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:gap-10">
-        {list.map((id, i) => {
-          const doc = buildDoc(quotes[id]!, req, vendors.find((v) => v.id === id)?.url);
-          return (
-            <div key={id} className="group flex flex-col rounded-lg rounded-tl-none bg-card p-6 transition-shadow hover:shadow-[0_0_0_1px_var(--line)]">
-            <button type="button" onClick={() => set({ viewer: { kind: 'vendor', id } })} className="flex flex-1 flex-col gap-6 text-left">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Pill tone="primary" className="text-[13px]">추천 {i + 1}위</Pill>
-                  <span className="text-[13px] font-medium text-muted-foreground">{CH[quotes[id]!.channel]} 견적</span>
-                  {!doc.complete && <Pill tone="warn" className="text-[13px]">일부 미확인</Pill>}
-                </div>
-                <div className="flex flex-col gap-3 text-[21px] font-semibold leading-normal text-ink">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className={cn('size-2.5 shrink-0 rounded-full', VENDOR_DOT[id])} />
-                    <span className="truncate">{doc.supplier.name}</span>
-                  </span>
-                  <span className="tabular-nums">{doc.total.toLocaleString('ko-KR')}원</span>
-                </div>
-                <div className="-mt-2 text-[13px] font-medium text-muted-foreground">공급가 {doc.supply.toLocaleString('ko-KR')} + 부가세 {doc.vat.toLocaleString('ko-KR')}</div>
-              </div>
-              <div className="flex flex-col gap-4 text-[16px] font-medium leading-normal">
-                {doc.lines.filter((l) => l.counted).map((l, k) => (
-                  <div key={k} className="flex justify-between gap-3">
-                    <span className="truncate text-muted-foreground">{l.name}</span>
-                    <span className="shrink-0 tabular-nums text-primary">{l.amount === null ? <span className="text-warn">미확인</span> : l.amount === 0 ? l.note ?? '0' : `${l.amount.toLocaleString('ko-KR')}원`}</span>
-                  </div>
-                ))}
-              </div>
-              {doc.missing.length > 0 && <div className="text-[13px] font-medium text-warn">확인 필요: {doc.missing.join(', ')}</div>}
-              <div className="mt-auto flex items-center justify-center gap-1 rounded-lg bg-secondary px-4 py-2.5 text-[14px] font-medium text-primary">
-                견적서 보기 <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </button>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

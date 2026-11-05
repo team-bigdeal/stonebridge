@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { BrowserGrid, BrowserPanel } from './workspace/BrowserPanel';
 import { SizesCard } from './cards/Sizes';
 import { HistoryCard, MailCard, MessageCard, ReplyFileCard, RequirementsCard, UploadCard } from './cards/Basics';
-import { CompareCard, DocsCard, ReportCard } from './cards/Compare';
+import { CompareCard, ReportCard } from './cards/Compare';
 import { api } from '@/lib/api';
 import { exitReplay, resumeReplay } from '@/replay';
 import { RunContext } from '@/runScope';
@@ -294,7 +294,8 @@ function ItemBody({ item }: { item: TimelineItem }) {
     case 'compare':
       return <Wide><CompareCard /></Wide>;
     case 'docs':
-      return <Wide><DocsCard /></Wide>;
+      // 예전 기록에 남은 업체별 견적서 카드는 그리지 않는다 (견적 비교 카드에 같은 내용이 있음)
+      return null;
     case 'report':
       return <Medium><ReportCard /></Medium>;
     case 'history':
