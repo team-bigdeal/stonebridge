@@ -5,6 +5,7 @@ import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } fr
 import { FIELD_LABELS } from '@shared/types';
 import { buildDoc, confirmedSum, confirmQuestions, evaluateConditions, extraSum, lowestListed, orderUrl, priceQty, productAmount, rankQuotes, recommend, won, type Check } from '@shared/quote';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent } from '@/components/ui/card';
 import { STATUS_LABEL, useStore, VENDOR_DOT, type SourceEntry } from '@/store';
@@ -183,7 +184,7 @@ function RankDelta({ d }: { d?: number }) {
   );
 }
 
-const SPEEDS = [0.5, 1, 2, 4];
+const SPEEDS = [0.5, 1, 2, 4, 8, 16];
 
 /** 다시 보기 조작: 처음부터·이전·재생/멈춤·다음, 단계 막대, 배속, 닫기 */
 function ReplayBar({ i, n, playing, speed, onSpeed, onChange, onClose }: { i: number; n: number; playing: boolean; speed: number; onSpeed: (s: number) => void; onChange: (i: number, playing: boolean) => void; onClose: () => void }) {
@@ -207,20 +208,16 @@ function ReplayBar({ i, n, playing, speed, onSpeed, onChange, onClose }: { i: nu
         className="mx-2 h-1.5 flex-1 cursor-pointer accent-primary"
       />
       <span className="w-20 text-right text-[13px] font-medium tabular-nums text-muted-foreground">{i + 1} / {n}단계</span>
-      <div role="radiogroup" aria-label="재생 속도" className="flex rounded-md bg-card/60 p-0.5">
-        {SPEEDS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="radio"
-            aria-checked={speed === s}
-            onClick={() => onSpeed(s)}
-            className={cn('rounded px-2 py-1 text-[12px] font-semibold tabular-nums', speed === s ? 'bg-primary text-white' : 'text-muted-foreground hover:text-ink')}
-          >
-            {s}×
-          </button>
-        ))}
-      </div>
+      <Select value={String(speed)} onValueChange={(v) => onSpeed(Number(v))}>
+        <SelectTrigger size="sm" aria-label="재생 속도" className="w-[84px] bg-card text-[13px] font-semibold tabular-nums">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SPEEDS.map((s) => (
+            <SelectItem key={s} value={String(s)} className="tabular-nums">{s}배속</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <button type="button" className={btn} aria-label="다시 보기 닫기" onClick={onClose}><X className="size-4" /></button>
     </div>
   );
