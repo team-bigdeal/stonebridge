@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, Check as CheckIcon, ChevronRight, ExternalLink, FileText, HelpCircle, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
@@ -16,7 +16,7 @@ import cartIcon from '@/assets/figma/cart.svg';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
 import { CompareChart, RankDelta, type Fx } from './CompareChart';
-import { hasRankChange, stepView, useLiveRankFx, type StepView } from './rankFx';
+import { stepView, useLiveRankFx, type StepView } from './rankFx';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 const TOTAL_HINT = '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.';
@@ -68,7 +68,8 @@ export function CompareCard() {
   // 순위 변동 다시 보기: i번째 기록 단계를 그린다 (at = 그 단계를 띄운 시각, 바뀐 칸 깜빡임용)
   const [rp, setRp] = useState<{ i: number; playing: boolean; at: number } | null>(null);
   const [speed, setSpeed] = useState(1);
-  const canReplay = useMemo(() => hasRankChange(rankLog, req), [rankLog, req]);
+  // 순위가 그대로여도 값이 2단계 이상 쌓였으면 들어온 과정을 다시 볼 수 있게
+  const canReplay = rankLog.length >= 2;
   const live = useLiveRankFx(rankLog, req);
   const sv: StepView | null = rp ? stepView(rankLog, Math.min(rp.i, rankLog.length - 1), req) : live;
   useEffect(() => {
