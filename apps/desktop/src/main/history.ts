@@ -24,6 +24,16 @@ export function startRecord() {
   for (const k of Object.keys(originals)) delete originals[k as VendorId];
 }
 
+/** 지난 견적을 이어서 할 때: 다음 저장부터 그 기록(id)에 이어서 쌓고, 받은 원본도 되살린다 */
+export function resumeRecord(id: string): HistoryRecord | null {
+  const r = readRecord(id);
+  if (!r) return null;
+  current = { id: r.id, createdAt: r.createdAt };
+  for (const k of Object.keys(originals)) delete originals[k as VendorId];
+  for (const [vid, list] of Object.entries(r.originals ?? {})) originals[vid as VendorId] = [...(list ?? [])].slice(-MAX_ORIGINALS);
+  return r;
+}
+
 export function addOriginal(vendorId: VendorId, o: QuoteOriginal) {
   // 같은 원본을 다시 보내면(제품 사진을 나중에 붙인 경우) 바꿔 끼운다
   originals[vendorId] = [...(originals[vendorId] ?? []).filter((x) => x.id !== o.id), o].slice(-MAX_ORIGINALS);

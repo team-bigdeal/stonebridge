@@ -123,6 +123,7 @@ function registerIpc() {
   ipcMain.handle('history:delete', (_e, id: string) => deleteRecord(String(id)));
   ipcMain.handle('history:saveSession', (_e, id: string, snap: SessionSnapshot) => saveSession(String(id), snap));
   ipcMain.handle('history:getSession', (_e, id: string) => getSession(String(id)));
+  ipcMain.handle('history:resume', (_e, id: string) => flow.resumeHistory(String(id)));
   ipcMain.handle('settings:save', async (_e, input: SettingsInput) => {
     const key = input.ANTHROPIC_API_KEY?.trim();
     if (key) {
