@@ -9,7 +9,7 @@ import { hasApiKey, imapConfigured } from './config';
 import {
   emit, getStage, getVendorStatus, notice, onEmit, resetStatuses, say, setBusy, setStage, setVendorStatus, timeline
 } from './events';
-import { addOriginal, clearOriginals, saveRecord, startRecord } from './history';
+import { addOriginal, clearOriginals, currentRecordId, saveRecord, startRecord } from './history';
 import { Interview } from './interview';
 import { quoteStore } from './quote/store';
 import { getDriver, refreshState, resetAll, setHandoff } from './browser';
@@ -793,7 +793,12 @@ export async function revise(fromChat = false) {
   const req = requirements;
   const rank = rankQuotes(quoteStore.quotes, req).filter((id) => quoteStore.get(id)?.listedPrice.value !== null);
   const rec = recommend(quoteStore.quotes, req);
+  // 이전 검색은 지금 상태 그대로 히스토리 기록으로 마무리하고, 다음 검색은 새 기록으로 쌓는다
+  const recordId = currentRecordId();
+  if (recordId) saveRecord(req, listVendors(), quoteStore.quotes);
+  startRecord();
   const summary: RunSummary = {
+    recordId: recordId ?? undefined,
     requirements: req,
     rows: listVendors().map((v) => {
       const q = quoteStore.get(v.id);

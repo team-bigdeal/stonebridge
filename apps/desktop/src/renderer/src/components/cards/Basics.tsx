@@ -12,6 +12,7 @@ import { clock, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill, SectionHead } from './Section';
 import { api } from '@/lib/api';
+import { openReplay } from '@/replay';
 
 type EditKey = 'item' | 'quantity' | 'budgetMax' | 'deadline' | 'minWarrantyMonths' | 'region';
 const NUM_KEYS: EditKey[] = ['quantity', 'budgetMax', 'minWarrantyMonths'];
@@ -169,6 +170,11 @@ export function HistoryCard({ summary }: { summary: RunSummary }) {
           <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12px] text-muted-foreground marker:text-muted-foreground/50">
             {summary.reasons.map((x) => <li key={x}>{x}</li>)}
           </ul>
+        )}
+        {summary.recordId && (
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => void openReplay(summary.recordId!)}>
+            <History className="size-3.5" /> 이전 검색 다시 보기
+          </Button>
         )}
       </CollapsibleContent>
     </Collapsible>
