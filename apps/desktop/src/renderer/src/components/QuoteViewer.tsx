@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink, Sparkles } from 'lucide-react';
 import type { Quote, Requirements, VendorId } from '@shared/types';
 import { buildDoc } from '@shared/quote';
-import { approvalFields, buildApproval, type ApprovalHeader } from '@shared/approval';
+import { applyPolished, approvalFields, buildApproval, buildPolishInput, type ApprovalHeader, type PolishResult } from '@shared/approval';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ApprovalDocument } from '@/doc/ApprovalDocument';
@@ -133,7 +133,33 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
   const [saved, setSaved] = useState('');
   const [page, setPage] = useState<0 | 1>(0);
   const [dragging, setDragging] = useState(false);
-  const doc = useMemo(() => buildApproval(quotes, req, urls, { date: new Date().toISOString().slice(0, 10) }), [quotes, req, urls]);
+  const baseDoc = useMemo(() => buildApproval(quotes, req, urls, { date: new Date().toISOString().slice(0, 10) }), [quotes, req, urls]);
+  const polishInput = useMemo(() => buildPolishInput(baseDoc), [baseDoc]);
+  const polishKey = useMemo(() => JSON.stringify(polishInput), [polishInput]);
+  // AI가 다듬은 문장 (사실이 바뀌면 버리고 템플릿 문장으로 돌아간다)
+  const [polish, setPolish] = useState<{ key: string; result: PolishResult } | null>(null);
+  const [polishMsg, setPolishMsg] = useState('');
+  const [polishBusy, setPolishBusy] = useState(false);
+  const doc = useMemo(() => (polish && polish.key === polishKey ? applyPolished(baseDoc, polish.result) : baseDoc), [baseDoc, polish, polishKey]);
+  const runPolish = async () => {
+    setPolishBusy(true);
+    setPolishMsg('');
+    try {
+      const res = await window.doldari.polishApproval(polishInput);
+      if (!res.ok) {
+        setPolishMsg(res.error);
+        return;
+      }
+      const total = polishInput.purpose.length + polishInput.reasons.length;
+      const used = [...res.result.purpose, ...res.result.reasons].filter(Boolean).length;
+      setPolish({ key: polishKey, result: res.result });
+      setPolishMsg(used === 0 ? '검증을 통과한 문장이 없어 템플릿 문장을 그대로 씁니다.' : `${total}문장 중 ${used}문장을 다듬었어요.${used < total ? ` 나머지 ${total - used}문장은 검증(숫자·근거 번호)을 통과하지 못해 템플릿 문장을 썼어요.` : ''} 본문에서 직접 고친 내용은 초기화됐어요.`);
+    } catch {
+      setPolishMsg('AI 호출에 실패해 템플릿 문장을 그대로 씁니다.');
+    } finally {
+      setPolishBusy(false);
+    }
+  };
   const fields = useMemo(() => approvalFields(doc, header), [doc, header]);
   const t = useApprovalTemplate(fields, () => setPage(1));
   const hasTpl = t.tpl !== null;
@@ -185,12 +211,23 @@ function ApprovalViewer({ req, quotes, urls, onClose }: { req: Requirements; quo
           )}
         </DialogHeader>
         {view === 0 && (
+          <>
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             <Input className="h-8 w-36" placeholder="기안부서" value={header.dept} onChange={(e) => update({ dept: e.target.value })} />
             <Input className="h-8 w-28" placeholder="기안자" value={header.author} onChange={(e) => update({ author: e.target.value })} />
             <span className="text-muted-foreground">결재선</span>
             <Input className="h-8 w-64" placeholder="담당, 팀장, 본부장" value={header.roles.join(', ')} onChange={(e) => update({ roles: e.target.value.split(/[,，]/).map((r) => r.trim()).filter(Boolean).slice(0, 5) })} />
+            <Button size="sm" variant="outline" className="ml-auto h-8" disabled={polishBusy} onClick={() => void runPolish()}>
+              <Sparkles className="size-3.5" /> {polishBusy ? '다듬는 중…' : doc.polishedCount ? 'AI로 다시 다듬기' : 'AI로 문장 다듬기'}
+            </Button>
+            {doc.polishedCount ? (
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => { setPolish(null); setPolishMsg('템플릿 문장으로 되돌렸어요.'); }}>
+                원래 문장으로
+              </Button>
+            ) : null}
           </div>
+          {polishMsg && <div className="-mt-1 text-[12px] text-muted-foreground">{polishMsg}</div>}
+          </>
         )}
         <TemplateBar t={t} />
         {view === 0 && saved && <div className="truncate text-[12px] text-ok" title={saved}>PDF로 저장했어요 · {saved}</div>}
