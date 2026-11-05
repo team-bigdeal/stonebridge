@@ -1,6 +1,6 @@
 // renderer에 노출하는 안전한 API (API 키 등 비밀값은 노출하지 않는다)
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
+import type { AgentEvent, AppConfig, BrowserInput, HistoryRecord, HistorySummary, MailDraft, MailKind, Quote, Requirements, SessionSnapshot, SettingsInput, Slot, VendorId } from '../shared/types';
 
 import type { PolishInput, PolishResult } from '../shared/approval';
 import type { FieldDef, TemplateFillResult, TemplateInfo, TemplatePreviewResult, TemplateResult } from '../shared/template';
@@ -52,6 +52,7 @@ const api = {
   onCursor: (cb: (c: { slot: Slot; x: number; y: number; click?: boolean }) => void) => on('browser:cursor', cb),
   resume: (slot: Slot) => ipcRenderer.invoke('agent:resume', slot),
   savePdf: (html: string, name: string): Promise<string | null> => ipcRenderer.invoke('report:pdf', html, name),
+  exportXlsx: (payload: { quotes: Partial<Record<VendorId, Quote>>; req: Requirements; urls: Partial<Record<VendorId, string>>; fileName: string }): Promise<string | null> => ipcRenderer.invoke('report:xlsx', payload),
   polishApproval: (input: PolishInput): Promise<{ ok: true; result: PolishResult } | { ok: false; error: string }> => ipcRenderer.invoke('approval:polish', input),
   templateGet: (): Promise<TemplateInfo | null> => ipcRenderer.invoke('template:get'),
   templateAnalyze: (file: { name: string; data: Uint8Array }, fields: FieldDef[]): Promise<TemplateResult> => ipcRenderer.invoke('template:analyze', file, fields),

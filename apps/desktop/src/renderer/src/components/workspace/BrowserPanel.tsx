@@ -126,19 +126,20 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
 }
 
 type GridLayout = 'focus' | 'grid';
-const LAYOUT_KEY = 'doldari.browserLayout';
+// 기본값을 나란히로 바꾸면서 키를 새로 씀 (예전에 저장된 '크게 보기'가 남지 않도록)
+const LAYOUT_KEY = 'doldari.browserLayout.v2';
 const loadLayout = (): GridLayout => {
   try {
-    return localStorage.getItem(LAYOUT_KEY) === 'grid' ? 'grid' : 'focus';
+    return localStorage.getItem(LAYOUT_KEY) === 'focus' ? 'focus' : 'grid';
   } catch {
-    return 'focus';
+    return 'grid';
   }
 };
 
 /**
  * 이번 검색에 쓰는 브라우저들.
- * - 크게 보기(기본): 고른 브라우저 하나를 화면 높이에 맞춰 크게, 나머지는 오른쪽에 작게 (누르면 바꿔 봄)
- * - 나란히: 같은 크기로 나란히
+ * - 나란히(기본): 같은 크기로 나란히
+ * - 크게 보기: 고른 브라우저 하나를 보기 편한 크기로 크게, 나머지는 오른쪽에 작게 (누르면 바꿔 봄)
  * 브라우저가 1개면 그 하나를 화면에 맞춰 크게 보여 준다.
  */
 export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] }) {
@@ -162,7 +163,7 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
       <div className="flex items-center justify-end gap-2">
         {slots.length > 1 && (
           <div className="flex rounded-lg bg-muted p-0.5 text-[13px] font-medium">
-            {(['focus', 'grid'] as const).map((l) => (
+            {(['grid', 'focus'] as const).map((l) => (
               <button
                 key={l}
                 type="button"
@@ -184,8 +185,9 @@ export function BrowserGrid({ slots = ['A', 'B', 'C'] }: { slots?: VendorId[] })
       {slots.length === 1 ? (
         <BrowserPanel slot={slots[0]} frameClassName="max-h-[calc(100vh-300px)]" />
       ) : layout === 'focus' ? (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,22%)]">
-          <BrowserPanel key={main} slot={main} frameClassName="max-h-[calc(100vh-300px)]" />
+        // 화면이 넓어도 너무 커지지 않게 전체 너비와 높이를 묶어 둔다 (16:10 비율 유지)
+        <div className="mx-auto grid w-full max-w-[1080px] grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,28%)]">
+          <BrowserPanel key={main} slot={main} frameClassName="max-h-[min(54vh,520px)]" />
           <div className="flex flex-col gap-5">
             {others.map((id) => (
               <div key={id} className="relative">

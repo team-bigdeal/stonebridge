@@ -30,6 +30,7 @@
     "docx-preview": "^0.4.1",
     "dotenv": "^18.0.9",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^14.9.1",
     "imapflow": "^2.10.0",
     "jszip": "^3.10.2",

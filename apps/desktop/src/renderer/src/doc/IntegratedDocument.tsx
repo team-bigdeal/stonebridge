@@ -1,25 +1,31 @@
 // 통합 견적서: 업체별 견적을 한 장으로 비교
 import type { Quote, Requirements, VendorId } from '@shared/types';
-import { buildDoc, evaluateConditions, rankQuotes, recommend, won } from '@shared/quote';
+import { buildDoc, won } from '@shared/quote';
+import { buildCompareTable, type CompareCell, type CompareRow } from '@shared/compare-table';
 
-const n = (v: number | null | undefined) => (v === null || v === undefined ? '?' : v.toLocaleString('ko-KR'));
+const n = (v: number | string | null | undefined) => (v === null || v === undefined ? '?' : typeof v === 'number' ? v.toLocaleString('ko-KR') : v);
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
+// 비교표에는 안 그리는 행 (아래 "업체 정보" 표에 있음)
+const HIDDEN_ROWS = ['payment', 'validity'];
+
+function show(r: CompareRow, c: CompareCell): React.ReactNode {
+  if (r.key === 'channel') return CH[c.value as keyof typeof CH];
+  if (c.kind === 'won') {
+    if (r.zeroLabel && c.value === 0) return r.zeroLabel;
+    return r.total ? <>{n(c.value)}{c.missing && <span className="dl-q"> ?</span>}</> : n(c.value);
+  }
+  if (c.kind === 'month') return `${c.value === null ? '?' : `${c.value}개월`}${c.addon ? ` (+${n(c.addon)})` : ''}`;
+  if (c.kind === 'day') return c.value === null ? '?' : `${c.value}일`;
+  if (c.tone) return <span className={c.tone === 'ok' ? 'dl-ok' : c.tone === 'bad' ? 'dl-bad' : 'dl-q'}>{c.value}</span>;
+  return c.value;
+}
 
 export function IntegratedDocument({ quotes, req, urls }: { quotes: Partial<Record<VendorId, Quote>>; req: Requirements; urls: Partial<Record<VendorId, string>> }) {
-  const order = rankQuotes(quotes, req).filter((id) => quotes[id]?.listedPrice.value !== null);
-  const docs = order.map((id) => ({ q: quotes[id]!, d: buildDoc(quotes[id]!, req, urls[id]), c: evaluateConditions(quotes[id]!, req) }));
-  const rec = recommend(quotes, req);
+  const table = buildCompareTable(quotes, req, urls);
+  const { vendors, recommendation: rec } = table;
   const best = rec.vendorId;
-  const line = (d: (typeof docs)[number]['d'], kind: string) => d.lines.filter((l) => l.kind === kind && l.counted);
-  const sumKind = (d: (typeof docs)[number]['d'], kinds: string[]) => {
-    const ls = d.lines.filter((l) => kinds.includes(l.kind) && l.counted);
-    if (ls.length === 0) return 0;
-    return ls.some((l) => l.amount === null) ? null : ls.reduce((s, l) => s + (l.amount ?? 0), 0);
-  };
+  const docs = vendors.map((v) => ({ q: quotes[v.id]!, d: buildDoc(quotes[v.id]!, req, urls[v.id]) }));
   const today = new Date().toISOString().slice(0, 10);
-  const cell = (id: VendorId, v: React.ReactNode, num = true) => (
-    <td key={id} className={`${num ? 'n' : ''} ${id === best ? 'best' : ''}`}>{v}</td>
-  );
 
   return (
     <div className="dl-paper">
@@ -50,77 +56,26 @@ export function IntegratedDocument({ quotes, req, urls }: { quotes: Partial<Reco
         <thead>
           <tr>
             <th style={{ width: 110 }}>항목</th>
-            {docs.map(({ q }, i) => (
-              <th key={q.vendorId} className="v">
-                {i + 1}위 · {q.vendorName}
+            {vendors.map((v) => (
+              <th key={v.id} className="v">
+                {v.rank}위 · {v.name}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <th>견적 경로</th>
-            {docs.map(({ q }) => cell(q.vendorId, CH[q.channel], false))}
-          </tr>
-          <tr>
-            <th>품명·규격</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, `${line(d, 'product')[0]?.name ?? ''}${line(d, 'product')[0]?.spec ? ` (${line(d, 'product')[0]?.spec})` : ''}`, false))}
-          </tr>
-          <tr>
-            <th>제품가 ({req.quantity}개)</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, n(sumKind(d, ['product']))))}
-          </tr>
-          {req.needInstall && (
-            <tr>
-              <th>설치비</th>
-              {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['install']) === 0 ? '포함' : n(sumKind(d, ['install']))))}
-            </tr>
-          )}
-          {req.needDelivery !== false && (
-            <tr>
-              <th>배송비</th>
-              {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['shipping']) === 0 ? '무료' : n(sumKind(d, ['shipping']))))}
-            </tr>
-          )}
-          {/* A/S가 필요 없는 품목(인쇄물·소모품 등)은 행을 빼서 "?"가 남지 않게 */}
-          {req.minWarrantyMonths > 0 && (
-            <tr>
-              <th>A/S</th>
-              {docs.map(({ q }) =>
-                cell(q.vendorId, `${q.warrantyMonths.value === null ? '?' : `${q.warrantyMonths.value}개월`}${q.warrantyExtraFee.value ? ` (+${n(q.warrantyExtraFee.value)})` : ''}`, false)
-              )}
-            </tr>
-          )}
-          <tr>
-            <th>추가 비용</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, sumKind(d, ['extra']) ? n(sumKind(d, ['extra'])) : '—'))}
-          </tr>
-          <tr>
-            <th>공급가액</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, n(d.supply)))}
-          </tr>
-          <tr>
-            <th>부가세</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, n(d.vat)))}
-          </tr>
-          <tr className="total">
-            <th>합계</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, <>{n(d.total)}{!d.complete && <span className="dl-q"> ?</span>}</>))}
-          </tr>
-          <tr>
-            <th>납기</th>
-            {docs.map(({ q }) => cell(q.vendorId, q.leadTimeDays.value === null ? '?' : `${q.leadTimeDays.value}일`))}
-          </tr>
-          <tr>
-            <th>조건 충족</th>
-            {docs.map(({ q, c }) =>
-              cell(q.vendorId, c.overall === 'ok' ? <span className="dl-ok">충족</span> : c.overall === 'violate' ? <span className="dl-bad">{c.violations.join(', ')}</span> : '확인 필요', false)
-            )}
-          </tr>
-          <tr>
-            <th>확인 필요</th>
-            {docs.map(({ q, d }) => cell(q.vendorId, d.missing.length ? <span className="dl-q">{d.missing.join(', ')}</span> : '없음', false))}
-          </tr>
+          {table.rows
+            .filter((r) => !HIDDEN_ROWS.includes(r.key))
+            .map((r) => (
+              <tr key={r.key} className={r.total ? 'total' : undefined}>
+                <th>{r.label}</th>
+                {r.cells.map((c, i) => (
+                  <td key={vendors[i].id} className={`${c.kind === 'won' || c.kind === 'day' ? 'n' : ''} ${vendors[i].id === best ? 'best' : ''}`}>
+                    {show(r, c)}
+                  </td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
 
