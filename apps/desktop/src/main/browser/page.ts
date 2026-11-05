@@ -232,3 +232,46 @@ export async function expandAll(d: BrowserDriver) {
   }
   return opened.length ? `펼친 섹션: ${opened.join(', ')}. read_text나 snapshot으로 펼쳐진 내용을 확인하세요.` : '접힌 섹션이 없습니다.';
 }
+
+/** 견적서를 내주는 버튼·링크 글자 (견적서 출력·다운로드·인쇄·발행, 가견적서, PDF 견적서 등) */
+const QUOTE_DOC_RE = /견적서\s*(출력|다운|인쇄|발행|받기|보기|저장|PDF)|가견적|PDF\s*견적|견적\s*(출력|인쇄)|견적서\s*$/i;
+
+/**
+ * 이 페이지에서 견적서를 받을 수 있는지: 누를 수 있는 요소(버튼·링크) 중 견적서 출력·다운로드 글자를 찾는다.
+ * 같은 출처 iframe과 다른 출처 iframe(옵션·계산기 영역) 글자까지 본다. 찾으면 그 글자, 없으면 null
+ */
+export async function findQuoteDocButton(d: BrowserDriver): Promise<string | null> {
+  // 스크립트로 늦게 그려지는 버튼이 있어 못 찾으면 잠깐 기다렸다 다시 본다
+  for (let i = 0; i < 3; i++) {
+    const hit = await findQuoteDocOnce(d);
+    if (hit) return hit;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return null;
+}
+
+async function findQuoteDocOnce(d: BrowserDriver): Promise<string | null> {
+  const found = await d
+    .evaluate<string | null>(`(() => {
+      const re = ${QUOTE_DOC_RE.toString()};
+      const docs = [document];
+      for (const f of document.querySelectorAll('iframe')) { try { if (f.contentDocument && f.contentDocument.body) docs.push(f.contentDocument); } catch (e) {} }
+      for (const doc of docs) {
+        for (const e of doc.querySelectorAll('a, button, input[type=button], input[type=submit], [role=button], [onclick]')) {
+          const t = ((e.innerText || e.value || e.getAttribute('title') || e.getAttribute('aria-label') || '') + '').replace(/\\s+/g, ' ').trim();
+          if (t && t.length <= 30 && re.test(t)) return t;
+          const img = e.querySelector && e.querySelector('img[alt]');
+          if (img && re.test(img.getAttribute('alt') || '')) return img.getAttribute('alt');
+        }
+      }
+      return null;
+    })()`)
+    .catch(() => null);
+  if (found) return found;
+  // 다른 출처 iframe 안(옵션 계산기)은 글자만 볼 수 있다
+  for (const f of (await d.frameTexts?.().catch(() => [])) ?? []) {
+    const line = f.text.split('\n').map((l) => l.trim()).find((l) => l.length <= 30 && QUOTE_DOC_RE.test(l));
+    if (line) return line;
+  }
+  return null;
+}

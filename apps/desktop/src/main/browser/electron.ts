@@ -66,6 +66,14 @@ function handleDownload(item: DownloadItem, wc: WebContents | undefined) {
   });
 }
 
+/** 화면을 PDF로 저장하기 전에 그 화면이 견적서인지 본다 (상품 페이지를 통째로 PDF로 만들어 견적서처럼 쓰지 않게).
+ *  "견적서"와 함께 견적서 양식에만 있는 말(아래와 같이 견적합니다·견적일·견적번호·공급자·귀하·유효기간)이 보여야 한다 */
+async function assertQuoteDoc(wc: WebContents) {
+  const text = await wc.executeJavaScript('document.body ? document.body.innerText : ""').catch(() => '');
+  const doc = /견\s*적\s*서/.test(text) && /아래와\s*같이\s*견적|견\s*적\s*일|견적\s*번호|공\s*급\s*자|귀\s*하|유효\s*기간/.test(text);
+  if (!doc) throw new ToolError('지금 화면은 견적서가 아닙니다 (상품 페이지를 PDF로 저장하지 않습니다). "견적서 출력" 버튼을 눌러 견적서 화면·창이 열렸을 때만 save_page_pdf를 쓰세요. 견적서를 받을 수 없으면 페이지의 가격으로 report_quote 하세요.');
+}
+
 export interface Rect {
   x: number;
   y: number;
@@ -262,6 +270,7 @@ export class ElectronDriver implements BrowserDriver {
     await new Promise((r) => setTimeout(r, 1500));
     try {
       const pwc = win.webContents;
+      await assertQuoteDoc(pwc);
       const data = await pwc.printToPDF({ printBackground: true, pageSize: 'A4' });
       // 빈 창에 써 넣은 견적서는 주소가 about:blank라 원래 페이지 주소를 출처로 남긴다
       const url = /^https?:/.test(pwc.getURL()) ? pwc.getURL() : this.view.webContents.getURL();
@@ -410,6 +419,7 @@ export class ElectronDriver implements BrowserDriver {
     if (popup) return this.printPopup(popup);
     const wc = this.view.webContents;
     if (wc.isDestroyed() || !/^https?:/.test(wc.getURL())) throw new ToolError('저장할 페이지가 없습니다.');
+    await assertQuoteDoc(wc);
     const data = await wc.printToPDF({ printBackground: true, pageSize: 'A4' });
     return checkPdf(Buffer.from(data), wc.getURL(), pdfName(wc.getURL(), wc.getTitle() || '견적서 화면'));
   }
