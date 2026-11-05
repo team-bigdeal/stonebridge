@@ -1,0 +1,156 @@
+// renderer 상태 (zustand). main 이벤트를 받아 갱신한다.
+import { create } from 'zustand';
+import type {
+  AgentEvent, AgentStep, AppConfig, BrowserState, FieldKey, MailRecord, Quote, QuoteOriginal, QuoteUpdatePayload,
+  Requirements, Slot, Source, Stage, TimelineItem, VendorId, VendorInfo, VendorStatus
+} from '@shared/types';
+
+export type SourceEntry = Source & { vendorId: VendorId; field: FieldKey };
+export interface Notice { id: number; message: string; vendorId?: VendorId }
+
+interface State {
+  config: AppConfig | null;
+  stage: Stage;
+  requirements: Partial<Requirements> | null;
+  timeline: TimelineItem[];
+  busy: boolean;
+  quotes: Partial<Record<VendorId, Quote>>;
+  flash: { vendorId: VendorId; field: FieldKey; at: number } | null;
+  vendors: VendorInfo[];
+  vendorStatus: Partial<Record<VendorId, VendorStatus>>;
+  steps: Partial<Record<Slot, AgentStep[]>>;
+  browsers: Partial<Record<Slot, BrowserState>>;
+  sources: SourceEntry[];
+  mails: MailRecord[];
+  notices: Notice[];
+  settingsOpen: boolean;
+  expanded: Slot | null;
+  originals: Partial<Record<VendorId, QuoteOriginal[]>>;
+  backend: 'aside' | 'electron' | null;
+  viewer: { kind: 'vendor'; id: VendorId } | { kind: 'integrated' } | null;
+  set: (p: Partial<State>) => void;
+  push: (item: TimelineItem) => void;
+  handle: (ev: AgentEvent) => void;
+  resetAll: () => void;
+}
+
+let noticeId = 0;
+const initial = () => ({
+  stage: 'interview' as Stage,
+  requirements: null,
+  timeline: [
+    { id: 'hello', kind: 'assistant', text: '안녕하세요, 돌다리예요. 어떤 견적이 필요하세요?\n말씀해 주시면 웹에서 업체를 찾아 직접 사이트를 돌아보고, 숨은 비용까지 더한 견적을 비교해 드릴게요.' }
+  ] as TimelineItem[],
+  busy: false,
+  quotes: {},
+  flash: null,
+  vendors: [],
+  vendorStatus: {},
+  steps: {},
+  browsers: {},
+  sources: [],
+  mails: [],
+  notices: [],
+  expanded: null,
+  originals: {},
+  viewer: null
+});
+
+export const useStore = create<State>((set, get) => ({
+  config: null,
+  settingsOpen: false,
+  backend: null,
+  ...initial(),
+  set: (p) => set(p),
+  push: (item) => set((s) => ({ timeline: [...s.timeline, item] })),
+  resetAll: () => set({ ...initial() }),
+  handle: (ev) => {
+    const s = get();
+    switch (ev.type) {
+      case 'stage':
+        set({ stage: ev.payload as Stage });
+        break;
+      case 'busy':
+        set({ busy: Boolean(ev.payload) });
+        break;
+      case 'timeline':
+        set({ timeline: [...s.timeline, ev.payload as TimelineItem] });
+        break;
+      case 'step': {
+        const st = ev.payload as AgentStep;
+        const list = s.steps[st.slot] ?? [];
+        const idx = list.findIndex((x) => x.id === st.id);
+        const next = idx >= 0 ? list.map((x) => (x.id === st.id ? st : x)) : [...list, st];
+        set({ steps: { ...s.steps, [st.slot]: next } });
+        break;
+      }
+      case 'quote_update': {
+        const { quote, field } = ev.payload as QuoteUpdatePayload;
+        set({ quotes: { ...s.quotes, [quote.vendorId]: quote }, flash: field ? { vendorId: quote.vendorId, field, at: Date.now() } : s.flash });
+        break;
+      }
+      case 'source':
+        set({ sources: [...s.sources, ev.payload as SourceEntry] });
+        break;
+      case 'requirements':
+        set({ requirements: ev.payload as Partial<Requirements> });
+        break;
+      case 'vendors': {
+        const next = ev.payload as VendorInfo[];
+        // 업체가 바뀐 자리는 이전 업체의 원본을 비운다
+        const originals = { ...s.originals };
+        for (const v of s.vendors) {
+          if (next.find((n) => n.id === v.id)?.url !== v.url) delete originals[v.id];
+        }
+        set({ vendors: next, originals });
+        break;
+      }
+      case 'vendor_status':
+        set({ vendorStatus: { ...s.vendorStatus, [ev.vendorId!]: ev.payload as VendorStatus } });
+        break;
+      case 'browser': {
+        const b = ev.payload as BrowserState;
+        set({ browsers: { ...s.browsers, [b.slot]: b } });
+        break;
+      }
+      case 'original': {
+        const o = ev.payload as QuoteOriginal;
+        const list = (s.originals[o.vendorId] ?? []).filter((x) => !(o.url && x.url === o.url));
+        set({ originals: { ...s.originals, [o.vendorId]: [...list, o].slice(-4) } });
+        break;
+      }
+      case 'backend':
+        set((st) => ({ backend: ev.payload as 'aside' | 'electron' | null, config: st.config ? { ...st.config, browser: ev.payload as 'aside' | 'electron' | null } : st.config }));
+        break;
+      case 'mail':
+        set({ mails: [...s.mails, ev.payload as MailRecord] });
+        break;
+      case 'notice': {
+        const payload = ev.payload as { openSettings?: boolean } | undefined;
+        const n = { id: ++noticeId, message: ev.message ?? '', vendorId: ev.vendorId };
+        set({ notices: [...s.notices, n].slice(-4), settingsOpen: payload?.openSettings ? true : s.settingsOpen });
+        setTimeout(() => set({ notices: get().notices.filter((x) => x.id !== n.id) }), 7000);
+        break;
+      }
+    }
+  }
+}));
+
+export const VENDOR_DOT: Record<VendorId, string> = { A: 'bg-va', B: 'bg-vb', C: 'bg-vc' };
+export const VENDOR_TEXT: Record<VendorId, string> = { A: 'text-va', B: 'text-vb', C: 'text-vc' };
+export const ANGLE_LABEL: Record<VendorId, string> = { A: '전문 업체·공식몰', B: '쇼핑몰·오픈마켓', C: '시공·설치 업체' };
+
+export const STATUS_LABEL: Record<VendorStatus, string> = {
+  idle: '대기',
+  browsing: '탐색 중',
+  needs_mail: '메일 승인 필요',
+  waiting_reply: '회신 대기',
+  needs_file: '견적서 업로드 필요',
+  needs_user: '직접 확인 필요',
+  parsing: '분석 중',
+  done: '완료',
+  failed: '실패'
+};
+
+export const clock = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
+export const vendorOf = (id: VendorId) => useStore.getState().vendors.find((v) => v.id === id);
