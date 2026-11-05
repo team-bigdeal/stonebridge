@@ -159,7 +159,9 @@ export type VendorStatus =
   | 'needs_user'
   | 'parsing'
   | 'done'
-  | 'failed';
+  | 'failed'
+  /** 사용자가 멈춤 (다시 시도로 이어서 할 수 있음) */
+  | 'stopped';
 
 export type MailKind = 'request' | 'question' | 'order';
 

@@ -80,6 +80,7 @@ function registerIpc() {
   ipcMain.handle('draft:order', (_e, id: VendorId) => flow.onDraftOrder(id));
   ipcMain.handle('draft:question', (_e, id: VendorId) => flow.onDraftQuestion(id));
   ipcMain.handle('agent:retry', (_e, id: VendorId) => flow.retry(id));
+  ipcMain.handle('agent:stop', () => flow.stop());
   ipcMain.handle('agent:replace', (_e, id: VendorId) => flow.replace(id));
   ipcMain.handle('agent:skip', (_e, id: VendorId) => flow.skip(id));
   ipcMain.on('browser:bounds', (e, slot: Slot, rect: { x: number; y: number; width: number; height: number } | null) =>

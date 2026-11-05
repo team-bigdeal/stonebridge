@@ -250,7 +250,8 @@ export const STATUS_LABEL: Record<VendorStatus, string> = {
   needs_user: '직접 확인 필요',
   parsing: '분석 중',
   done: '완료',
-  failed: '실패'
+  failed: '실패',
+  stopped: '멈춤'
 };
 
 export const clock = (iso: string) => new Date(iso).toTimeString().slice(0, 5);

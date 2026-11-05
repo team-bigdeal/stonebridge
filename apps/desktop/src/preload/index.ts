@@ -34,6 +34,7 @@ const api = {
   draftOrder: (id: VendorId) => ipcRenderer.invoke('draft:order', id),
   draftQuestion: (id: VendorId) => ipcRenderer.invoke('draft:question', id),
   retry: (id: VendorId) => ipcRenderer.invoke('agent:retry', id),
+  stop: () => ipcRenderer.invoke('agent:stop'),
   replace: (id: VendorId) => ipcRenderer.invoke('agent:replace', id),
   skip: (id: VendorId) => ipcRenderer.invoke('agent:skip', id),
   setViewBounds: (slot: Slot, rect: { x: number; y: number; width: number; height: number } | null) => ipcRenderer.send('browser:bounds', slot, rect),
