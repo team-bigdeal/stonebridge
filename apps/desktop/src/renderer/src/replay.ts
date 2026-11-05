@@ -224,6 +224,9 @@ export async function resumeReplay() {
   }
   const shown = takeSnapshot();
   parkFocused();
+  // 되살린 세션은 아직 저장 이벤트가 없으므로 어느 기록인지 직접 적어 둔다 (사이드바에서 다시 누르면 이 세션으로)
+  const sessions = useStore.getState().sessions;
+  useStore.setState({ sessions: { ...sessions, [r.sid]: { ...(sessions[r.sid] ?? { stage: 'draft', vendorStatus: {} }), recordId: id } } });
   if (parked.get(r.sid)?.snap) {
     // 이미 다른 세션이 이어서 하던 기록
     unpark(r.sid);
