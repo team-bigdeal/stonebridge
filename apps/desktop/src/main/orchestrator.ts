@@ -5,7 +5,7 @@ import { shell, type BrowserWindow } from 'electron';
 import type { FieldKey, MailDraft, MailKind, MailRecord, MessageDraft, QuoteMeta, QuoteOriginal, ReportedFields, Requirements, RunSummary, Slot, VendorId, VendorInfo } from '@shared/types';
 import { VENDOR_IDS } from '@shared/types';
 import { josa } from '@shared/josa';
-import { requirementIssue, valueIssue } from '@shared/limits';
+import { ITEM_MAX, requirementIssue, valueIssue } from '@shared/limits';
 import { DEMO_REPLY_DELAY_MS, isDemoAddress } from '@shared/mail';
 import { confirmedSum, INFO_PAGE, missingKeys, orderUrl, productAmount, priceQty, rankQuotes, recommend, won } from '@shared/quote';
 import { hasApiKey, imapConfigured, mailUser, sleep } from './config';
@@ -231,8 +231,9 @@ const posInt = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && 
 /** 요구 조건 패널에서 품목을 바꿨을 때: 새 품목에 맞게 세부 조건을 다시 정해 패널에 보낸다 */
 export async function onItemChange(item: unknown) {
   if (!interview || getStage() !== 'interview' || typeof item !== 'string') return;
-  const next = item.trim().slice(0, 200);
+  const next = item.trim().slice(0, ITEM_MAX);
   if (!next || next === interview.req.item) return;
+  if (item.trim().length > ITEM_MAX) say(ITEM_CUT);
   try {
     await interview.changeItem(next);
   } catch (e) {
@@ -243,6 +244,8 @@ export async function onItemChange(item: unknown) {
   emit('requirements', { payload: interview.req });
 }
 
+const ITEM_CUT = `품목이 ${ITEM_MAX}자를 넘어서 앞 ${ITEM_MAX}자만 품목으로 썼어요. 자세한 조건은 채팅으로 알려 주세요.`;
+
 /** 시작 버튼을 연달아 눌러도 검색이 한 번만 시작되게 (정리를 기다리는 동안에도 단계는 아직 interview) */
 let starting = false;
 
@@ -250,7 +253,7 @@ let starting = false;
 function cleanPatch(patch: Partial<Requirements>, int: Interview): Partial<Requirements> {
   const clean: Partial<Requirements> = {};
   if (!patch || typeof patch !== 'object') return clean;
-  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, 200);
+  if (typeof patch.item === 'string' && patch.item.trim()) clean.item = patch.item.trim().slice(0, ITEM_MAX);
   if (posInt(patch.quantity) && !valueIssue('quantity', patch.quantity!)) clean.quantity = patch.quantity;
   if (posInt(patch.budgetMax) && !valueIssue('budgetMax', patch.budgetMax!)) clean.budgetMax = patch.budgetMax;
   // 지난 날짜도 받아 두고 시작할 때 막는다 (패널에 보이는 값과 main 값이 어긋나지 않게)
@@ -276,7 +279,10 @@ export function editRequirements(patch: Partial<Requirements>) {
 
 export async function startSearch(patch: Partial<Requirements>) {
   if (!interview || getStage() !== 'interview' || starting) return;
-  interview.apply(cleanPatch(patch, interview));
+  const clean = cleanPatch(patch, interview);
+  // 패널에서 고친 긴 품목을 바로 시작하면 여기서 잘린다 (품목 칸을 벗어날 때 이미 알렸으면 다시 말하지 않음)
+  if (clean.item && clean.item !== interview.req.item && typeof patch?.item === 'string' && patch.item.trim().length > ITEM_MAX) say(ITEM_CUT);
+  interview.apply(clean);
   if (!interview.req.item) {
     say('어떤 품목의 견적이 필요한지 먼저 알려 주세요.');
     return;
