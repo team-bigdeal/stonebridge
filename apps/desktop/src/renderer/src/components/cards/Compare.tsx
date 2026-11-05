@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart3, Check as CheckIcon, ChevronRight, ExternalLink, FileText, HelpCircle, ImageOff, Info, LayoutGrid, Package, Pause, Play, RotateCcw, SkipBack, SkipForward, Table2, X } from 'lucide-react';
 import type { Field, FieldKey, Quote, QuoteOriginal, Requirements, VendorId } from '@shared/types';
@@ -15,8 +15,8 @@ import docIcon from '@/assets/figma/doc.svg';
 import cartIcon from '@/assets/figma/cart.svg';
 import { Pill, SectionHead } from './Section';
 import { useRunStore, useApi } from '@/runScope';
-import { CompareChart } from './CompareChart';
-import { hasRankChange, stepView, useLiveRankFx, type StepView } from './rankFx';
+import { CompareChart, RankDelta, type Fx } from './CompareChart';
+import { stepView, useLiveRankFx, type StepView } from './rankFx';
 
 const CH = { web: '웹', mail: '메일', file: '파일' } as const;
 const TOTAL_HINT = '합계 = 제품가×수량 + 설치비 + 배송비 + A/S 연장비 + 필수 추가 비용. 값이 확인될 때마다 순위를 다시 매겨요. 금액을 누르면 출처가 보여요.';
@@ -68,7 +68,8 @@ export function CompareCard() {
   // 순위 변동 다시 보기: i번째 기록 단계를 그린다 (at = 그 단계를 띄운 시각, 바뀐 칸 깜빡임용)
   const [rp, setRp] = useState<{ i: number; playing: boolean; at: number } | null>(null);
   const [speed, setSpeed] = useState(1);
-  const canReplay = useMemo(() => hasRankChange(rankLog, req), [rankLog, req]);
+  // 순위가 그대로여도 값이 2단계 이상 쌓였으면 들어온 과정을 다시 볼 수 있게
+  const canReplay = rankLog.length >= 2;
   const live = useLiveRankFx(rankLog, req);
   const sv: StepView | null = rp ? stepView(rankLog, Math.min(rp.i, rankLog.length - 1), req) : live;
   useEffect(() => {
@@ -80,7 +81,6 @@ export function CompareCard() {
   const order = rankQuotes(quotes, req);
   const leader = lowestListed(quotes);
   const hide = hiddenItems(quotes, order, req);
-  const shown: View = rp && view === 'chart' ? 'cards' : view;
   const fx = (id: VendorId): Fx | undefined =>
     sv ? { delta: sv.deltas[id], key: rp ? rp.i : rankLog.length, flash: rp && sv.changed.vendorId === id && sv.changed.field ? { vendorId: id, field: sv.changed.field, at: rp.at } : undefined } : undefined;
   // 해당 없는 항목(설치 불필요, A/S 불필요, 모든 업체 추가 비용 없음)은 열을 뺀다
@@ -133,9 +133,9 @@ export function CompareCard() {
             </motion.div>
           )}
         </AnimatePresence>
-        {shown === 'chart' ? (
-          <CompareChart order={order} />
-        ) : shown === 'cards' ? (
+        {view === 'chart' ? (
+          <CompareChart order={order} quotes={rp ? quotes : undefined} fx={sv ? fx : undefined} />
+        ) : view === 'cards' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" onClick={() => setPop(null)}>
             {order.map((id, i) => (
               <VendorCard key={id} q={quotes[id]!} rank={i + 1} req={req} hide={hide} onSource={setPop} canAct={!rp && ['compare', 'questions', 'draft'].includes(stage)} fx={fx(id)} />
@@ -163,24 +163,6 @@ export function CompareCard() {
         {!rp && ['questions', 'draft'].includes(stage) && <Recommend />}
       </CardContent>
     </Card>
-  );
-}
-
-/** 순위 변동 강조: 이동 폭, 깜빡일 칸 (다시 보기 중엔 그 단계 값). key가 바뀌면 강조 애니메이션을 다시 시작 */
-type Fx = { delta?: number; key: number; flash?: { vendorId: VendorId; field: FieldKey; at: number } };
-
-function RankDelta({ d }: { d?: number }) {
-  if (!d) return null;
-  return (
-    <motion.span
-      initial={{ scale: 0.4, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 18 }}
-      className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-white shadow-sm', d > 0 ? 'bg-emerald-600' : 'bg-rose-600')}
-      aria-label={d > 0 ? `${d}계단 상승` : `${-d}계단 하락`}
-    >
-      {d > 0 ? '▲' : '▼'}{Math.abs(d)}
-    </motion.span>
   );
 }
 

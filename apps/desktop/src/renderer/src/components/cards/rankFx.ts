@@ -54,11 +54,6 @@ export function stepView(log: RankStep[], i: number, req: Requirements | null): 
   };
 }
 
-/** 순위가 한 번이라도 바뀐 기록인지 (다시 보기 버튼을 보일지) */
-export function hasRankChange(log: RankStep[], req: Requirements | null) {
-  return log.some((_, i) => i > 0 && Object.keys(stepView(log, i, req).deltas).length > 0);
-}
-
 /** 실시간 강조: 마지막 단계가 ms 안이면 그 단계를 돌려준다 */
 export function useLiveRankFx(log: RankStep[], req: Requirements | null, ms = 3000): StepView | null {
   const last = log.length - 1;

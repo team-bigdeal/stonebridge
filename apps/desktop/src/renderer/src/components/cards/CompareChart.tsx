@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import type { Field, Quote, Requirements, VendorId, VendorStatus } from '@shared/types';
+import type { Field, FieldKey, Quote, Requirements, VendorId, VendorStatus } from '@shared/types';
 import { confirmedSum, daysUntil, extraSum, productAmount } from '@shared/quote';
 import { VENDOR_DOT } from '@/store';
 import { useRunStore } from '@/runScope';
@@ -80,9 +80,29 @@ function refOf(cat: CatId, req: Requirements | null): { v: number; label: string
 }
 
 /** 견적 비교 그래프: 카테고리를 골라 업체별 막대로 본다 */
-export function CompareChart({ order }: { order: VendorId[] }) {
+/** 순위 변동 강조: 이동 폭, 깜빡일 칸 (다시 보기 중엔 그 단계 값). key가 바뀌면 강조 애니메이션을 다시 시작 */
+export type Fx = { delta?: number; key: number; flash?: { vendorId: VendorId; field: FieldKey; at: number } };
+
+export function RankDelta({ d }: { d?: number }) {
+  if (!d) return null;
+  return (
+    <motion.span
+      initial={{ scale: 0.4, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 18 }}
+      className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-white shadow-sm', d > 0 ? 'bg-emerald-600' : 'bg-rose-600')}
+      aria-label={d > 0 ? `${d}계단 상승` : `${-d}계단 하락`}
+    >
+      {d > 0 ? '▲' : '▼'}{Math.abs(d)}
+    </motion.span>
+  );
+}
+
+/** quotes: 순위 변동 다시 보기 중이면 그 단계 견적 (아직 확인 전인 값은 "확인 중"). fx: 순위 이동 강조 */
+export function CompareChart({ order, quotes: step, fx }: { order: VendorId[]; quotes?: Partial<Record<VendorId, Quote>>; fx?: (id: VendorId) => Fx | undefined }) {
   // 이전 검색 카드 안이면 그 검색의 값으로 그린다
-  const { quotes, requirements, vendorStatus } = useRunStore();
+  const { quotes: runQuotes, requirements, vendorStatus } = useRunStore();
+  const quotes = step ?? runQuotes;
   const req = (requirements?.deadline ? requirements : null) as Requirements | null;
   const cats = CATS.filter((c) => !(c.id === 'install' && req?.needInstall === false) && !(c.id === 'warranty' && req && req.minWarrantyMonths <= 0));
   const [catId, setCatId] = useState<CatId>('total');
@@ -91,7 +111,7 @@ export function CompareChart({ order }: { order: VendorId[] }) {
 
   const rows = order.map((id) => {
     const q = quotes[id]!;
-    return { id, q, p: pointOf(cat.id, q, req, SETTLED.includes(vendorStatus[id] ?? 'idle')) };
+    return { id, q, p: pointOf(cat.id, q, req, !step && SETTLED.includes(vendorStatus[id] ?? 'idle')) };
   });
   const known = rows.filter((r) => r.p.state === 'known') as (typeof rows[number] & { p: { state: 'known'; v: number; partial?: boolean } })[];
   // 이 카테고리 기준으로 정렬 (모르는 값은 뒤로). 색은 순위가 아니라 업체를 따라간다
@@ -143,19 +163,23 @@ export function CompareChart({ order }: { order: VendorId[] }) {
 
         {ordered.map((r) => {
           const p = r.p;
+          const f = fx?.(r.id);
+          const moved = f?.delta ? (f.delta > 0 ? 'rank-up' : 'rank-down') : '';
           const over = p.state === 'known' && isOver(p.v);
           return (
             <motion.div
               layout
               key={r.id}
               transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-              className="col-span-2 grid grid-cols-subgrid"
+              className="relative col-span-2 grid grid-cols-subgrid"
               onMouseEnter={() => setHover(r.id)}
               onMouseLeave={() => setHover((h) => (h === r.id ? null : h))}
             >
+              {moved && <span key={'fx-' + f!.key} aria-hidden className={cn('pointer-events-none absolute inset-0 z-20 rounded-lg', moved)} />}
               <div className={cn('flex h-11 min-w-0 items-center gap-2 text-[13px]', hover && hover !== r.id && 'opacity-60')}>
                 <span className={cn('size-2 shrink-0 rounded-full', VENDOR_DOT[r.id])} />
                 <span className="truncate font-medium" title={r.q.vendorName}>{r.q.vendorName}</span>
+                {f?.delta ? <RankDelta key={'d-' + f.key} d={f.delta} /> : null}
                 {best === r.id && <Pill tone="primary">{cat.better === 'low' ? (cat.unit === 'won' ? '가장 저렴' : '가장 빠름') : '가장 길어요'}</Pill>}
               </div>
               <div className="relative mr-[120px] h-11">
@@ -166,7 +190,7 @@ export function CompareChart({ order }: { order: VendorId[] }) {
                 {p.state === 'known' ? (
                   <>
                     <motion.div
-                      className={cn('absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-[4px]', VENDOR_DOT[r.id], hover && hover !== r.id && 'opacity-50')}
+                      className={cn('absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-[4px]', VENDOR_DOT[r.id], hover && hover !== r.id && 'opacity-50', f?.flash && 'animate-pulse')}
                       initial={false}
                       animate={{ width: pct(p.v) }}
                       transition={{ duration: 0.5, ease: 'easeOut' }}
