@@ -52,7 +52,26 @@ export function themeMode(): ThemeMode {
   return v === 'light' || v === 'dark' ? v : 'system';
 }
 
-const quote = (v: string) => (/^[\w@.\-:/+=]*$/.test(v) ? v : `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+/** dotenv가 그대로 읽는 모양으로 감싼다. dotenv는 따옴표 안의 \·"를 풀지 않으므로 값에 없는 따옴표를 고른다. 못 감싸면 null */
+const quote = (v: string) => {
+  if (/^[\w@.\-:/+=]*$/.test(v)) return v;
+  if (!v.includes("'")) return `'${v}'`;
+  // 큰따옴표 안에서는 \n·\r이 줄바꿈으로 바뀐다
+  if (!v.includes('"') && !/\\[nr]/.test(v)) return `"${v}"`;
+  if (!v.includes('`')) return `\`${v}\``;
+  return null;
+};
+
+/** 줄바꿈·제어 문자는 .env 줄을 깨거나 다른 키를 만들 수 있어 받지 않는다 */
+function settingsError(patch: SettingsInput): string | null {
+  for (const key of SETTING_KEYS) {
+    const value = patch[key]?.trim();
+    if (!value) continue;
+    if (/[\u0000-\u001f\u007f]/.test(value)) return '설정값에 줄바꿈이나 제어 문자를 넣을 수 없어요.';
+    if (quote(value) === null) return '설정값에 \' " ` 세 가지 따옴표를 한꺼번에 쓸 수 없어요.';
+  }
+  return null;
+}
 
 function writeEnv(update: (lines: string[]) => string[]) {
   const lines = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8').split('\n') : [];
@@ -61,8 +80,10 @@ function writeEnv(update: (lines: string[]) => string[]) {
   fs.chmodSync(envFile, 0o600);
 }
 
-/** 설정 창 입력을 .env에 저장하고 바로 반영한다. 빈 문자열은 "변경 안 함" */
-export function saveSettings(patch: SettingsInput) {
+/** 설정 창 입력을 .env에 저장하고 바로 반영한다. 빈 문자열은 "변경 안 함". 저장하지 못하면 이유를 돌려준다 */
+export function saveSettings(patch: SettingsInput): string | null {
+  const err = settingsError(patch);
+  if (err) return err;
   writeEnv((lines) => {
     for (const key of SETTING_KEYS) {
       const value = patch[key]?.trim();
@@ -76,6 +97,7 @@ export function saveSettings(patch: SettingsInput) {
     return lines;
   });
   Object.assign(config, fromEnv());
+  return null;
 }
 
 export function clearApiKey() {

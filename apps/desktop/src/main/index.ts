@@ -122,7 +122,8 @@ function registerIpc() {
       const err = await verifyApiKey(key, input.ANTHROPIC_MODEL?.trim() || config.model);
       if (err) return { ok: false, error: err };
     }
-    saveSettings(input);
+    const saveErr = saveSettings(input);
+    if (saveErr) return { ok: false, error: saveErr };
     // 테마를 바꿨으면 창 배경색도 맞춰 둔다 (크기를 줄일 때 비치는 색)
     if (input.THEME) mainWindow?.setBackgroundColor(windowBackground());
     // 앱 비밀번호를 새로 넣었으면 기다리던 회신 확인을 이어 간다
