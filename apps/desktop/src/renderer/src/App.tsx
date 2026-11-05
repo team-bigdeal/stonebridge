@@ -35,7 +35,7 @@ export default function App() {
     <TooltipProvider>
       <div className="flex h-full flex-col bg-background">
         <TopBar />
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           <HistorySidebar />
           <main className="relative min-w-0 flex-1">
             {/* 사이드바가 닫혀 있으면 그 자리(왼쪽 위)에서 다시 연다 */}
