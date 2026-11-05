@@ -115,7 +115,8 @@ export async function onChat(text: string) {
       emit('requirements', { payload: interview.req });
       emit('requirements_ready', { payload: { ready, asking: Boolean(question) } });
       if (question) {
-        say(ready ? `${question}\n(지금 조건으로도 찾을 수 있어요. 오른쪽 요구 조건의 "지금 바로 시작"을 누르면 바로 검색해요.)` : question);
+        // "지금 바로 시작할 수 있다"는 안내는 오른쪽 요구 조건 패널에만 둔다 (질문마다 붙이면 대화가 길어짐)
+        say(question);
         // 사용자가 사이즈를 모르거나 추천을 원할 때만 브라우저 1개가 업체 사이트를 돌며 파는 사이즈를 모아 실제 크기로 보여 준다
         const item = interview.req.item;
         if (wantsSizeHelp && item && !sizeScanStarted() && hasApiKey()) {
@@ -138,12 +139,13 @@ export async function onChat(text: string) {
         const slot = VENDOR_IDS.find((id) => !getVendor(id) || ['failed', 'needs_user'].includes(getVendorStatus(id)));
         if (!slot) break;
         // 쓰지 않던 브라우저면 자리를 열고 카드도 하나 띄운다
+        const name = await siteName(url);
         if (!activeSlots.includes(slot)) {
           activeSlots = [...activeSlots, slot];
           quoteStore.ensure(slot);
-          timeline({ kind: 'browser', slot, title: new URL(url).hostname.replace(/^www\./, '') });
+          timeline({ kind: 'browser', slot, title: name });
         }
-        claim(slot, { name: new URL(url).hostname.replace(/^www\./, ''), url, reason: '사용자가 지정' });
+        claim(slot, { name, url, reason: '사용자가 지정' });
         void collect(slot);
       }
       return;
@@ -285,11 +287,38 @@ async function startWithUrls(req: Requirements, urls: string[]) {
   fallbacks.clear();
   triedNames.clear();
   say(`알려 주신 업체 ${urls.length}곳에서 바로 견적을 받아 올게요.`);
-  urls.forEach((url, i) => claim(VENDOR_IDS[i], { name: new URL(url).host.replace(/^www\./, ''), url, reason: '사용자가 지정' }));
+  const names = await Promise.all(urls.map(siteName));
+  urls.forEach((url, i) => claim(VENDOR_IDS[i], { name: names[i], url, reason: '사용자가 지정' }));
   timeline({ kind: 'vendors', slots: activeSlots });
   const gen = generation;
   await Promise.all(urls.map((_, i) => collect(VENDOR_IDS[i], gen)));
   if (gen === generation) maybeOpenGate();
+}
+
+/** 이름 뒤에 을/를 (받침 있으면 을). 한글로 안 끝나면 "을(를)" */
+function withEulReul(name: string) {
+  const c = name.trim().slice(-1).charCodeAt(0);
+  if (c < 0xac00 || c > 0xd7a3) return `${name}을(를)`;
+  return `${name}${(c - 0xac00) % 28 ? '을' : '를'}`;
+}
+
+/** 사용자가 준 URL의 업체 이름. 이 컴퓨터의 시연용 업체(localhost)는 페이지 제목의 업체 이름("라벨공방 - …" → 라벨공방), 그 밖에는 도메인 */
+async function siteName(url: string): Promise<string> {
+  const host = (() => {
+    try {
+      return new URL(url).host.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  })();
+  if (!/^(localhost|127\.0\.0\.1)(:|$)/.test(host)) return host;
+  try {
+    const html = await (await fetch(url, { signal: AbortSignal.timeout(2000) })).text();
+    const title = /<title>([^<]+)<\/title>/i.exec(html)?.[1]?.split(/\s[-|·:]\s/)[0]?.trim();
+    return title || host;
+  } catch {
+    return host;
+  }
 }
 
 /** 업체 확정 (다른 브라우저와 중복이면 거부 사유) */
@@ -642,7 +671,6 @@ function showCompare() {
   setStage('compare');
   if (compareShown) return;
   compareShown = true;
-  say('모은 견적을 하나의 양식으로 정리했어요. 숨은 비용이 더해지며 순위가 바뀌는 걸 보세요. 업체별 견적서는 카드의 "견적서 보기"로 열 수 있어요.');
   timeline({ kind: 'compare' });
 }
 
@@ -921,7 +949,8 @@ function onQuotesSettled() {
   if (key === announced) return;
   announced = key;
   const missing = priced.filter((v) => missingKeys(quoteStore.get(v.id)!, requirements!).length > 0).length;
-  say(`${rec.vendorId ? `추천: ${vendorName(rec.vendorId)}${rec.tentative ? ' (확인 필요)' : ''}` : '조건을 모두 만족하는 업체가 없어요.'}\n${rec.reasons.map((r) => `· ${r}`).join('\n')}${missing ? `\n견적서에 빠진 항목이 있는 업체가 ${missing}곳 있어요. 확인 질문 메일로 채울 수 있어요.` : ''}`);
+  // 금액·이유는 아래 추천 카드에 있으니 채팅은 한 줄로
+  say(`${rec.vendorId ? `${withEulReul(vendorName(rec.vendorId))} 추천해요${rec.tentative ? ' (확인 필요)' : ''}.` : '조건을 모두 만족하는 업체가 없어요.'}${missing ? ` 빠진 항목이 있는 업체 ${missing}곳은 확인 질문 메일로 채울 수 있어요.` : ''}`);
   // 통합 견적서 카드는 내용이 실시간으로 바뀌므로 한 번만 띄운다
   if (reportShown) return;
   reportShown = true;

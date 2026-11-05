@@ -3,7 +3,7 @@ import { ArrowLeft, Columns3, ExternalLink, PanelLeft, FileText, Maximize2, Play
 import type { Slot, VendorId, VendorStatus } from '@shared/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ANGLE_LABEL, STATUS_LABEL, useStore, VENDOR_DOT } from '@/store';
+import { STATUS_LABEL, useStore, VENDOR_DOT } from '@/store';
 import { cn } from '@/lib/utils';
 import { Pill } from '../cards/Section';
 import { LiveFrame } from './LiveFrame';
@@ -30,6 +30,8 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
   const vid = slot === 'search' ? null : (slot as VendorId);
   const vendor = vid ? vendors.find((v) => v.id === vid) : null;
   const status = vid ? vendorStatus[vid] : undefined;
+  // 탐색 중일 때만 진행 기록을 펼칠 수 있게 (끝난 업체는 상태만)
+  const active = !vid || status === 'browsing' || status === 'parsing';
   const hasDoc = vid ? quotes[vid]?.listedPrice.value !== null && quotes[vid]?.listedPrice.value !== undefined : false;
   const web = Boolean(b?.url && /^https?:/.test(b.url));
   const host = (() => {
@@ -64,11 +66,10 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
         </Button>}
       </div>
 
-      {/* 업체 설명 + 상태 */}
-      {(vid || status) && (
-        <div className="-mt-1 flex items-center gap-3">
-          {vid && <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-muted-foreground">{ANGLE_LABEL[vid]}</span>}
-          {status && <Pill tone={STATUS_TONE[status]} className="text-[13px]">{STATUS_LABEL[status]}</Pill>}
+      {/* 상태 */}
+      {status && (
+        <div className="-mt-1 flex items-center">
+          <Pill tone={STATUS_TONE[status]} className="text-[13px]">{STATUS_LABEL[status]}</Pill>
         </div>
       )}
 
@@ -100,7 +101,7 @@ export function BrowserPanel({ slot, title, className, frameClassName, compact =
         <LiveFrame slot={slot} still={compact} className={cn('max-h-[calc(100vh-360px)]', frameClassName)} />
       </div>
 
-      {!compact && <Steps slot={slot} />}
+      {!compact && <Steps slot={slot} history={active} />}
       {vid && (hasDoc || status === 'failed' || status === 'stopped') && (
         <div className="flex flex-wrap gap-2">
           {hasDoc && (

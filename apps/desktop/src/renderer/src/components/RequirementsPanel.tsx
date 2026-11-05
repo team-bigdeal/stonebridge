@@ -51,7 +51,6 @@ function Summary({ r }: { r: Partial<Requirements> }) {
   ];
   return (
     <div className="flex flex-col gap-1 px-5 pb-6">
-      <p className="pb-2 text-[13px] text-muted-foreground">이 조건으로 업체를 찾고 있어요.</p>
       <dl className="flex flex-col">
         {rows.map(([k, v]) => (
           <div key={k} className="flex items-baseline justify-between gap-4 border-b border-line/60 py-2.5 text-[14px]">
@@ -92,7 +91,9 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
   const shown = r.shown ?? { install: true, warranty: true, region: true };
   const item = (v.item ?? '').trim();
   const canStart = ready && Boolean(item) && !busy && !starting;
-  const specs = (r.specs ?? []).map((s) => ({ ...s, value: specEdit[s.label] ?? s.value }));
+  // 품목 이름에 이미 들어 있는 값(예: "지름 50mm" 품목의 지름 50 mm)은 다시 묻지 않는다
+  const allSpecs = (r.specs ?? []).map((s) => ({ ...s, value: specEdit[s.label] ?? s.value }));
+  const specs = allSpecs.filter((s) => specEdit[s.label] !== undefined || !inItem(s, item));
   const fields = 4 + (shown.install ? 1 : 0) + (shown.warranty ? 1 : 0) + (shown.region ? 1 : 0) + specs.length;
   const filled =
     [v.item, v.quantity, v.budgetMax, v.deadline].filter((x) => x !== undefined && x !== '').length +
@@ -104,7 +105,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
   async function start() {
     setStarting(true);
     try {
-      await api.startSearch({ ...edit, ...(Object.keys(specEdit).length ? { specs } : {}) });
+      await api.startSearch({ ...edit, ...(Object.keys(specEdit).length ? { specs: allSpecs } : {}) });
     } finally {
       setStarting(false);
     }
@@ -112,14 +113,13 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
 
   return (
     <div className="flex flex-col gap-5 px-5 pb-6">
-      <div className="flex items-center justify-between text-[13px] text-muted-foreground">
-        <span>대화로 채운 값이에요. 다르면 바로 고쳐 주세요.</span>
-        <span className="shrink-0 tabular-nums text-primary">
+      <div className="flex items-center gap-3">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(filled / Math.max(1, fields)) * 100}%` }} />
+        </div>
+        <span className="shrink-0 text-[13px] tabular-nums text-primary">
           {filled}/{fields}
         </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(filled / Math.max(1, fields)) * 100}%` }} />
       </div>
 
       <Field label="품목" value={refitting ? '조건 맞추는 중…' : undefined}>
@@ -141,11 +141,11 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
         />
       </Field>
 
-      <Field label="수량" value={v.quantity !== undefined ? `${v.quantity.toLocaleString('ko-KR')}개` : undefined}>
+      <Field label="수량">
         <Slider value={v.quantity} base={r.quantity ?? 1} kind="qty" onChange={(n) => setEdit({ ...edit, quantity: n })} />
       </Field>
 
-      <Field label="예산" value={v.budgetMax !== undefined ? `${shortWon(v.budgetMax)} 이하` : undefined}>
+      <Field label="예산">
         <Slider value={v.budgetMax} base={r.budgetMax ?? 1_000_000} kind="won" onChange={(n) => setEdit({ ...edit, budgetMax: n })} />
       </Field>
 
@@ -182,7 +182,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
         </Field>
       )}
 
-      {specs.length > 0 && <div className="-mb-1 border-t border-line/60 pt-4 text-[13px] font-medium text-muted-foreground">{item || '품목'}에 맞는 조건</div>}
+      {specs.length > 0 && <div className="-mb-2 border-t border-line/60" />}
       {specs.map((s) => (
         <Field key={s.label} label={s.label}>
           <SpecInput spec={s} onChange={(t) => setSpecEdit({ ...specEdit, [s.label]: t })} />
@@ -194,7 +194,7 @@ function Editor({ r, ready, asking, busy }: { r: Partial<Requirements>; ready: b
           <Search className="size-4" /> {starting ? '시작하는 중…' : asking ? '지금 바로 시작' : '이 조건으로 찾기 시작'}
         </Button>
         <p className="text-center text-[12px] text-muted-foreground">
-          {!item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : ready ? '남은 질문에 답하지 않아도 바로 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.'}
+          {!item ? '어떤 품목인지 알려 주시면 시작할 수 있어요.' : ready ? '질문에 다 답하지 않아도 시작할 수 있어요.' : '조건을 조금 더 알려 주시면 시작할 수 있어요.'}
         </p>
       </div>
     </div>
@@ -208,7 +208,7 @@ function Field({ label, value, children }: { label: string; value?: string; chil
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
-        {value && <span className="text-[15px] font-semibold tabular-nums text-ink">{value}</span>}
+        {value && <span className="text-[13px] text-muted-foreground">{value}</span>}
       </div>
       {children}
     </div>
@@ -274,7 +274,21 @@ function SpecInput({ spec, onChange }: { spec: ReqSpec; onChange: (v: string) =>
   return <TextBox value={spec.value ?? ''} placeholder={spec.unit ? `단위: ${spec.unit}` : '...'} onChange={onChange} suffix={spec.unit} />;
 }
 
-const shortWon = (n: number) => (n >= 10_000 && n % 10_000 === 0 ? `${(n / 10_000).toLocaleString('ko-KR')}만원` : `${n.toLocaleString('ko-KR')}원`);
+/** 값(숫자+단위 또는 글자)이 품목 이름에 이미 들어 있는지. 띄어쓰기·대소문자는 무시한다 */
+function inItem(s: ReqSpec, item: string) {
+  const norm = (t: string) => t.replace(/\s+/g, '').toLowerCase();
+  const name = norm(item);
+  const val = norm(s.value ?? '');
+  if (!name || !val) return false;
+  if (/^[\d.,]+$/.test(val)) {
+    // 숫자는 단위까지 붙어 있어야 같은 값으로 본다 (50 ≠ 150, 50m ≠ 50mm)
+    const num = val.replace(/,/g, '');
+    const unit = norm(s.unit ?? '');
+    const plain = name.replace(/,/g, '');
+    return new RegExp(`(^|[^\\d.])${num.replace(/\./g, '\\.')}${unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z\\d.])`).test(plain);
+  }
+  return val.length >= 2 && name.includes(val);
+}
 const shortLabel = (n: number, kind: 'qty' | 'won') =>
   kind === 'won' ? (n >= 100_000_000 ? `${n / 100_000_000}억` : n >= 10_000 ? `${(n / 10_000).toLocaleString('ko-KR')}만` : n.toLocaleString('ko-KR')) : n >= 10_000 ? `${n / 10_000}만` : n.toLocaleString('ko-KR');
 
@@ -325,6 +339,7 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
           className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full outline-none [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.08)] focus-visible:[&::-webkit-slider-thumb]:ring-4 focus-visible:[&::-webkit-slider-thumb]:ring-primary/25"
           style={{ background: `linear-gradient(to right, var(--primary) ${pos / 10}%, var(--muted) ${pos / 10}%)` }}
         />
+        <label className="flex w-[104px] shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-1 focus-within:ring-2 focus-within:ring-primary/30">
         <input
           inputMode="numeric"
           aria-label={kind === 'won' ? '예산 직접 입력(원)' : '수량 직접 입력'}
@@ -338,11 +353,13 @@ function Slider({ value, base, kind, onChange }: { value?: number; base: number;
             setTyping(null);
           }}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          className="w-[88px] shrink-0 rounded-md bg-muted px-2 py-1 text-right text-[13px] font-medium tabular-nums text-ink outline-none focus:ring-2 focus:ring-primary/30"
+          className="min-w-0 flex-1 bg-transparent text-right text-[13px] font-medium tabular-nums text-ink outline-none"
         />
+        <span className="shrink-0 text-[12px] text-muted-foreground">{kind === 'won' ? '원' : '개'}</span>
+        </label>
       </div>
       {/* 아래 예시 값: 누르면 그 값으로 */}
-      <div className="relative mr-[100px] h-4 text-[11px] text-muted-foreground">
+      <div className="relative mr-[116px] h-4 text-[11px] text-muted-foreground">
         {stops.map((s, i) => (
           <button
             key={s}

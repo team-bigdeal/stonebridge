@@ -10,7 +10,16 @@ import { exitReplay, openReplay } from '@/replay';
 import { SidebarToggle, useRestart } from './Shell';
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
-const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+/** 오늘/어제는 "오늘 16:45", 그 전은 "11. 3." */
+const when = (iso: string) => {
+  const d = new Date(iso);
+  const dayStart = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((dayStart(new Date()) - dayStart(d)) / 86_400_000);
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (diff === 0) return `오늘 ${time}`;
+  if (diff === 1) return `어제 ${time}`;
+  return d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+};
 
 /** 왼쪽 사이드 탭: 지난 견적 목록. 누르면 그 견적 세션(대화·브라우저·비교표)이 그대로 다시 뜬다 */
 export function HistorySidebar() {
@@ -92,24 +101,19 @@ export function HistorySidebar() {
                   type="button"
                   className={cn('w-full rounded-lg px-3 py-2.5 text-left hover:bg-background', active === h.id && 'bg-secondary hover:bg-secondary')}
                   onClick={() => void openReplay(h.id)}
+                  title={h.best ? `${h.item} · 추천 ${h.best.name} ${won(h.best.total)}` : h.item}
                 >
-                  <div className={cn('truncate pr-6 text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-ink')}>
-                    {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
-                    {h.item}
+                  {/* 1줄: 품목 + 추천 금액 / 2줄: 언제 · 수량 */}
+                  <div className="flex items-baseline gap-2 pr-6">
+                    <span className={cn('min-w-0 flex-1 truncate text-[14px] font-medium', active === h.id ? 'text-primary' : 'text-ink')}>
+                      {h.id === liveId && <Pill tone="primary" className="mr-1.5">진행 중</Pill>}
+                      {h.item}
+                    </span>
+                    {h.best && <span className="shrink-0 text-[12px] font-semibold tabular-nums text-ink">{won(h.best.total)}</span>}
                   </div>
-                  <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                    <span>{when(h.updatedAt)}</span>
-                    <span>·</span>
-                    <span>{h.quantity.toLocaleString('ko-KR')}개</span>
-                    <span>·</span>
-                    <span>{h.pricedCount}/{h.vendorCount}곳</span>
+                  <div className="mt-0.5 text-[12px] text-muted-foreground">
+                    {when(h.updatedAt)} · {h.quantity.toLocaleString('ko-KR')}개
                   </div>
-                  {h.best && (
-                    <div className="mt-0.5 truncate text-[12px]">
-                      <span className="text-muted-foreground">추천 {h.best.name} </span>
-                      <span className="font-semibold tabular-nums text-ink">{won(h.best.total)}</span>
-                    </div>
-                  )}
                 </button>
                 <button
                   type="button"

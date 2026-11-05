@@ -141,7 +141,7 @@ function Composer() {
                   ? '견적을 비교하고 싶은 상품을 입력해주세요'
                   : stage === 'interview'
                     ? '답변을 작성해주세요'
-                    : '바꿀 조건을 말하면 다시 찾아볼게요 (예: 5일 안에 받고 싶어요). 업체 주소를 붙여 넣어도 돼요'
+                    : '조건을 바꾸거나 업체 주소를 붙여 넣어 보세요'
               }
               className="min-h-0 p-0 py-1 text-[17px] font-medium leading-normal text-ink placeholder:text-muted-foreground md:text-[17px]"
             />
@@ -163,7 +163,8 @@ function Composer() {
             </span>
           </PromptInputSubmit>
         </PromptInput>
-        <div className="px-1 text-right text-[12px] text-muted-foreground">Enter 보내기 · Shift+Enter 줄바꿈</div>
+        {/* 처음 화면에서 아직 아무것도 안 썼을 때만 단축키 안내 */}
+        {fresh && empty && <div className="px-1 text-right text-[12px] text-muted-foreground">Enter 보내기 · Shift+Enter 줄바꿈</div>}
       </div>
     </div>
   );
