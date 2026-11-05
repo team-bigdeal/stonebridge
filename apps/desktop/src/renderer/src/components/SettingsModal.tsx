@@ -103,16 +103,19 @@ function useSave() {
 function ThemeTab({ config }: { config: AppConfig }) {
   const set = useStore((s) => s.set);
   const { error, save } = useSave();
+  // 고른 값은 여기서 들고 있다가 바로 보여 준다 (저장 응답이 config를 덮어써도 강조가 되돌아가지 않게)
+  const [theme, setTheme] = useState<ThemeMode>(config.theme ?? 'system');
   const pick = (v: string) => {
-    // 저장 응답을 기다리지 않고 먼저 화면에 반영
-    set({ config: { ...config, theme: v as ThemeMode } });
-    void save({ THEME: v });
+    const mode = v as ThemeMode;
+    setTheme(mode);
+    set({ config: { ...useStore.getState().config!, theme: mode } });
+    void save({ THEME: v }, () => set({ config: { ...useStore.getState().config!, theme: mode } }));
   };
   return (
     <div className="flex flex-col gap-5">
       <Row label="화면 테마" hint={error || '시스템은 컴퓨터의 라이트·다크 설정을 따라가요. 견적서와 업체 사이트 화면은 항상 원래 색으로 보여요.'}>
         <Segmented
-          value={config.theme ?? 'system'}
+          value={theme}
           options={[
             { value: 'system', label: '시스템' },
             { value: 'light', label: '라이트' },
