@@ -42,10 +42,17 @@ export const priceQty = (q: Quote) => {
   return Number.isFinite(n) ? Math.max(1, n) : 1;
 };
 
-/** 요구 수량만큼의 제품 금액: 표시가 × (요구 수량 ÷ 기준 수량) */
+/** 요구 수량을 사려면 필요한 묶음 수. 묶음(1000매·1시트 등) 가격이면 모자란 수량도 한 묶음으로 친다 (100매 요청 → 1000매 1묶음) */
+export function bundleCount(q: Quote, req: Requirements | null): number {
+  const qty = req?.quantity ?? 1;
+  const pq = priceQty(q);
+  return pq > 1 ? Math.ceil(qty / pq) : qty;
+}
+
+/** 요구 수량만큼의 제품 금액: 묶음 가격이면 표시가 × 묶음 수, 1개 가격이면 표시가 × 요구 수량 */
 export function productAmount(q: Quote, req: Requirements | null): number | null {
   if (q.listedPrice.value === null) return null;
-  return Math.round(q.listedPrice.value * ((req?.quantity ?? 1) / priceQty(q)));
+  return Math.round(q.listedPrice.value * bundleCount(q, req));
 }
 
 /** 현재 확인된 금액 합계: 제품 금액 + 설치비(필요 시) + 배송비 + A/S 연장비 + 필수 추가 비용 */
@@ -251,15 +258,20 @@ export function buildDoc(q: Quote, req: Requirements, url?: string): QuoteDoc {
   const m = q.meta ?? {};
   const lines: QuoteDoc['lines'] = [];
   const pq = priceQty(q);
+  // 묶음 단위로만 팔면 실제로 사는 수량(묶음 수 × 묶음 크기)으로 적는다 (100매 요청이어도 1000매 1묶음)
+  const billed = pq > 1 ? bundleCount(q, req) * pq : qty;
   lines.push({
     kind: 'product',
     name: m.productName || req.item,
     spec: m.spec,
-    qty,
+    qty: billed,
     // 묶음 가격이면 1개(매)당 단가로 환산해 보여 준다
     unitPrice: q.listedPrice.value === null ? null : pq > 1 ? Math.round((q.listedPrice.value / pq) * 10) / 10 : q.listedPrice.value,
     amount: productAmount(q, req),
-    note: pq > 1 && q.listedPrice.value !== null ? `${pq.toLocaleString('ko-KR')}개 기준 ${q.listedPrice.value.toLocaleString('ko-KR')}원` : undefined,
+    note:
+      pq > 1 && q.listedPrice.value !== null
+        ? `${pq.toLocaleString('ko-KR')}개 기준 ${q.listedPrice.value.toLocaleString('ko-KR')}원${billed !== qty ? ` · ${pq.toLocaleString('ko-KR')}개 단위라 요청 ${qty.toLocaleString('ko-KR')}개 대신 ${billed.toLocaleString('ko-KR')}개로 계산` : ''}`
+        : undefined,
     counted: true,
     source: q.listedPrice.source
   });
